@@ -16,8 +16,7 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-// Use named Component import to ensure inheritance is recognized by TS
-// Fixed: Explicitly extending Component ensures that TypeScript resolves inherited properties like setState and props correctly.
+// Use Component directly from react to ensure proper inheritance and type recognition for setState and props
 class ErrorBoundary extends Component<Props, State> {
   // Initialize state directly as a class property for cleaner type recognition and to resolve missing 'state' property errors
   public state: State = {
@@ -33,14 +32,14 @@ class ErrorBoundary extends Component<Props, State> {
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
-  // Fixed: handleRetry uses this.setState which is inherited from Component.
+  // Use arrow function for correct 'this' binding and inherit setState from Component
   public handleRetry = () => {
     this.setState({ hasError: false, error: null });
     window.location.reload(); // Hard reload for fatal errors caught by boundary
   };
 
   public render(): ReactNode {
-    // Fixed: Correctly access state and props which are inherited from Component base class
+    // Correctly accessing state and props inherited from Component base class
     const { hasError, error } = this.state;
     const { children } = this.props;
 

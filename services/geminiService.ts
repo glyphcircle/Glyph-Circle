@@ -55,17 +55,21 @@ async function decodeAudioData(
   return buffer;
 }
 
-export const generateMantraAudio = async (mantra: string): Promise<AudioBuffer> => {
+/**
+ * Generates high-quality spoken audio from text using Gemini TTS.
+ * Returns an AudioBuffer ready for playback.
+ */
+export const generateMantraAudio = async (text: string, voiceName: 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir' = 'Charon'): Promise<AudioBuffer> => {
     try {
         const ai = getAi();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text: `Recite this sacred mantra slowly with deep, calm resonance: ${mantra}` }] }],
+            contents: [{ parts: [{ text: `Recite this with deep, mystical resonance: ${text}` }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
                     voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Charon' },
+                        prebuiltVoiceConfig: { voiceName },
                     },
                 },
             },
@@ -92,7 +96,7 @@ export const generateMantraAudio = async (mantra: string): Promise<AudioBuffer> 
         const decodedBytes = decodeBase64(base64Audio);
         return await decodeAudioData(decodedBytes, audioCtx, 24000, 1);
     } catch (e) {
-        console.error("TTS Failed", e);
+        console.error("TTS Generation Failed:", e);
         throw e;
     }
 };

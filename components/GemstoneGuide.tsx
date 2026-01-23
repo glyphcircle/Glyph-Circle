@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom';
 import Card from './shared/Card';
 import Button from './shared/Button';
 import ProgressBar from './shared/ProgressBar';
-// Add missing Modal import
 import Modal from './shared/Modal';
 import { useDb } from '../hooks/useDb';
 import { useTranslation } from '../hooks/useTranslation';
@@ -27,7 +26,7 @@ const GemstoneGuide: React.FC = () => {
   const [libraryFilter, setLibraryFilter] = useState<string | null>(null);
   const [selectedGem, setSelectedGem] = useState<any | null>(null);
 
-  // Refs for Focus Management
+  // Refs
   const nameInputRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
   const libraryTopRef = useRef<HTMLDivElement>(null);
@@ -42,11 +41,11 @@ const GemstoneGuide: React.FC = () => {
   
   // Audio State
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com'];
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
+  const isAdmin = user && ['master@glyphcircle.com', 'admin@glyphcircle.com'].includes(user.email);
 
   const serviceConfig = db.services?.find((s: any) => s.id === 'gemstones');
   const servicePrice = serviceConfig?.price || 49;
@@ -68,18 +67,53 @@ const GemstoneGuide: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-      if (activeTab === 'oracle' && !result && nameInputRef.current) {
-          setTimeout(() => nameInputRef.current?.focus(), 100);
-      }
-      if (activeTab === 'library' && libraryTopRef.current) {
-          setTimeout(() => libraryTopRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-      }
-  }, [activeTab, result]);
+  const handleListenMantra = async () => {
+    if (!result?.mantra?.sanskrit || isSpeaking || isAudioLoading) return;
+    
+    setIsAudioLoading(true);
+    setError('');
 
-  const getLanguageName = (code: string) => {
-      const map: Record<string, string> = { en: 'English', hi: 'Hindi', fr: 'French', es: 'Spanish' };
-      return map[code] || 'English';
+    try {
+        // 1. Initialize Context on User Gesture
+        if (!audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        }
+        const audioCtx = audioCtxRef.current;
+        
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
+
+        // 2. Fetch High-Quality Spoken Mantra
+        const audioBuffer = await generateMantraAudio(result.mantra.sanskrit);
+
+        // 3. Playback
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        
+        source.onended = () => {
+            setIsSpeaking(false);
+            audioSourceRef.current = null;
+        };
+
+        source.start();
+        audioSourceRef.current = source;
+        setIsSpeaking(true);
+    } catch (e) {
+        console.error("Audio playback error:", e);
+        setError("The Oracle's voice is distant. Please check your connection.");
+    } finally {
+        setIsAudioLoading(false);
+    }
+  };
+
+  const stopMantra = () => {
+      if (audioSourceRef.current) {
+          audioSourceRef.current.stop();
+          audioSourceRef.current = null;
+          setIsSpeaking(false);
+      }
   };
 
   const handleConsultOracle = async () => {
@@ -98,18 +132,17 @@ const GemstoneGuide: React.FC = () => {
       const timer = setInterval(() => setProgress(p => (p >= 90 ? p : p + 5)), 250);
 
       try {
-          const apiResult = await getGemstoneGuidance(formData.name, formData.dob, formData.intent, getLanguageName(language));
+          const apiResult = await getGemstoneGuidance(formData.name, formData.dob, formData.intent, language === 'hi' ? 'Hindi' : 'English');
           clearInterval(timer);
           setProgress(100);
           setResult(apiResult);
 
-          const defaultGemImg = db.image_assets?.find((a: any) => a.tags?.includes('gemstone_default'))?.path;
           saveReading({
               type: 'astrology',
               title: `Gemstone for ${formData.intent}`,
               content: apiResult.fullReading,
               subtitle: apiResult.primaryGem.name,
-              image_url: cloudManager.resolveImage(defaultGemImg || "https://images.unsplash.com/photo-1615485290382-441e4d049cb5?q=80&w=400")
+              image_url: "https://images.unsplash.com/photo-1615485290382-441e4d049cb5?q=80&w=400"
           });
           setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 500);
       } catch (err: any) {
@@ -119,70 +152,6 @@ const GemstoneGuide: React.FC = () => {
           setIsLoading(false);
       }
   };
-
-  const handleListenMantra = async () => {
-    if (!result?.mantra?.sanskrit || isSpeaking) return;
-    
-    setIsSpeaking(true);
-    try {
-        const audioBuffer = await generateMantraAudio(result.mantra.sanskrit);
-        
-        // Critical: Initialize or re-use AudioContext inside the user gesture handler
-        if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        }
-        
-        const audioCtx = audioCtxRef.current;
-        
-        // Resume context specifically inside the click path to bypass browser restrictions
-        if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-        }
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioCtx.destination);
-        source.onended = () => {
-            setIsSpeaking(false);
-            audioSourceRef.current = null;
-        };
-        source.start();
-        audioSourceRef.current = source;
-    } catch (e) {
-        console.error("Audio playback error:", e);
-        setIsSpeaking(false);
-        setError("Failed to play sacred mantra. Please check your volume.");
-    }
-  };
-
-  const stopMantra = () => {
-      if (audioSourceRef.current) {
-          audioSourceRef.current.stop();
-          audioSourceRef.current = null;
-          setIsSpeaking(false);
-      }
-  };
-
-  const handleReadMore = () => openPayment(() => setIsPaid(true), 'Gemstone Report', servicePrice);
-
-  const handleViewInLibrary = () => {
-      if (result?.primaryGem?.name) {
-          setLibraryFilter(result.primaryGem.name);
-          setActiveTab('library');
-      }
-  };
-
-  const displayedGems = React.useMemo(() => {
-      let gems = db.gemstones || [];
-      if (libraryFilter) {
-          const search = libraryFilter.toLowerCase();
-          const matches = gems.filter((g: any) => 
-              g.name.toLowerCase().includes(search) || (g.sanskrit && g.sanskrit.toLowerCase().includes(search))
-          );
-          return matches.length > 0 ? matches : gems;
-      }
-      return gems;
-  }, [db.gemstones, libraryFilter]);
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -221,7 +190,7 @@ const GemstoneGuide: React.FC = () => {
                                         ref={nameInputRef}
                                         value={formData.name} 
                                         onChange={(e) => setFormData({...formData, name: e.target.value})} 
-                                        className="w-full bg-black/50 border border-gray-600 rounded p-3 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-gray-600" 
+                                        className="w-full bg-black/50 border border-gray-600 rounded p-3 text-white focus:border-emerald-500 transition-all placeholder-gray-600" 
                                         placeholder="Enter full name" 
                                     />
                                 </div>
@@ -233,7 +202,7 @@ const GemstoneGuide: React.FC = () => {
                                     <textarea 
                                         value={formData.intent} 
                                         onChange={(e) => setFormData({...formData, intent: e.target.value})} 
-                                        className="w-full bg-black/50 border border-gray-600 rounded p-3 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 h-24 resize-none transition-all placeholder-gray-600" 
+                                        className="w-full bg-black/50 border border-gray-600 rounded p-3 text-white focus:border-emerald-500 h-24 resize-none transition-all placeholder-gray-600" 
                                         placeholder="e.g. Wealth, Health, Harmony..." 
                                     />
                                 </div>
@@ -269,7 +238,6 @@ const GemstoneGuide: React.FC = () => {
                                             <p><strong className="text-emerald-400 block text-xs uppercase mb-1 font-sans tracking-wider">Why this stone?</strong> {result.primaryGem.reason}</p>
                                             <p><strong className="text-emerald-400 block text-xs uppercase mb-1 font-sans tracking-wider">Wearing Method</strong> {result.primaryGem.wearingMethod}</p>
                                         </div>
-                                        <button onClick={handleViewInLibrary} className="absolute top-4 right-14 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-xs px-3 py-1 rounded-full border border-emerald-500/30 flex items-center gap-2 transition-all transform hover:scale-105"><span>🔍</span> Inspect</button>
                                     </div>
 
                                     <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-500/40 rounded-2xl p-6 relative overflow-hidden shadow-2xl flex flex-col justify-between">
@@ -287,11 +255,17 @@ const GemstoneGuide: React.FC = () => {
                                         <div className="flex gap-3 justify-center">
                                             <button 
                                                 onClick={isSpeaking ? stopMantra : handleListenMantra}
-                                                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all border ${isSpeaking ? 'bg-red-900/40 border-red-500/50 text-red-200 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-purple-900/30 hover:bg-purple-800/50 border-purple-500/30 text-purple-200'}`}
+                                                disabled={isAudioLoading}
+                                                className={`px-6 py-2 rounded-lg text-sm flex items-center gap-2 transition-all border ${isSpeaking ? 'bg-red-900/40 border-red-500/50 text-red-200 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-purple-900/30 hover:bg-purple-800/50 border-purple-500/30 text-purple-200'}`}
                                             >
-                                                <span>{isSpeaking ? '⏹️ Stop' : '🔊 Listen'}</span>
+                                                {isAudioLoading ? (
+                                                    <><span className="w-4 h-4 border-2 border-purple-200 border-t-transparent rounded-full animate-spin"></span> Connecting...</>
+                                                ) : (
+                                                    <span>{isSpeaking ? '⏹️ Stop' : '🔊 Listen'}</span>
+                                                )}
                                             </button>
                                         </div>
+                                        {error && <p className="text-[10px] text-red-400 text-center mt-2 font-mono uppercase tracking-tighter">{error}</p>}
                                     </div>
                                 </div>
 
@@ -302,21 +276,20 @@ const GemstoneGuide: React.FC = () => {
                                             <div className="relative z-10">
                                                 <h3 className="text-2xl font-cinzel font-bold text-amber-200 mb-4">Unlock Complete Vedic Analysis</h3>
                                                 <div className="grid md:grid-cols-2 gap-4 text-left max-w-xl mx-auto mb-8 text-sm text-gray-300">
+                                                    <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Detailed Planetary Positions</div>
                                                     <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Prana Pratishtha Rituals</div>
                                                     <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Lifetime Prediction</div>
                                                     <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Metal & Day Selection</div>
+                                                    <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Diet Restrictions</div>
                                                     <div className="flex items-center gap-3"><span className="text-green-400">✓</span> Downloadable PDF</div>
                                                 </div>
-                                                <Button onClick={handleReadMore} className="px-12 py-4 text-lg bg-gradient-to-r from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 shadow-xl border-amber-400/50">{t('readMore')}</Button>
+                                                <Button onClick={() => openPayment(() => setIsPaid(true), 'Gemstone Report', servicePrice)} className="px-12 py-4 text-lg bg-gradient-to-r from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 shadow-xl border-amber-400/50">Read More (Payment Required)</Button>
                                                 {isAdmin && <button onClick={() => setIsPaid(true)} className="block mx-auto mt-4 text-xs text-amber-500 underline opacity-50 hover:opacity-100">Admin Bypass</button>}
                                             </div>
                                         </Card>
                                     ) : (
                                         <FullReport reading={result.fullReading} title="Gemstone & Mantra Report" subtitle="Vedic Remedial Measures" />
                                     )}
-                                </div>
-                                <div className="text-center pt-8 border-t border-white/5">
-                                    <button onClick={() => { setResult(null); setFormData({name:'', dob:'', intent:''}); setActiveTab('oracle'); }} className="text-gray-500 hover:text-amber-400 text-xs uppercase tracking-widest font-bold transition-colors">Start New Consultation</button>
                                 </div>
                             </div>
                         )}
@@ -326,11 +299,8 @@ const GemstoneGuide: React.FC = () => {
 
             {activeTab === 'library' && (
                 <div ref={libraryTopRef}>
-                    <div className="flex justify-between items-center mb-6">
-                        {result && <button onClick={() => setActiveTab('oracle')} className="bg-amber-900/40 hover:bg-amber-800 text-amber-200 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 border border-amber-500/30">&larr; Back</button>}
-                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in-up">
-                        {displayedGems.map((gem: any) => (
+                        {(db.gemstones || []).map((gem: any) => (
                             <div key={gem.id} onClick={() => setSelectedGem(gem)} className="group bg-gray-900 border border-gray-700 hover:border-amber-500/50 rounded-xl overflow-hidden cursor-pointer transition-all hover:-translate-y-1 shadow-md">
                                 <div className="h-40 bg-gray-800 relative">
                                     <OptimizedImage src={gem.image} alt={gem.name} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" containerClassName="w-full h-full" />
