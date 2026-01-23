@@ -1,0 +1,113 @@
+
+/* App.css - Mystical Theme Global Styles */
+
+:root {
+  /* BASE DEFAULT (Mystic Night) */
+  --color-bg-base: #0F0F23;
+  --color-bg-surface: rgba(15, 15, 35, 0.85);
+  --color-bg-hover: rgba(139, 92, 246, 0.2);
+  --color-text-base: #fffbeb;
+  --color-text-accent: #fbbf24;
+  --color-button-text: #1e1b4b; /* Dark text for gold buttons */
+  --color-border: rgba(245, 158, 11, 0.3);
+  --color-primary-glow: #8B5CF6;
+  
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+/* THEME: MYSTIC NIGHT (Default) */
+[data-theme='default'], [data-theme='theme_default'] {
+  --color-bg-base: #0F0F23;
+  --color-bg-surface: rgba(20, 20, 40, 0.9);
+  --color-bg-hover: rgba(139, 92, 246, 0.3);
+  --color-text-base: #fffbeb;
+  --color-text-accent: #fbbf24;
+  --color-button-text: #1e1b4b;
+  --color-border: rgba(245, 158, 11, 0.3);
+  --color-primary-glow: #8B5CF6;
+}
+
+/* THEME: ROYAL MAROON & GOLD */
+[data-theme='diwali'], [data-theme='theme_solar'] {
+  --color-bg-base: #3b0303; 
+  --color-bg-surface: rgba(60, 5, 5, 0.95);
+  --color-bg-hover: rgba(245, 158, 11, 0.2);
+  --color-text-base: #ffffff;
+  --color-text-accent: #F59E0B; 
+  --color-button-text: #3b0303; 
+  --color-border: rgba(245, 158, 11, 0.4);
+  --color-primary-glow: #d97706;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-base);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.5s ease, color 0.5s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.05); 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(139, 69, 19, 0.3);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 69, 19, 0.5);
+}
+
+.perspective-1000 { perspective: 1000px; }
+.transform-style-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.rotate-y-180 { transform: rotateY(180deg); }
+
+::selection {
+  background: var(--color-primary-glow);
+  color: #fff;
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+.animate-float-gentle { animation: float-gentle 4s ease-in-out infinite; }
+
+.feature-image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--color-bg-base) 0%, var(--color-bg-surface) 100%);
+  overflow: hidden;
+}
+
+.dynamic-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.group:hover .dynamic-image { transform: scale(1.08); }
+.pb-safe { padding-bottom: calc(4rem + var(--safe-bottom)); }
+
+/* Report Specific Print Styles */
+@media print {
+  .no-print { display: none !important; }
+  body { 
+    background: white !important; 
+    padding: 0 !important; 
+    margin: 0 !important; 
+  }
+  @page {
+    size: A4;
+    margin: 0;
+  }
+}
