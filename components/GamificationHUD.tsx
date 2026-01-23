@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-// Fix: Corrected import to useAuth since useUser is not exported from AuthContext
 import { useAuth } from '../context/AuthContext';
 import { getLevel, getNextLevel, SIGILS } from '../services/gamificationConfig';
 import Card from './shared/Card';
 import Modal from './shared/Modal';
+import { useNavigate } from 'react-router-dom';
 
 const GamificationHUD: React.FC = () => {
-  // Fix: Replaced useUser with useAuth which provides the necessary context
   const { user, newSigilUnlocked, clearSigilNotification } = useAuth();
   const [showModal, setShowModal] = useState(false);
   const [showSigilToast, setShowSigilToast] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
       if (newSigilUnlocked) {
@@ -29,6 +29,11 @@ const GamificationHUD: React.FC = () => {
   const currentLevel = getLevel(karma);
   const nextLevel = getNextLevel(karma);
   const progressPercent = Math.min(100, Math.max(0, ((karma - currentLevel.minKarma) / (nextLevel.minKarma - currentLevel.minKarma)) * 100));
+
+  const handleViewGallery = () => {
+    setShowModal(false);
+    navigate('/achievements');
+  };
 
   return (
     <>
@@ -106,12 +111,21 @@ const GamificationHUD: React.FC = () => {
                   </div>
               </div>
 
-              {/* Sigils Grid */}
-              <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-500/20 pb-2">
-                  Mystic Sigils ({unlockedSigils.length}/{SIGILS.length})
-              </h3>
+              {/* Sigils Grid Preview */}
+              <div className="flex justify-between items-center mb-4 border-b border-amber-500/20 pb-2">
+                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-widest">
+                    Mystic Sigils ({unlockedSigils.length}/{SIGILS.length})
+                </h3>
+                <button 
+                  onClick={handleViewGallery}
+                  className="text-[10px] text-blue-400 hover:text-white uppercase font-bold tracking-widest underline"
+                >
+                  Full Gallery
+                </button>
+              </div>
+              
               <div className="grid grid-cols-3 gap-4">
-                  {SIGILS.map(sigil => {
+                  {SIGILS.slice(0, 6).map(sigil => {
                       const isUnlocked = unlockedSigils.includes(sigil.id);
                       return (
                           <div 
@@ -120,7 +134,6 @@ const GamificationHUD: React.FC = () => {
                           >
                               <div className={`text-3xl mb-2 ${isUnlocked ? 'animate-float' : ''}`}>{sigil.icon}</div>
                               <div className="text-[10px] font-bold text-center text-amber-100 mb-1">{sigil.name}</div>
-                              <div className="text-[8px] text-center text-gray-400 leading-tight">{sigil.description}</div>
                           </div>
                       )
                   })}

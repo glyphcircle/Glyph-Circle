@@ -48,6 +48,7 @@ async function decodeAudioData(
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
+      // Normalize Int16 raw PCM to Float32 range [-1, 1]
       channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
     }
   }
@@ -59,7 +60,7 @@ export const generateMantraAudio = async (mantra: string): Promise<AudioBuffer> 
         const ai = getAi();
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text: `Say with deep spiritual resonance and calm pace: ${mantra}` }] }],
+            contents: [{ parts: [{ text: `Recite this sacred mantra slowly with deep, calm resonance: ${mantra}` }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
@@ -70,7 +71,21 @@ export const generateMantraAudio = async (mantra: string): Promise<AudioBuffer> 
             },
         });
 
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!response.candidates || response.candidates.length === 0) {
+            throw new Error("The Oracle is currently in silence.");
+        }
+
+        const parts = response.candidates[0].content.parts;
+        let base64Audio = '';
+        
+        // Find the audio part specifically by checking all parts
+        for (const part of parts) {
+            if (part.inlineData?.data) {
+                base64Audio = part.inlineData.data;
+                break;
+            }
+        }
+
         if (!base64Audio) throw new Error("No audio data returned from the Oracle.");
 
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });

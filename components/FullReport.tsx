@@ -94,10 +94,12 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
   }, [language, reading]); 
 
   // --- LOGO & BANNER RESOLUTION ---
+  // Priority: Hardcoded sacred logo from user instructions for maximum visibility
+  const SACRED_LOGO_ID = '1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
+  
   const headerLogo = useMemo(() => {
-    const asset = db.image_assets?.find((a: any) => a.id === 'header_logo');
-    return asset ? cloudManager.resolveImage(asset.path) : null;
-  }, [db.image_assets]);
+    return `https://lh3.googleusercontent.com/d/${SACRED_LOGO_ID}`;
+  }, []);
 
   const reportBackground = useMemo(() => {
       const formats = db.report_formats?.filter((f: any) => f.status === 'active') || [];
@@ -168,114 +170,116 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
     <div className="animate-fade-in-up w-full flex flex-col items-center py-6" ref={containerRef}>
         <SageChat context={displayContent} type={title} />
         
-        {/* A4 REPORT CONTAINER */}
+        {/* A4 REPORT CONTAINER with enhanced design */}
         <div 
-          className="relative transition-all duration-300 shadow-[0_20px_50px_rgba(0,0,0,0.3)] origin-top border-4 border-[#8b4513]/10 rounded"
+          className="relative transition-all duration-300 shadow-[0_30px_60px_rgba(0,0,0,0.4)] origin-top border-[12px] border-double border-[#8b4513]/15 rounded bg-[#fff8e1]"
           style={{ 
             width: '210mm', 
             height: '297mm',
             transform: `scale(${scaleFactor})`,
             marginBottom: `calc(297mm * (${scaleFactor} - 1) + 4rem)`,
-            backgroundColor: '#fff8e1'
           }}
         >
             <div 
                 ref={reportRef} 
-                className="absolute inset-0 bg-[#fff8e1] text-black overflow-hidden flex flex-col"
+                className="absolute inset-0 bg-[#fff8e1] text-black overflow-hidden flex flex-col p-12"
             >
                 {/* 1. SCALABLE WATERMARK BACKGROUND */}
-                <div className="absolute inset-0 border-[20px] border-double border-[#8b4513]/10 z-0 pointer-events-none"></div>
+                <div className="absolute inset-4 border border-[#8b4513]/10 z-0 pointer-events-none rounded"></div>
                 {reportBackground && (
                     <OptimizedImage 
                         src={reportBackground} 
                         alt="" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-[0.03] z-0 grayscale"
+                        className="absolute inset-0 w-full h-full object-cover opacity-[0.04] z-0 grayscale"
                         showSkeleton={false}
                     />
                 )}
 
-                {/* 2. STICKY SACRED HEADER */}
-                <div className="relative z-20 w-full bg-[#fff8e1]/95 backdrop-blur-sm pt-8 pb-4 border-b border-[#8b4513]/20 shadow-sm flex flex-col items-center flex-shrink-0">
+                {/* 2. ENHANCED SACRED HEADER */}
+                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-8 pb-6 border-b-2 border-[#8b4513]/20">
                     {/* OM Symbols Left/Right */}
-                    <div className="absolute top-8 left-12 opacity-15 text-6xl text-[#8b4513] font-cinzel select-none">ॐ</div>
-                    <div className="absolute top-8 right-12 opacity-15 text-6xl text-[#8b4513] font-cinzel select-none">ॐ</div>
+                    <div className="absolute top-0 left-0 opacity-10 text-7xl text-[#8b4513] font-cinzel select-none">ॐ</div>
+                    <div className="absolute top-0 right-0 opacity-10 text-7xl text-[#8b4513] font-cinzel select-none">ॐ</div>
                     
-                    {/* Centered Logo */}
-                    <div className="w-24 h-24 relative mb-4">
-                        <div className="absolute -inset-2 bg-gradient-to-tr from-amber-500/10 to-transparent rounded-full blur animate-pulse"></div>
-                        {headerLogo ? (
-                            <img 
-                                src={headerLogo} 
-                                alt="Sacred Emblem" 
-                                className="w-full h-full object-contain relative z-10 drop-shadow-md"
-                            />
-                        ) : (
-                            <div className="w-full h-full rounded-full border-2 border-[#8b4513]/20 flex items-center justify-center text-4xl">🕉️</div>
-                        )}
+                    {/* Centered Logo - Enhanced for visibility */}
+                    <div className="w-28 h-28 relative mb-4">
+                        {/* Background circle to pop the logo */}
+                        <div className="absolute inset-0 bg-[#2d0a18] rounded-full shadow-2xl scale-110 border-2 border-amber-500/30"></div>
+                        <div className="absolute -inset-2 bg-gradient-to-tr from-amber-500/20 to-transparent rounded-full blur animate-pulse"></div>
+                        <img 
+                            src={headerLogo} 
+                            alt="Sacred Emblem" 
+                            className="w-full h-full object-contain relative z-30 drop-shadow-lg rounded-full"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) parent.innerHTML = '<div class="w-full h-full rounded-full bg-[#2d0a18] flex items-center justify-center text-5xl">🕉️</div>';
+                            }}
+                        />
                     </div>
 
-                    <h2 className="text-3xl font-cinzel font-black text-[#4a0404] tracking-[0.1em] uppercase drop-shadow-sm mb-1">{title}</h2>
+                    <h2 className="text-4xl font-cinzel font-black text-[#4a0404] tracking-[0.15em] uppercase drop-shadow-sm mb-2">{title}</h2>
                     {subtitle && (
-                        <div className="flex items-center gap-4">
-                            <div className="h-px w-8 bg-[#8b4513]/30"></div>
-                            <p className="text-[#8b4513] text-[10px] font-bold uppercase tracking-[0.2em]">{subtitle}</p>
-                            <div className="h-px w-8 bg-[#8b4513]/30"></div>
+                        <div className="flex items-center gap-6">
+                            <div className="h-[1px] w-12 bg-gradient-to-r from-transparent to-[#8b4513]/40"></div>
+                            <p className="text-[#8b4513] text-xs font-bold uppercase tracking-[0.3em] italic">{subtitle}</p>
+                            <div className="h-[1px] w-12 bg-gradient-to-l from-transparent to-[#8b4513]/40"></div>
                         </div>
                     )}
                     
-                    {/* Holy Text Banner - From Screenshot */}
-                    <div className="mt-4 px-12 text-center opacity-30 text-[9px] font-cinzel italic text-[#8b4513] border-t border-[#8b4513]/10 pt-2 w-full max-w-[80%]">
+                    {/* Holy Text Banner - From Screenshot 1 style */}
+                    <div className="mt-6 px-12 text-center opacity-40 text-[10px] font-cinzel font-bold text-[#8b4513] bg-[#8b4513]/5 py-2 w-full max-w-[90%] rounded-lg">
                         ॐ धन्वन्तरये नमः ॥ ॐ सर्वे भवन्तु सुखिनः ॥ ॐ नमो भगवते वासुदेवाय ॥
                     </div>
                 </div>
 
-                {/* 3. REPORT BODY (SCROLLABLE IN UI, FULL IN PDF) */}
-                <div className="relative z-10 flex-grow overflow-y-auto px-[15%] pb-16 custom-scrollbar pt-8">
+                {/* 3. REPORT BODY */}
+                <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-6">
                     {isTranslating ? (
-                        <div className="flex flex-col items-center justify-center py-20">
-                            <div className="w-12 h-12 border-4 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-[#8b4513] font-cinzel font-bold mt-6 animate-pulse uppercase tracking-widest text-xs">Unrolling Sacred Parchment...</p>
+                        <div className="flex flex-col items-center justify-center h-full">
+                            <div className="w-14 h-14 border-4 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-[#8b4513] font-cinzel font-bold mt-6 animate-pulse uppercase tracking-widest text-sm">Decoding Ancient Script...</p>
                         </div>
                     ) : (
-                        <div className="font-lora text-[#2a1a1a] text-lg leading-relaxed space-y-2">
+                        <div className="font-lora text-[#2a1a1a] text-lg leading-relaxed space-y-4">
                             {renderFormattedText(displayContent)}
                         </div>
                     )}
 
                     {/* Footer Signature */}
-                    <div className="mt-20 pt-10 text-center opacity-40 border-t border-[#8b4513]/10">
-                        <div className="text-3xl text-[#8b4513] mb-4 font-cinzel tracking-[0.4em]">❖ ❖ ❖</div>
-                        <span className="text-[#8b4513] text-[10px] font-cinzel tracking-[0.3em] uppercase block">Encoded by Glyph Circle Sanctuary</span>
-                        <span className="text-[#8b4513]/60 text-[8px] font-mono mt-1 block">Ref: {Date.now().toString(36).toUpperCase()}</span>
+                    <div className="mt-16 pt-12 text-center opacity-40 border-t border-[#8b4513]/15">
+                        <div className="text-2xl text-[#8b4513] mb-6 font-cinzel tracking-[0.6em] opacity-60">❖ ❖ ❖</div>
+                        <span className="text-[#8b4513] text-[11px] font-cinzel font-bold tracking-[0.4em] uppercase block mb-1">Encoded by Glyph Circle Sanctuary</span>
+                        <span className="text-[#8b4513]/70 text-[9px] font-mono block">Cosmic Reference: {Date.now().toString(36).toUpperCase()}</span>
                     </div>
                 </div>
             </div>
         </div>
 
         {/* 4. EXTERNAL ACTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-lg mb-12 no-print">
+        <div className="flex flex-col sm:flex-row gap-6 justify-center w-full max-w-xl mb-12 no-print">
               <Button 
                 onClick={handleDownloadPDF} 
                 disabled={isDownloading || isTranslating} 
-                className="flex-1 h-14 text-sm bg-[#4a0404] hover:bg-[#5a0505] text-white flex items-center justify-center gap-3 shadow-xl border-none font-cinzel tracking-widest"
+                className="flex-1 h-16 text-sm bg-[#4a0404] hover:bg-[#5a0505] text-white flex items-center justify-center gap-4 shadow-2xl border-none font-cinzel tracking-[0.2em] rounded-xl transform hover:scale-105 active:scale-95 transition-all"
               >
                   {isDownloading ? (
-                      <span className="animate-pulse">SCRIBING PDF...</span>
+                      <span className="animate-pulse">SCRIBING SCROLL...</span>
                   ) : (
-                      <><span className="text-lg">📜</span> {t('downloadPDF')}</>
+                      <><span className="text-2xl">📜</span> {t('downloadPDF')}</>
                   )}
               </Button>
               <Button 
-                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Your report is ready: " + window.location.href)}`} 
-                className="flex-1 h-14 text-sm bg-gray-800 hover:bg-gray-700 text-amber-100 flex items-center justify-center gap-3 shadow-xl border-gray-600 font-cinzel tracking-widest"
+                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Your spiritual report is ready: " + window.location.href)}`} 
+                className="flex-1 h-16 text-sm bg-[#fff8e1] hover:bg-[#f9f1d5] text-[#4a0404] flex items-center justify-center gap-4 shadow-xl border-2 border-[#4a0404]/20 font-cinzel tracking-[0.2em] rounded-xl transform hover:scale-105 active:scale-95 transition-all"
               >
-                  <span className="text-lg">✉️</span> {t('emailReport')}
+                  <span className="text-2xl">✉️</span> {t('emailReport')}
               </Button>
         </div>
 
-        <Link to="/home" className="mb-24 no-print">
-            <button className="text-amber-500 font-cinzel font-bold text-xs uppercase tracking-[0.3em] hover:text-amber-400 transition-colors">
-                &larr; Return to Dashboard
+        <Link to="/home" className="mb-24 no-print group">
+            <button className="text-[#8b4513] font-cinzel font-bold text-xs uppercase tracking-[0.4em] group-hover:text-amber-600 transition-colors flex items-center gap-3">
+                <span className="text-xl">←</span> Return to Sanctuary
             </button>
         </Link>
     </div>

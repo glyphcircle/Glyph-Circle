@@ -32,6 +32,7 @@ import MuhuratPicker from './components/MuhuratPicker';
 import CosmicSync from './components/CosmicSync';
 import VoiceOracle from './components/VoiceOracle';
 import PanchangBar from './components/PanchangBar';
+import SigilGallery from './components/SigilGallery';
 
 import { useAuth } from './context/AuthContext';
 import { PushNotifications } from './components/PushNotifications';
@@ -142,6 +143,7 @@ function App() {
                 <Route path="/gemstones" element={<ProtectedRoute><ErrorBoundary><GemstoneGuide /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/referrals" element={<ProtectedRoute><ReferralProgram /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+                <Route path="/achievements" element={<ProtectedRoute><ErrorBoundary><SigilGallery /></ErrorBoundary></ProtectedRoute>} />
                 
                 <Route path="/ayurveda" element={<ProtectedRoute><ErrorBoundary><Ayurveda /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/moon-journal" element={<ProtectedRoute><ErrorBoundary><MoonJournal /></ErrorBoundary></ProtectedRoute>} />

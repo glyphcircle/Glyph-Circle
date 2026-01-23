@@ -62,9 +62,7 @@ const GENERATE_DECK = (): TarotCardData[] => {
 
 const FULL_DECK = GENERATE_DECK();
 
-// --- VEDIC MAPPING LOGIC ---
 const calculateTarotVedicData = (card: TarotCardData) => {
-    // 1. Map Suits to Elements (Tattvas)
     let elementalBalance = [];
     let vedicMetrics = [];
 
@@ -151,6 +149,7 @@ const Tarot: React.FC = () => {
   // Animation State
   const [animatingCard, setAnimatingCard] = useState<{ card: TarotCardData; startRect: DOMRect } | null>(null);
   const [isAnimationFlying, setIsAnimationFlying] = useState(false);
+  const [isAnimationFlipping, setIsAnimationFlipping] = useState(false);
   
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -159,12 +158,9 @@ const Tarot: React.FC = () => {
   const { user, awardKarma, saveReading } = useAuth();
   const { db } = useDb();
 
-  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com'];
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
+  const isAdmin = user && ['master@gylphcircle.com', 'admin@gylphcircle.com'].includes(user.email);
 
-  // Shuffle logic: runs once on mount
   const shuffledDeck = useMemo(() => {
-      // Fisher-Yates shuffle for better randomization than sort
       const deck = [...FULL_DECK];
       for (let i = deck.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -210,7 +206,6 @@ const Tarot: React.FC = () => {
 
     } catch (err: any) {
       clearInterval(timer);
-      // Capture error message to show in InlineError
       setError(`${err.message || 'The cosmic connection was interrupted. Please try again.'}`);
     } finally {
       setIsLoading(false);
@@ -223,44 +218,47 @@ const Tarot: React.FC = () => {
     const rect = e.currentTarget.getBoundingClientRect();
     setAnimatingCard({ card, startRect: rect });
     
-    // Trigger reading generation
+    // Trigger reading generation immediately in background
     generateReading(card);
     
   }, [isPaid, animatingCard, selectedCard, generateReading]);
   
   useEffect(() => {
       if (animatingCard) {
+          // Stage 1: Fly to center
           requestAnimationFrame(() => {
               setIsAnimationFlying(true);
           });
 
-          const timeout = setTimeout(() => {
+          // Stage 2: Start flipping slightly before landing
+          const flipTimer = setTimeout(() => {
+              setIsAnimationFlipping(true);
+          }, 600);
+
+          // Stage 3: Handover to static result view
+          const landingTimer = setTimeout(() => {
               setSelectedCard(animatingCard.card);
               setAnimatingCard(null);
               setIsAnimationFlying(false);
+              setIsAnimationFlipping(false);
               
-              // Scroll to results
               setTimeout(() => {
                   resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }, 100);
-          }, 800);
+          }, 1100); // Slightly longer to allow flip to finish
 
-          return () => clearTimeout(timeout);
+          return () => {
+              clearTimeout(flipTimer);
+              clearTimeout(landingTimer);
+          };
       }
   }, [animatingCard]);
 
-  // Use Dynamic Price from DB
   const tarotService = db.services?.find((s: any) => s.id === 'tarot');
   const servicePrice = tarotService?.price || 49;
   const reportImage = cloudManager.resolveImage(tarotService?.image) || "https://images.unsplash.com/photo-1505537528343-4dc9b89823f6?q=80&w=800";
 
   const handleReadMore = () => openPayment(() => setIsPaid(true), 'Tarot Reading', servicePrice);
-  const handleRetry = () => { 
-      if (selectedCard) {
-          setError('');
-          generateReading(selectedCard); 
-      }
-  };
   
   const resetReading = () => {
       setSelectedCard(null);
@@ -288,7 +286,7 @@ const Tarot: React.FC = () => {
         {/* Card Grid */}
         {!selectedCard && !animatingCard && (
             <div className="relative z-10 grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-4 justify-items-center pb-20 animate-fade-in-up">
-            {shuffledDeck.map((card, idx) => (
+            {shuffledDeck.map((card) => (
                 <TarotCard 
                     key={card.id} 
                     card={card} 
@@ -302,24 +300,27 @@ const Tarot: React.FC = () => {
         {/* Flying Animation Layer */}
         {animatingCard && (
             <div 
-                className="fixed z-[60] transition-all duration-[800ms] ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+                className="fixed z-[100] transition-all duration-[1000ms] ease-[cubic-bezier(0.34,1.56,0.64,1)] perspective-1000"
                 style={isAnimationFlying ? {
-                    top: '20%',
+                    top: '30%',
                     left: '50%',
-                    width: '12rem',
-                    height: '18rem',
-                    transform: 'translate(-50%, 0) scale(1.1)'
+                    width: '16rem',
+                    height: '24rem',
+                    transform: 'translate(-50%, -20%) rotateZ(360deg) scale(1.2)'
                 } : {
                     top: animatingCard.startRect.top,
                     left: animatingCard.startRect.left,
                     width: animatingCard.startRect.width,
                     height: animatingCard.startRect.height,
-                    transform: 'translate(0, 0) scale(1)'
+                    transform: 'translate(0, 0) rotateZ(0deg) scale(1)'
                 }}
             >
+                {/* Glow during flight */}
+                <div className={`absolute -inset-4 bg-amber-500/20 rounded-full blur-2xl transition-opacity duration-500 ${isAnimationFlying ? 'opacity-100' : 'opacity-0'}`}></div>
+                
                 <TarotCard 
                     card={animatingCard.card} 
-                    isSelected={false} 
+                    isSelected={isAnimationFlipping} 
                     onClick={() => {}} 
                 />
             </div>
@@ -333,7 +334,7 @@ const Tarot: React.FC = () => {
                     {/* The Card Display */}
                     <div className="relative group">
                         <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-amber-600 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse-glow"></div>
-                        <div className="relative w-64 aspect-[2/3]">
+                        <div className="relative w-64 aspect-[2/3] transform transition-transform duration-500 hover:scale-105">
                              <TarotCard 
                                 card={selectedCard!} 
                                 isSelected={true} 
@@ -350,9 +351,8 @@ const Tarot: React.FC = () => {
                             </div>
                         )}
                         
-                        {/* API Error Handling - 'Cosmic interference detected' */}
                         {error && !isLoading && (
-                            <InlineError message={error} onRetry={handleRetry} />
+                            <InlineError message={error} onRetry={() => generateReading(selectedCard!)} />
                         )}
                         
                         {reading && !isLoading && (
@@ -363,7 +363,7 @@ const Tarot: React.FC = () => {
                                 </div>
 
                                 {!isPaid ? (
-                                    <Card className="p-8 border-l-4 border-purple-500 bg-gray-900/80">
+                                    <Card className="p-8 border-l-4 border-purple-500 bg-gray-900/80 shadow-[0_0_30px_rgba(139,92,246,0.15)]">
                                         <div className="relative text-amber-100 leading-relaxed font-lora italic text-lg mb-8">
                                             {reading.replace(/#/g, '').replace(/\*\*/g, '').split('\n').slice(0, 3).map((line, i) => (
                                                 <p key={i} className="mb-2">{line}</p>
@@ -375,7 +375,7 @@ const Tarot: React.FC = () => {
                                             <Button onClick={handleReadMore} className="w-full sm:w-auto px-8 bg-gradient-to-r from-amber-600 to-maroon-700 border-amber-400">
                                                 {t('readMore')}
                                             </Button>
-                                            <button onClick={resetReading} className="text-sm text-gray-400 hover:text-white underline">
+                                            <button onClick={resetReading} className="text-sm text-gray-400 hover:text-white underline font-cinzel tracking-widest uppercase">
                                                 Draw Another Card
                                             </button>
                                         </div>
@@ -387,7 +387,6 @@ const Tarot: React.FC = () => {
                                     </Card>
                                 ) : (
                                     <div className="w-full">
-                                        {/* Wrap display in ErrorBoundary to catch rendering issues */}
                                         <ErrorBoundary>
                                             <FullReport 
                                                 reading={reading} 
@@ -398,7 +397,7 @@ const Tarot: React.FC = () => {
                                             />
                                         </ErrorBoundary>
                                         <div className="text-center mt-8">
-                                            <button onClick={resetReading} className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-amber-200 rounded-full border border-amber-500/30 font-bold transition-all">
+                                            <button onClick={resetReading} className="px-10 py-4 bg-gradient-to-r from-gray-800 to-black hover:from-gray-700 hover:to-gray-900 text-amber-200 rounded-full border border-amber-500/30 font-bold transition-all transform hover:scale-105 shadow-xl uppercase font-cinzel tracking-[0.2em]">
                                                 Draw Another Card
                                             </button>
                                         </div>
