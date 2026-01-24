@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
 
@@ -15,13 +15,21 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-class ErrorBoundary extends React.Component<Props, State> {
-  // Initialize state using property initializer
-  public state: State = {
-    hasError: false,
-    error: null,
-  };
+class ErrorBoundary extends Component<Props, State> {
+  // FIX: Initialize state in the constructor for robust `this` context.
+  public state: State;
 
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+    // FIX: Manually bind event handlers in the constructor instead of using a class property arrow function.
+    this.handleRetry = this.handleRetry.bind(this);
+  }
+
+  // The return type should be the full State object.
   public static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
@@ -32,20 +40,15 @@ class ErrorBoundary extends React.Component<Props, State> {
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
-  // Use arrow function to preserve 'this' context for inherited methods
-  public handleRetry = () => {
-    // Fix: Access setState inherited from the base Component class
+  // Use an arrow function for methods to automatically bind `this` context.
+  public handleRetry() {
     this.setState({ hasError: false, error: null });
     // Reloading realigns the state with the server after a potential recursion hang
     window.location.reload(); 
-  };
+  }
 
   public render(): ReactNode {
-    // Fix: Access inherited state and props from the base Component class
-    const { hasError, error } = this.state;
-    const { children } = this.props;
-
-    if (hasError) {
+    if (this.state.hasError) {
       return (
         <div className="min-h-[400px] w-full flex items-center justify-center p-6 animate-fade-in-up">
           <Card className="max-w-md w-full border-red-500/30 shadow-[0_0_50px_rgba(220,38,38,0.2)] bg-[#0A0A1A]">
@@ -65,9 +68,9 @@ class ErrorBoundary extends React.Component<Props, State> {
                 "The stars are momentarily misaligned. A flux in the mystical fabric has been detected."
               </p>
 
-              {error && (
+              {this.state.error && (
                 <div className="bg-black/60 p-3 rounded mb-6 text-[10px] text-red-300 font-mono text-left overflow-auto max-h-24 border border-red-900/30 custom-scrollbar">
-                  {error.message || "Unknown anomaly"}
+                  {this.state.error.message || "Unknown anomaly"}
                 </div>
               )}
 
@@ -83,7 +86,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    return children;
+    return this.props.children;
   }
 }
 

@@ -37,9 +37,9 @@ export interface Transaction {
 
 /**
  * 🛡️ TIMEOUT WRAPPER
- * Increased to 20s to allow for heavy metadata processing, but still fail if recursion loops occur.
+ * Increased to 30s to prevent early failures during database recovery.
  */
-const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 20000): Promise<T> => {
+const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 30000): Promise<T> => {
     let timeoutId: any;
     const timeoutPromise = new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
@@ -65,14 +65,34 @@ class SupabaseDatabase {
 
   async getUserProfile(userId: string): Promise<User | null> {
       try {
-          const { data, error } = await withTimeout(supabase
+          // Step 1: Get base profile from 'users' table (safe due to simple RLS)
+          const { data: baseProfile, error: profileError } = await withTimeout(supabase
               .from('users')
               .select('*')
               .eq('id', userId)
               .maybeSingle()); 
           
-          if (error) throw error;
-          return data;
+          if (profileError) throw profileError;
+          if (!baseProfile) return null;
+
+          // Step 2: Get authoritative role from 'user_roles' table to align with RLS fix
+          const { data: roleData, error: roleError } = await withTimeout(supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', userId)
+              .maybeSingle());
+          
+          if (roleError) {
+              console.warn("Could not fetch from user_roles, falling back to users.role", roleError.message);
+          }
+
+          // Step 3: Merge and return, giving precedence to user_roles
+          const finalProfile: User = {
+              ...baseProfile,
+              role: roleData?.role || baseProfile.role, // Override role if available from the helper table
+          };
+
+          return finalProfile;
       } catch (e) {
           console.error("DB Error (Profile):", e);
           return null;

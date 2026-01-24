@@ -3,6 +3,7 @@ import React, { createContext, useState, useCallback, useEffect, ReactNode } fro
 import { dbService } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import RecursionErrorDisplay from '../components/shared/RecursionErrorDisplay';
 
 interface DbContextType {
   db: any;
@@ -74,7 +75,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                 setIsReady(true);
                 return;
             }
-            if (tableError.code === '42P17' || msg.toLowerCase().includes('infinite recursion')) {
+            if (tableError.code === '42P17' || msg.toLowerCase().includes('infinite recursion') || msg.includes('Cosmic Timeout')) {
                 setIsRecursionError(true);
                 setErrMsg("CRITICAL: Infinite Recursion Loop detected in your Supabase 'users' table policies.");
             } else {
@@ -204,10 +205,16 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       {children}
       {errMsg && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl">
-              <div className="bg-red-950/20 border border-red-500/50 p-8 rounded-xl max-w-lg text-center">
-                  <h3 className="text-xl text-red-200 font-bold mb-4">Connection Error</h3>
-                  <p className="text-red-400 mb-6">{errMsg}</p>
-                  <button onClick={() => refresh()} className="bg-red-700 text-white px-6 py-2 rounded">Retry</button>
+              <div className="max-w-lg w-full">
+                {isRecursionError ? (
+                  <RecursionErrorDisplay />
+                ) : (
+                  <div className="bg-red-950/20 border border-red-500/50 p-8 rounded-xl text-center">
+                      <h3 className="text-xl text-red-200 font-bold mb-4">Connection Error</h3>
+                      <p className="text-red-400 mb-6">{errMsg}</p>
+                      <button onClick={() => refresh()} className="bg-red-700 text-white px-6 py-2 rounded">Retry</button>
+                  </div>
+                )}
               </div>
           </div>
       )}

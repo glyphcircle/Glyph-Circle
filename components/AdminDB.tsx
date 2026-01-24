@@ -7,6 +7,7 @@ import Modal from './shared/Modal';
 import Button from './shared/Button';
 import { cloudManager } from '../services/cloudManager';
 import AdminContextHelp from './AdminContextHelp';
+import RecursionErrorDisplay from './shared/RecursionErrorDisplay';
 
 const AdminDB: React.FC = () => {
   const { table } = useParams<{ table: string }>();
@@ -131,7 +132,7 @@ const AdminDB: React.FC = () => {
           let errorMsg = e.message;
           // DETECTION: Specifically check for recursion/timeout
           if (errorMsg.includes('Timeout') || errorMsg.includes('Database unresponsive')) {
-              errorMsg = "Cosmic Timeout detected. This is a database security loop (RLS Recursion). Please use the SQL Repair tool in the Config panel.";
+              errorMsg = "Cosmic Timeout: Database unresponsive. This indicates an RLS recursion loop in your Supabase policies or a hung trigger. Please run the SQL Repair tool in Admin Config.";
           }
           setLastError(errorMsg);
       } finally {
@@ -281,24 +282,16 @@ const AdminDB: React.FC = () => {
                 </div>
 
                 {lastError && (
-                    <div className="mt-6 p-4 bg-red-950/30 border border-red-500/50 rounded-xl">
+                  <div className="mt-6">
+                    {lastError.includes('Cosmic Timeout') ? (
+                      <RecursionErrorDisplay />
+                    ) : (
+                      <div className="p-4 bg-red-950/30 border border-red-500/50 rounded-xl">
                         <p className="text-red-400 font-bold text-xs mb-1">Update Failed</p>
-                        <p className="text-red-300/70 text-[10px] italic leading-tight mb-3">{lastError}</p>
-                        <div className="flex flex-col gap-2">
-                            <button 
-                                onClick={() => { setIsSaving(false); setLastError(null); }}
-                                className="text-xs bg-red-900/50 text-red-200 px-3 py-2 rounded-lg font-bold border border-red-700"
-                            >
-                                Reset UI & Try Again
-                            </button>
-                            <button 
-                                onClick={() => navigate('/admin/config')}
-                                className="text-xs bg-amber-900/50 text-amber-200 px-3 py-2 rounded-lg font-bold border border-amber-700"
-                            >
-                                🛠️ Open SQL Repair Tools
-                            </button>
-                        </div>
-                    </div>
+                        <p className="text-red-300/70 text-[10px] italic leading-tight">{lastError}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <div className="mt-6 flex gap-3">

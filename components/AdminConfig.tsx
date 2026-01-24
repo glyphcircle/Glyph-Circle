@@ -45,90 +45,89 @@ const TABLE_GROUPS = [
     }
 ];
 
-const UI_THEMES_SQL = `-- 🎨 IDEMPOTENT UI THEMES SETUP
-CREATE TABLE IF NOT EXISTS public.ui_themes (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    css_class TEXT,
-    accent_color TEXT,
-    font_family TEXT DEFAULT 'cinzel',
-    background_url TEXT,
-    status TEXT DEFAULT 'inactive',
-    created_at TIMESTAMPTZ DEFAULT now()
+const PERMANENT_RLS_FIX_SQL = `-- 🚀 PERMANENT RLS FIX: Helper Table Method
+-- This script creates a separate table for roles to permanently break the recursion loop.
+-- Run this entire script in your Supabase SQL Editor to resolve the timeout issue.
+
+BEGIN;
+
+-- 1. Create a dedicated table for user roles.
+-- This table will have simpler RLS and won't be part of the recursion.
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'user'
 );
 
-ALTER TABLE public.ui_themes ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Public Read Themes" ON public.ui_themes;
-CREATE POLICY "Public Read Themes" ON public.ui_themes FOR SELECT USING (true);
-DROP POLICY IF EXISTS "Admin Write Themes" ON public.ui_themes;
-CREATE POLICY "Admin Write Themes" ON public.ui_themes FOR ALL TO authenticated USING (is_admin());
+-- 2. One-time data migration.
+-- Copy existing roles from the 'users' table to the new 'user_roles' table.
+INSERT INTO public.user_roles (user_id, role)
+SELECT id, role FROM public.users
+ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
-INSERT INTO public.ui_themes (id, name, css_class, accent_color, font_family, status) VALUES
-('theme_default', 'Mystic Night', 'bg-[#0F0F23]', 'text-amber-400', 'lora', 'active'),
-('theme_solar', 'Solar Flare', 'bg-gradient-to-br from-[#2a0a00] to-[#450a0a]', 'text-orange-400', 'cinzel', 'inactive')
-ON CONFLICT (id) DO NOTHING;`;
+-- 3. Redefine the is_admin() function to read from the NEW table.
+-- This is the crucial step that breaks the infinite loop.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER -- Use SECURITY DEFINER for robustness
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  );
+$$;
 
-const REPAIR_RLS_SQL = `-- 🛠️ ULTIMATE RECURSION-KILLER REPAIR
--- This script specifically targets the "Infinite Recursion" error in users table.
+-- 4. Harden security by preventing direct calls from non-admins.
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO service_role; -- Ensure Supabase internal functions can use it
 
--- 1. DROP ALL EXISTING POLICIES TO BREAK ACTIVE LOOPS
-DO $$ 
-DECLARE 
-  pol RECORD;
-BEGIN 
-  FOR pol IN (SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public') LOOP
-    EXECUTE 'DROP POLICY IF EXISTS ' || quote_ident(pol.policyname) || ' ON public.' || quote_ident(pol.tablename);
-  END LOOP;
-END $$;
+-- 5. Apply simple RLS policies to the new user_roles table.
+-- is_admin() is now safe to use here because it doesn't read from 'users'.
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 
--- 2. CREATE A HARDENED, SECURITY-DEFINER ADMIN CHECK
--- Explicit search_path is CRITICAL to prevent RLS from triggering inside the function.
-CREATE OR REPLACE FUNCTION public.is_admin() 
-RETURNS boolean AS $$
-DECLARE
-  is_adm boolean;
-BEGIN
-  -- We query the table using the full schema path to ensure clarity
-  -- and use SECURITY DEFINER to bypass RLS on public.users.
-  SELECT (role = 'admin') INTO is_adm 
-  FROM public.users 
-  WHERE id = auth.uid();
-  
-  RETURN COALESCE(is_adm, false);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog, pg_temp;
+DROP POLICY IF EXISTS "Admins can manage all roles" ON public.user_roles;
+CREATE POLICY "Admins can manage all roles" ON public.user_roles FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
--- 3. APPLY CLEAN, NON-RECURSIVE POLICIES: users table
--- We separate SELECT from ALL to provide a clear exit path for the recursive check.
+DROP POLICY IF EXISTS "Users can read their own role" ON public.user_roles;
+CREATE POLICY "Users can read their own role" ON public.user_roles FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 6. Re-apply the separated policies on the main 'users' table for consistency.
+-- The read policy remains simple, breaking any potential edge-case loops.
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "user_view_self" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "admin_all_users" ON public.users FOR ALL TO authenticated USING (public.is_admin());
 
--- 4. APPLY CLEAN POLICIES: config table
-ALTER TABLE public.config ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "config_view_all" ON public.config FOR SELECT USING (true);
-CREATE POLICY "config_admin_manage" ON public.config FOR ALL TO authenticated USING (public.is_admin());
+-- SAFE READ POLICY (No is_admin() call)
+DROP POLICY IF EXISTS "users_read_authenticated" ON public.users;
+CREATE POLICY "users_read_authenticated" ON public.users FOR SELECT TO authenticated
+  USING (auth.uid() = id);
 
--- 5. RE-APPLY TO ALL CORE APP TABLES
-DO $$ 
-DECLARE 
-  tname TEXT;
-  tbls TEXT[] := ARRAY['services', 'ui_themes', 'payment_providers', 'payment_methods', 'image_assets', 'store_items', 'featured_content', 'report_formats', 'transactions'];
-BEGIN 
-  FOREACH tname IN ARRAY tbls LOOP
-    EXECUTE 'ALTER TABLE public.' || tname || ' ENABLE ROW LEVEL SECURITY';
-    EXECUTE 'CREATE POLICY "public_select_' || tname || '" ON public.' || tname || ' FOR SELECT USING (true)';
-    EXECUTE 'CREATE POLICY "admin_manage_' || tname || '" ON public.' || tname || ' FOR ALL TO authenticated USING (public.is_admin())';
-  END LOOP;
-END $$;
+-- WRITE POLICIES (Now safely use the new is_admin())
+DROP POLICY IF EXISTS "users_write_policies" ON public.users;
+CREATE POLICY "users_write_policies" ON public.users FOR ALL TO authenticated
+  USING (auth.uid() = id OR public.is_admin())
+  WITH CHECK (auth.uid() = id OR public.is_admin());
 
-NOTIFY pgrst, 'reload config';`;
+-- 7. Clean up old, possibly conflicting/redundant policies.
+DROP POLICY IF EXISTS "users_insert_admin" ON public.users;
+DROP POLICY IF EXISTS "users_update_admin" ON public.users;
+DROP POLICY IF EXISTS "users_delete_admin" ON public.users;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.users;
+
+COMMIT;
+
+-- Notify PostgREST to reload its schema cache.
+NOTIFY pgrst, 'reload schema';
+`;
 
 const AdminConfig: React.FC = () => {
   const { db, refresh, activateTheme } = useDb();
-  const [showSeedModal, setShowSeedModal] = useState(false);
+  const [showSqlModal, setShowSqlModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeScript, setActiveScript] = useState<'themes' | 'repair'>('repair'); 
   
   const themes = db.ui_themes || [];
 
@@ -155,7 +154,7 @@ const AdminConfig: React.FC = () => {
                     <button onClick={handleRefresh} className="group relative px-4 py-2 rounded-lg bg-black/40 border border-amber-500/30 hover:border-amber-400 text-amber-200 text-xs font-bold uppercase tracking-wider transition-all overflow-hidden">
                         <span className={`relative z-10 flex items-center gap-2 ${isRefreshing ? 'animate-pulse' : ''}`}><span className={isRefreshing ? "animate-spin" : ""}>↻</span> Refresh</span>
                     </button>
-                    <button onClick={() => setShowSeedModal(true)} className="px-4 py-2 rounded-lg bg-red-900/40 border border-red-500/50 hover:bg-red-900/60 text-red-200 text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_10px_rgba(239,68,68,0.2)]">SQL Tools</button>
+                    <button onClick={() => setShowSqlModal(true)} className="px-4 py-2 rounded-lg bg-red-900/40 border border-red-500/50 hover:bg-red-900/60 text-red-200 text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_10px_rgba(239,68,68,0.2)]">SQL Repair Kit</button>
                     <Link to="/home" className="px-5 py-2 rounded-lg bg-gradient-to-r from-maroon-800 to-red-900 hover:from-maroon-700 hover:to-red-800 text-white text-xs font-bold uppercase tracking-wider border border-red-500/30 shadow-lg transition-transform hover:scale-105">Exit</Link>
                 </div>
             </div>
@@ -174,7 +173,7 @@ const AdminConfig: React.FC = () => {
                         {themes.length === 0 && (
                             <div className="col-span-full text-center p-8 text-gray-500 bg-black/20 rounded border border-dashed border-gray-700">
                                 <p>No themes found.</p>
-                                <button onClick={() => setShowSeedModal(true)} className="text-amber-400 underline text-xs mt-2">Run SQL Setup</button>
+                                <button onClick={() => setShowSqlModal(true)} className="text-amber-400 underline text-xs mt-2">Run SQL Setup</button>
                             </div>
                         )}
                         {themes.map((theme: any) => {
@@ -184,7 +183,7 @@ const AdminConfig: React.FC = () => {
                                     <div className={`absolute inset-0 opacity-50 transition-opacity group-hover:opacity-70 ${theme.css_class.startsWith('bg') ? theme.css_class : ''}`}></div>
                                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
                                     <div className="relative z-10 mt-auto p-3">
-                                        <h4 className="font-bold text-xs text-white leading-tight mb-1 font-cinzel">{theme.name}</h4>
+                                        <h4 className="font-bold text-xs text-white leading-tight font-cinzel">{theme.name}</h4>
                                         <p className="text-[9px] text-gray-300 uppercase tracking-wider">{isActive ? 'Active' : 'Apply'}</p>
                                     </div>
                                 </div>
@@ -224,24 +223,21 @@ const AdminConfig: React.FC = () => {
             </div>
         </div>
 
-        <Modal isVisible={showSeedModal} onClose={() => setShowSeedModal(false)}>
+        <Modal isVisible={showSqlModal} onClose={() => setShowSqlModal(false)}>
             <div className="bg-[#0F0F23] border border-red-500/50 rounded-xl p-0 w-full max-w-3xl overflow-hidden shadow-2xl">
                 <div className="p-4 bg-red-950/50 border-b border-red-500/30 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-red-200 flex items-center gap-2"><span>🛠️</span> Ethereal Repair Tools</h3>
-                    <button onClick={() => setShowSeedModal(false)} className="text-red-300 hover:text-white">&times;</button>
+                    <h3 className="text-lg font-bold text-red-200 flex items-center gap-2"><span>🚀</span> Permanent RLS Fix</h3>
+                    <button onClick={() => setShowSqlModal(false)} className="text-red-300 hover:text-white">&times;</button>
                 </div>
                 <div className="p-6">
-                    <div className="flex gap-2 mb-4 bg-black/30 p-1 rounded-lg inline-flex">
-                        <button onClick={() => setActiveScript('repair')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'repair' ? 'bg-red-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🛠️ 1. Secure & Fix RLS</button>
-                        <button onClick={() => setActiveScript('themes')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'themes' ? 'bg-pink-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🎨 2. Theme Schema</button>
-                    </div>
+                    <p className="text-xs text-amber-200/80 mb-4">This script creates a helper table for roles to permanently break the database recursion loop. <strong className="text-amber-100">Run this entire script in your Supabase SQL Editor.</strong></p>
                     <div className="relative group">
                         <pre className="bg-[#050510] p-4 rounded-lg border border-gray-800 text-[10px] text-green-400 font-mono overflow-auto max-h-64 custom-scrollbar shadow-inner">
-                            {activeScript === 'repair' ? REPAIR_RLS_SQL : UI_THEMES_SQL}
+                            {PERMANENT_RLS_FIX_SQL}
                         </pre>
-                        <button onClick={() => { navigator.clipboard.writeText(activeScript === 'repair' ? REPAIR_RLS_SQL : UI_THEMES_SQL); alert("SQL Copied! This scriptspecifically targets the 'Infinite Recursion' loop that causes database timeouts."); }} className="absolute top-2 right-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">Copy SQL</button>
+                        <button onClick={() => { navigator.clipboard.writeText(PERMANENT_RLS_FIX_SQL); alert("SQL Copied! Run this in your Supabase SQL editor to permanently fix the timeout issue."); }} className="absolute top-2 right-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">Copy SQL</button>
                     </div>
-                    <p className="mt-4 text-xs text-gray-500 text-center">{activeScript === 'repair' ? "This script wipes ALL old policies and creates clean, non-recursive ones." : "Initializes theme presets."}</p>
+                    <p className="mt-4 text-xs text-gray-500 text-center">This is the recommended and definitive solution to the "Cosmic Timeout" error.</p>
                 </div>
             </div>
         </Modal>
