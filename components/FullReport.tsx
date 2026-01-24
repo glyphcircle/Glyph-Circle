@@ -159,7 +159,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         <SageChat context={displayContent} type={title} />
         
         <div 
-          className="relative transition-all duration-300 shadow-[0_30px_60px_rgba(0,0,0,0.4)] origin-top border-[16px] border-double border-[#d4af37]/40 rounded-lg bg-[#fff8e1]"
+          className="relative transition-all duration-300 shadow-[0_30px_60px_rgba(0,0,0,0.4)] origin-top border-[16px] border-double border-[#d4af37]/60 rounded-lg bg-[#fff8e1] sacred-boundary"
           style={{ 
             width: '210mm', 
             height: '297mm',
@@ -169,9 +169,9 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         >
             <div 
                 ref={reportRef} 
-                className="absolute inset-0 bg-[#fff8e1] text-black overflow-hidden flex flex-col p-14"
+                className="absolute inset-0 bg-[#fff8e1] text-black overflow-hidden flex flex-col p-14 report-canvas"
             >
-                <div className="absolute inset-4 border border-[#8b4513]/10 z-0 pointer-events-none rounded"></div>
+                <div className="absolute inset-4 border-2 border-[#8b4513]/10 z-0 pointer-events-none rounded"></div>
                 {reportBackground && (
                     <OptimizedImage 
                         src={reportBackground} 
@@ -181,24 +181,26 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                     />
                 )}
 
-                {/* 1. SACRED HEADER */}
+                {/* 1. SACRED HEADER - ENHANCED */}
                 <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-8 pb-6 border-b-2 border-[#d4af37]/30">
-                    <div className="absolute -top-4 left-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none">ॐ</div>
-                    <div className="absolute -top-4 right-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none">ॐ</div>
+                    {/* Floating Ornaments */}
+                    <div className="absolute top-0 left-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none -translate-x-1/2 -translate-y-1/2">ॐ</div>
+                    <div className="absolute top-0 right-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none translate-x-1/2 -translate-y-1/2">ॐ</div>
                     
-                    <div className="w-24 h-24 relative mb-4">
-                        <div className="absolute inset-0 bg-[#1a0b12] rounded-full shadow-2xl scale-110 border-2 border-[#d4af37]/50"></div>
+                    <div className="w-28 h-28 relative mb-6">
+                        <div className="absolute inset-0 bg-[#1a0b12] rounded-full shadow-[0_0_30px_rgba(212,175,55,0.4)] scale-110 border-4 border-[#d4af37]"></div>
+                        <div className="absolute inset-[-8px] border border-[#d4af37]/20 rounded-full animate-pulse"></div>
                         <img 
                             src={headerLogo} 
                             alt="Sacred Emblem" 
-                            className="w-full h-full object-contain relative z-30 drop-shadow-xl rounded-full p-2"
+                            className="w-full h-full object-contain relative z-30 drop-shadow-[0_2px_10px_rgba(255,255,255,0.2)] rounded-full p-3"
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         />
                     </div>
 
-                    <h2 className="text-3xl font-cinzel font-black text-[#4a0404] tracking-[0.2em] uppercase drop-shadow-sm mb-2">{title}</h2>
+                    <h2 className="text-4xl font-cinzel font-black gold-gradient-text tracking-[0.2em] uppercase mb-2 text-center">{title}</h2>
                     {subtitle && (
-                        <p className="text-[#8b4513] text-xs font-bold uppercase tracking-[0.4em] italic opacity-80">{subtitle}</p>
+                        <p className="text-[#8b4513] text-[10px] font-black uppercase tracking-[0.5em] italic opacity-70 border-t border-[#8b4513]/20 pt-2">{subtitle}</p>
                     )}
                 </div>
 
@@ -221,7 +223,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                                     
                                     {/* Energy Signature (Vedic Metrics) */}
                                     {chartData.vedicMetrics && (
-                                        <div className="bg-[#8b4513]/5 p-6 rounded-lg border border-[#8b4513]/10">
+                                        <div className="bg-[#8b4513]/5 p-6 rounded-lg border border-[#8b4513]/10 shadow-inner">
                                             <h4 className="text-xs font-cinzel font-bold text-[#5c2a0d] mb-4 uppercase tracking-[0.2em]">Energy Alignment</h4>
                                             <div className="space-y-4">
                                                 {chartData.vedicMetrics.map((m: any, i: number) => (
@@ -241,7 +243,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
 
                                     {/* Cosmic Frequencies (Lucky Numbers) */}
                                     {chartData.luckyNumbers && (
-                                        <div className="bg-[#d4af37]/10 p-6 rounded-lg border border-[#d4af37]/30 text-center">
+                                        <div className="bg-[#d4af37]/10 p-6 rounded-lg border border-[#d4af37]/30 text-center shadow-inner">
                                             <h4 className="text-xs font-cinzel font-bold text-[#4a0404] mb-4 uppercase tracking-[0.2em]">Cosmic Frequencies</h4>
                                             <div className="flex flex-wrap justify-center gap-4">
                                                 {chartData.luckyNumbers.map((num: number, i: number) => (
@@ -277,6 +279,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                         </div>
                     )}
 
+                    {/* FOOTER */}
                     <div className="mt-12 pt-8 text-center opacity-40 border-t border-[#d4af37]/30">
                         <div className="text-2xl text-[#d4af37] mb-4 font-cinzel tracking-[0.6em] opacity-60">❖ ❖ ❖</div>
                         <span className="text-[#8b4513] text-[10px] font-cinzel font-bold tracking-[0.3em] uppercase block mb-1">Encoded by Glyph Circle Sanctuary</span>
@@ -304,7 +307,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         </div>
 
         <Link to="/home" className="mb-24 no-print group">
-            <button className="text-[#8b4513] font-cinzel font-bold text-xs uppercase tracking-[0.4em] group-hover:text-amber-600 transition-colors flex items-center gap-3">
+            <button className="text-skin-accent font-cinzel font-bold text-xs uppercase tracking-[0.4em] hover:text-white transition-colors flex items-center gap-3">
                 <span className="text-xl">←</span> Return to Sanctuary
             </button>
         </Link>
