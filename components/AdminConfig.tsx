@@ -73,23 +73,48 @@ INSERT INTO public.ui_themes (id, name, css_class, accent_color, font_family, st
 ('theme_cyber', 'Cyber Zen', 'bg-black', 'text-neon-magenta', 'mono', 'inactive')
 ON CONFLICT (id) DO NOTHING;`;
 
-const PERMISSIONS_SQL = `-- 🔓 FIX SCHEMA & REFRESH CACHE
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'USD';
-ALTER TABLE public.report_formats ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Public Full Access" ON public.report_formats;
-CREATE POLICY "Public Full Access" ON public.report_formats FOR ALL USING (true) WITH CHECK (true);
-ALTER TABLE public.ui_themes ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Themes Full Access" ON public.ui_themes;
-CREATE POLICY "Themes Full Access" ON public.ui_themes FOR ALL USING (true) WITH CHECK (true);
+const REPAIR_RLS_SQL = `-- 🛠️ EMERGENCY RLS REPAIR (Fixes 15s Timeouts)
+-- Run this in Supabase SQL Editor to break infinite recursion loops.
+
+-- 1. Create robust admin check function
+CREATE OR REPLACE FUNCTION is_admin() 
+RETURNS boolean AS $$
+BEGIN
+  RETURN (
+    SELECT role = 'admin' 
+    FROM public.users 
+    WHERE id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 2. Fix 'users' table (Most common source of timeouts)
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can read own data" ON public.users;
+DROP POLICY IF EXISTS "Admins can manage users" ON public.users;
+
+CREATE POLICY "Users can read own data" ON public.users 
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Admins can manage users" ON public.users 
+    FOR ALL TO authenticated USING (is_admin());
+
+-- 3. Fix 'config' table
+ALTER TABLE public.config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Config" ON public.config;
+DROP POLICY IF EXISTS "Admin All Config" ON public.config;
+
+CREATE POLICY "Public Read Config" ON public.config FOR SELECT USING (true);
+CREATE POLICY "Admin All Config" ON public.config FOR ALL TO authenticated USING (is_admin());
+
 NOTIFY pgrst, 'reload config';`;
 
 const AdminConfig: React.FC = () => {
   const { db, refresh, activateTheme } = useDb();
   const [showSeedModal, setShowSeedModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeScript, setActiveScript] = useState<'themes' | 'permissions'>('themes'); 
+  const [activeScript, setActiveScript] = useState<'themes' | 'repair'>('themes'); 
   
-  // Theme Data
   const themes = db.ui_themes || [];
 
   const handleRefresh = async () => {
@@ -124,14 +149,13 @@ const AdminConfig: React.FC = () => {
                         <span className={`relative z-10 flex items-center gap-2 ${isRefreshing ? 'animate-pulse' : ''}`}>
                             <span className={isRefreshing ? "animate-spin" : ""}>↻</span> Refresh
                         </span>
-                        <div className="absolute inset-0 bg-amber-500/10 transform -translate-x-full group-hover:translate-x-0 transition-transform duration-300"></div>
                     </button>
 
                     <button 
                         onClick={() => setShowSeedModal(true)} 
-                        className="px-4 py-2 rounded-lg bg-indigo-900/40 border border-indigo-500/50 hover:bg-indigo-900/60 text-indigo-200 text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_10px_rgba(99,102,241,0.2)]"
+                        className="px-4 py-2 rounded-lg bg-red-900/40 border border-red-500/50 hover:bg-red-900/60 text-red-200 text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_10px_rgba(239,68,68,0.2)]"
                     >
-                        Tools
+                        SQL Tools
                     </button>
 
                     <Link 
@@ -153,9 +177,6 @@ const AdminConfig: React.FC = () => {
                         <span className="text-2xl filter drop-shadow-md">🎨</span>
                         <h2 className="text-xl font-cinzel font-bold text-amber-100">Visual Manifestation</h2>
                     </div>
-                    <Link to="/admin/db/ui_themes" className="text-xs text-amber-400 hover:text-amber-200 underline font-mono">
-                        Edit Theme Data
-                    </Link>
                 </div>
 
                 <div className="bg-black/30 border border-amber-500/20 rounded-2xl p-6 backdrop-blur-sm">
@@ -169,11 +190,6 @@ const AdminConfig: React.FC = () => {
                         
                         {themes.map((theme: any) => {
                             const isActive = theme.status === 'active';
-                            // Extract color for preview if it's a tailwind class or hex
-                            const previewColor = theme.css_class.includes('bg-[') 
-                                ? theme.css_class.match(/bg-\[(.*?)\]/)?.[1] 
-                                : null;
-
                             return (
                                 <div 
                                     key={theme.id}
@@ -186,15 +202,8 @@ const AdminConfig: React.FC = () => {
                                         }
                                     `}
                                 >
-                                    {/* Theme Background Preview */}
-                                    <div className={`absolute inset-0 opacity-50 transition-opacity group-hover:opacity-70 ${theme.css_class.startsWith('bg') ? theme.css_class : ''}`} style={previewColor ? {backgroundColor: previewColor} : {}}></div>
+                                    <div className={`absolute inset-0 opacity-50 transition-opacity group-hover:opacity-70 ${theme.css_class.startsWith('bg') ? theme.css_class : ''}`}></div>
                                     <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
-
-                                    {/* Active Indicator */}
-                                    <div className="absolute top-2 right-2">
-                                        <div className={`w-3 h-3 rounded-full border shadow-sm ${isActive ? 'bg-green-500 border-green-300 animate-pulse' : 'bg-black/50 border-white/30'}`}></div>
-                                    </div>
-
                                     <div className="relative z-10 mt-auto p-3">
                                         <h4 className="font-bold text-xs text-white leading-tight mb-1 font-cinzel">{theme.name}</h4>
                                         <p className="text-[9px] text-gray-300 uppercase tracking-wider">{isActive ? 'Active' : 'Apply'}</p>
@@ -211,7 +220,6 @@ const AdminConfig: React.FC = () => {
                 {TABLE_GROUPS.map((group, idx) => (
                     <section key={group.title} className="animate-fade-in-up" style={{ animationDelay: `${idx * 100}ms` }}>
                         <div className={`rounded-2xl border ${group.border} bg-gradient-to-br ${group.gradient} backdrop-blur-md overflow-hidden shadow-xl`}>
-                            {/* Group Header */}
                             <div className={`p-5 border-b ${group.border} flex items-center justify-between bg-black/20`}>
                                 <div className="flex items-center gap-3">
                                     <span className="text-2xl">{group.icon}</span>
@@ -221,8 +229,6 @@ const AdminConfig: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Tables Grid */}
                             <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 {group.tables.map(tableName => {
                                     const count = db[tableName]?.length || 0;
@@ -232,17 +238,10 @@ const AdminConfig: React.FC = () => {
                                             to={`/admin/db/${tableName}`} 
                                             className="group relative flex flex-col justify-between p-3 bg-black/40 border border-white/5 hover:border-amber-500/40 rounded-lg transition-all hover:-translate-y-1 hover:shadow-lg"
                                         >
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="text-xs font-bold text-gray-300 group-hover:text-amber-100 capitalize truncate w-full" title={tableName.replace(/_/g, ' ')}>
-                                                    {tableName.replace(/_/g, ' ')}
-                                                </h4>
-                                            </div>
-                                            <div className="flex justify-between items-end">
-                                                <span className="text-[10px] text-gray-500 group-hover:text-amber-500/70 uppercase">Table</span>
-                                                <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-white/5 group-hover:bg-amber-500/20 group-hover:text-amber-300 transition-colors`}>
-                                                    {count}
-                                                </span>
-                                            </div>
+                                            <h4 className="text-xs font-bold text-gray-300 group-hover:text-amber-100 capitalize truncate w-full">{tableName.replace(/_/g, ' ')}</h4>
+                                            <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-white/5 group-hover:bg-amber-500/20 group-hover:text-amber-300 transition-colors`}>
+                                                {count}
+                                            </span>
                                         </Link>
                                     );
                                 })}
@@ -255,27 +254,27 @@ const AdminConfig: React.FC = () => {
 
         {/* SQL Tools Modal */}
         <Modal isVisible={showSeedModal} onClose={() => setShowSeedModal(false)}>
-            <div className="bg-[#0F0F23] border border-indigo-500/50 rounded-xl p-0 w-full max-w-3xl overflow-hidden shadow-2xl">
-                <div className="p-4 bg-indigo-950/50 border-b border-indigo-500/30 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-indigo-200 flex items-center gap-2">
-                        <span>🛠️</span> Database Engineers
+            <div className="bg-[#0F0F23] border border-red-500/50 rounded-xl p-0 w-full max-w-3xl overflow-hidden shadow-2xl">
+                <div className="p-4 bg-red-950/50 border-b border-red-500/30 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-red-200 flex items-center gap-2">
+                        <span>🛠️</span> Ethereal Repair Tools
                     </h3>
-                    <button onClick={() => setShowSeedModal(false)} className="text-indigo-300 hover:text-white">&times;</button>
+                    <button onClick={() => setShowSeedModal(false)} className="text-red-300 hover:text-white">&times;</button>
                 </div>
                 <div className="p-6">
                     <div className="flex gap-2 mb-4 bg-black/30 p-1 rounded-lg inline-flex">
-                        <button onClick={() => setActiveScript('themes')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'themes' ? 'bg-pink-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🎨 1. Theme Schema</button>
-                        <button onClick={() => setActiveScript('permissions')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'permissions' ? 'bg-green-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🔓 2. Fix Permissions</button>
+                        <button onClick={() => setActiveScript('repair')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'repair' ? 'bg-red-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🛠️ 1. Fix Timeouts (RLS)</button>
+                        <button onClick={() => setActiveScript('themes')} className={`px-4 py-2 rounded-md text-xs font-bold transition-all ${activeScript === 'themes' ? 'bg-pink-700 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>🎨 2. Theme Schema</button>
                     </div>
 
                     <div className="relative group">
                         <pre className="bg-[#050510] p-4 rounded-lg border border-gray-800 text-[10px] text-green-400 font-mono overflow-auto max-h-64 custom-scrollbar shadow-inner">
-                            {activeScript === 'themes' ? UI_THEMES_SQL : PERMISSIONS_SQL}
+                            {activeScript === 'repair' ? REPAIR_RLS_SQL : UI_THEMES_SQL}
                         </pre>
                         <button 
                             onClick={() => {
-                                navigator.clipboard.writeText(activeScript === 'themes' ? UI_THEMES_SQL : PERMISSIONS_SQL);
-                                alert("SQL Copied! Run this in Supabase SQL Editor.");
+                                navigator.clipboard.writeText(activeScript === 'repair' ? REPAIR_RLS_SQL : UI_THEMES_SQL);
+                                alert("SQL Copied! Run this in Supabase SQL Editor to fix timeouts.");
                             }}
                             className="absolute top-2 right-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                         >
@@ -284,7 +283,9 @@ const AdminConfig: React.FC = () => {
                     </div>
                     
                     <p className="mt-4 text-xs text-gray-500 text-center">
-                        Copy the SQL above and run it in the Supabase Dashboard SQL Editor to apply structure updates.
+                        {activeScript === 'repair' 
+                            ? "Paste this in your Supabase SQL Editor to fix the 15s hanging issue." 
+                            : "Ensures the visual theme system is properly initialized."}
                     </p>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useDb } from '../hooks/useDb';
 import Card from './shared/Card';
 import Modal from './shared/Modal';
@@ -11,6 +11,7 @@ import AdminContextHelp from './AdminContextHelp';
 const AdminDB: React.FC = () => {
   const { table } = useParams<{ table: string }>();
   const [searchParams] = useSearchParams(); 
+  const navigate = useNavigate();
   const { db, toggleStatus, activateTheme, createEntry, updateEntry, refresh } = useDb();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -51,7 +52,7 @@ const AdminDB: React.FC = () => {
     ? Array.from(new Set(data.flatMap((record: any) => Object.keys(record))))
     : ['id', 'status', 'name', 'image', 'description']; 
 
-  const systemFields = ['created_at'];
+  const systemFields = ['created_at', 'updated_at'];
 
   const handleFormChange = (key: string, value: string) => {
     setFormData(prev => ({ ...prev, [key]: value }));
@@ -116,6 +117,7 @@ const AdminDB: React.FC = () => {
       
       setIsSaving(true);
       setLastError(null);
+      
       try {
           const payload = getProcessedData(formData);
           await updateEntry(tableName, editingId, payload);
@@ -125,10 +127,12 @@ const AdminDB: React.FC = () => {
           setFormData({});
           await refresh();
       } catch (e: any) {
-          setLastError(e.message);
           console.error("UI: Update Error:", e);
-          // Safety fallback: if error is very sticky, reset saving state after a delay
-          setTimeout(() => setIsSaving(false), 2000);
+          let errorMsg = e.message;
+          if (errorMsg.includes('Timeout')) {
+              errorMsg += " Tip: Check for RLS infinite recursion on this table in Supabase.";
+          }
+          setLastError(errorMsg);
       } finally {
           setIsSaving(false);
       }
@@ -277,14 +281,22 @@ const AdminDB: React.FC = () => {
 
                 {lastError && (
                     <div className="mt-6 p-4 bg-red-950/30 border border-red-500/50 rounded-xl">
-                        <p className="text-red-400 font-bold text-xs mb-1">Failed to Reach Cloud</p>
+                        <p className="text-red-400 font-bold text-xs mb-1">Update Failed</p>
                         <p className="text-red-300/70 text-[10px] italic leading-tight mb-3">{lastError}</p>
-                        <button 
-                            onClick={() => { setIsSaving(false); setLastError(null); }}
-                            className="text-xs bg-red-900/50 text-red-200 px-3 py-1 rounded-full font-bold border border-red-700"
-                        >
-                            Reset UI & Try Again
-                        </button>
+                        <div className="flex flex-col gap-2">
+                            <button 
+                                onClick={() => { setIsSaving(false); setLastError(null); }}
+                                className="text-xs bg-red-900/50 text-red-200 px-3 py-2 rounded-lg font-bold border border-red-700"
+                            >
+                                Reset UI & Try Again
+                            </button>
+                            <button 
+                                onClick={() => navigate('/admin/config')}
+                                className="text-xs bg-amber-900/50 text-amber-200 px-3 py-2 rounded-lg font-bold border border-amber-700"
+                            >
+                                🛠️ Open SQL Repair Tools
+                            </button>
+                        </div>
                     </div>
                 )}
 

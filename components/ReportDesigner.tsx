@@ -61,88 +61,113 @@ const ReportDesigner: React.FC = () => {
                 
                 {/* 1. ADVANCED BOUNDARY */}
                 <div className={`absolute inset-0 z-10 pointer-events-none transition-all duration-500 ${
-                  selectedFrame === 'imperial' ? 'border-[32px] border-double border-[#d4af37]/40 shadow-[inset_0_0_60px_rgba(139,92,5,0.1)]' :
-                  selectedFrame === 'sovereign' ? 'border-[16px] border-[#d4af37] ring-[8px] ring-inset ring-[#d4af37]/20' :
-                  'border-8 border-[#d4af37]/20'
+                  selectedFrame === 'imperial' ? 'border-[32px] border-double border-[#d4af37]/60 shadow-[inset_0_0_80px_rgba(139,92,5,0.15)]' :
+                  selectedFrame === 'sovereign' ? 'border-[20px] border-[#d4af37] ring-[12px] ring-inset ring-[#d4af37]/30 shadow-inner' :
+                  'border-8 border-[#d4af37]/40'
                 }`}>
-                    {/* Ornamental Corners */}
-                    <div className="absolute top-0 left-0 w-48 h-48 border-t-8 border-l-8 border-[#d4af37] rounded-tl-[100px] opacity-80 -translate-x-12 -translate-y-12"></div>
-                    <div className="absolute top-0 right-0 w-48 h-48 border-t-8 border-r-8 border-[#d4af37] rounded-tr-[100px] opacity-80 translate-x-12 -translate-y-12"></div>
-                    <div className="absolute bottom-0 left-0 w-48 h-48 border-b-8 border-l-8 border-[#d4af37] rounded-bl-[100px] opacity-80 -translate-x-12 translate-y-12"></div>
-                    <div className="absolute bottom-0 right-0 w-48 h-48 border-b-8 border-r-8 border-[#d4af37] rounded-br-[100px] opacity-80 translate-x-12 translate-y-12"></div>
+                    {/* ENHANCED Ornamental Corners */}
+                    <div className="absolute top-0 left-0 w-64 h-64 border-t-[12px] border-l-[12px] border-[#d4af37] rounded-tl-[120px] opacity-90 -translate-x-16 -translate-y-16 flex items-center justify-center">
+                         <div className="w-16 h-16 border-2 border-[#d4af37] rounded-full absolute top-12 left-12 animate-pulse"></div>
+                    </div>
+                    <div className="absolute top-0 right-0 w-64 h-64 border-t-[12px] border-r-[12px] border-[#d4af37] rounded-tr-[120px] opacity-90 translate-x-16 -translate-y-16"></div>
+                    <div className="absolute bottom-0 left-0 w-64 h-64 border-b-[12px] border-l-[12px] border-[#d4af37] rounded-bl-[120px] opacity-90 -translate-x-16 translate-y-16"></div>
+                    <div className="absolute bottom-0 right-0 w-64 h-64 border-b-[12px] border-r-[12px] border-[#d4af37] rounded-br-[120px] opacity-90 translate-x-16 translate-y-16"></div>
 
-                    {/* Inner Golden Line */}
-                    <div className="absolute inset-8 border border-[#d4af37]/30 rounded-sm"></div>
+                    {/* Inner Golden Intricate Line */}
+                    <div className="absolute inset-10 border-2 border-[#d4af37]/20 rounded-lg pointer-events-none flex items-center justify-center">
+                         <div className="absolute inset-2 border border-[#d4af37]/10 rounded-sm"></div>
+                    </div>
                 </div>
 
-                {/* 2. MAJESTIC HEADER */}
-                <div className="relative z-20 w-full pt-32 pb-20 flex flex-col items-center">
-                    <div className="flex items-center gap-12 mb-10 w-full justify-center">
-                        <div className="h-[2px] w-48 bg-gradient-to-r from-transparent to-[#d4af37]"></div>
+                {/* 2. MAJESTIC ENHANCED HEADER */}
+                <div className="relative z-20 w-full pt-40 pb-24 flex flex-col items-center">
+                    <div className="flex items-center gap-16 mb-12 w-full justify-center">
+                        <div className="h-[3px] w-56 bg-gradient-to-r from-transparent via-[#d4af37]/60 to-[#d4af37]"></div>
                         <div className="relative group">
-                            <div className="absolute -inset-4 bg-[#d4af37]/20 rounded-full blur-xl group-hover:bg-[#d4af37]/30 transition-all"></div>
-                            <div className="w-40 h-40 bg-[#0d0d0d] rounded-full border-[6px] border-[#d4af37] shadow-[0_0_50px_rgba(212,175,55,0.5)] flex items-center justify-center relative z-10">
-                                <span className="text-8xl text-amber-500 drop-shadow-[0_4px_15px_rgba(0,0,0,1)]">ॐ</span>
-                                {/* Orbiting rings */}
-                                <div className="absolute inset-[-10px] border border-[#d4af37]/40 rounded-full animate-[spin_20s_linear_infinite]"></div>
+                            {/* Inner Radiating Glow */}
+                            <div className="absolute -inset-12 bg-[radial-gradient(circle,rgba(212,175,55,0.4)_0%,transparent_70%)] rounded-full animate-pulse"></div>
+                            
+                            <div className="w-48 h-48 bg-[#0d0d0d] rounded-full border-[8px] border-[#d4af37] shadow-[0_0_80px_rgba(212,175,55,0.6)] flex items-center justify-center relative z-10 overflow-hidden">
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30"></div>
+                                <span className="text-9xl text-amber-500 drop-shadow-[0_6px_20px_rgba(0,0,0,1)] select-none">ॐ</span>
+                                
+                                {/* Complex orbiting rings */}
+                                <div className="absolute inset-[-15px] border-[2px] border-dashed border-[#d4af37]/40 rounded-full animate-[spin_30s_linear_infinite]"></div>
+                                <div className="absolute inset-[-25px] border-[1px] border-[#d4af37]/20 rounded-full animate-[spin_50s_linear_infinite_reverse]"></div>
                             </div>
                         </div>
-                        <div className="h-[2px] w-48 bg-gradient-to-l from-transparent to-[#d4af37]"></div>
+                        <div className="h-[3px] w-56 bg-gradient-to-l from-transparent via-[#d4af37]/60 to-[#d4af37]"></div>
                     </div>
                     
-                    <h2 className="text-7xl font-cinzel font-black gold-gradient-text tracking-[0.2em] uppercase leading-none text-center">Imperial Decree</h2>
-                    <p className="text-[#8b4513] text-sm uppercase tracking-[0.8em] mt-8 font-black opacity-70 italic border-t border-b border-[#d4af37]/20 py-4 px-12">Universal Akashic Records</p>
+                    <div className="text-center">
+                      <h2 className="text-8xl font-cinzel font-black gold-gradient-text tracking-[0.25em] uppercase leading-none mb-6 drop-shadow-2xl">Destiny Decree</h2>
+                      <div className="flex items-center justify-center gap-4">
+                        <span className="h-[1px] w-12 bg-[#d4af37]/40"></span>
+                        <p className="text-[#8b4513] text-lg uppercase tracking-[1em] font-black opacity-80 italic">Astra Lumina</p>
+                        <span className="h-[1px] w-12 bg-[#d4af37]/40"></span>
+                      </div>
+                      <p className="text-[#8b4513]/60 text-[10px] uppercase tracking-[0.6em] mt-6 py-4 px-20 border-t border-b border-[#d4af37]/10 inline-block">Official Akashic Record Transcript</p>
+                    </div>
                 </div>
 
                 {/* 3. ENHANCED CONTENT REGION */}
-                <div className="px-40 relative z-0 flex flex-col gap-12">
+                <div className="px-48 relative z-0 flex flex-col gap-16">
                     <div className="relative">
-                        <div className="absolute -left-12 top-0 text-8xl text-[#d4af37]/10 font-serif">“</div>
-                        <div className="italic text-[#2a1a1a] text-2xl font-lora leading-relaxed text-justify px-4">
-                            Behold the sacred alignment. As the stars scribe their path across the firmament, so do we transcribe the divine blueprint of your existence. This decree is authenticated by the Glyph Circle Enclave.
+                        <div className="absolute -left-16 -top-10 text-[12rem] text-[#d4af37]/10 font-serif leading-none">“</div>
+                        <div className="italic text-[#2a1a1a] text-3xl font-lora leading-[1.8] text-justify px-6 relative z-10">
+                            Behold the sacred alignment. As the celestial gears turn and the stars scribe their path across the eternal firmament, we transcribe the divine blueprint of your existence. This decree serves as a beacon, illuminated by truth and authenticated by the Glyph Circle Enclave.
                         </div>
                     </div>
 
-                    {/* Statistical Mandala */}
-                    <div className="grid grid-cols-2 gap-12">
-                        <div className="bg-[#8b4513]/5 border-2 border-[#d4af37]/30 rounded-[2rem] p-10 shadow-inner flex flex-col items-center">
-                            <span className="text-[12px] uppercase font-black text-[#8b4513] tracking-widest mb-6">Spiritual Vibrance</span>
-                            <div className="relative w-32 h-32 flex items-center justify-center mb-6">
-                                <svg className="w-full h-full transform -rotate-90">
-                                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-amber-100" />
-                                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray="364.4" strokeDashoffset="36.4" className="text-[#d4af37]" />
+                    {/* Statistical Mandala Grid */}
+                    <div className="grid grid-cols-2 gap-16">
+                        <div className="bg-gradient-to-b from-[#8b4513]/10 to-transparent border-t-2 border-[#d4af37]/40 rounded-t-[4rem] p-12 shadow-xl flex flex-col items-center group hover:bg-[#8b4513]/15 transition-all">
+                            <span className="text-[14px] uppercase font-black text-[#5c2a0d] tracking-[0.3em] mb-8">Spiritual Resonance</span>
+                            <div className="relative w-40 h-40 flex items-center justify-center mb-8">
+                                <svg className="w-full h-full transform -rotate-90 filter drop-shadow-lg">
+                                    <circle cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="10" fill="transparent" className="text-amber-100/50" />
+                                    <circle cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="10" fill="transparent" strokeDasharray="452" strokeDashoffset="45" className="text-[#d4af37]" />
                                 </svg>
-                                <span className="absolute text-2xl font-mono font-bold text-[#8b4513]">90%</span>
+                                <span className="absolute text-4xl font-mono font-black text-[#4a0404]">90%</span>
                             </div>
-                            <p className="text-[10px] text-[#8b4513]/60 italic">Resonant with Ether</p>
+                            <p className="text-xs text-[#8b4513]/70 font-bold uppercase tracking-widest">Sattvic Alignment</p>
                         </div>
-                        <div className="bg-[#8b4513]/5 border-2 border-[#d4af37]/30 rounded-[2rem] p-10 shadow-inner flex flex-col items-center">
-                            <span className="text-[12px] uppercase font-black text-[#8b4513] tracking-widest mb-6">Karma Quotient</span>
-                            <div className="relative w-32 h-32 flex items-center justify-center mb-6">
-                                <svg className="w-full h-full transform -rotate-90">
-                                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-amber-100" />
-                                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray="364.4" strokeDashoffset="80" className="text-[#d4af37]" />
+                        
+                        <div className="bg-gradient-to-b from-[#8b4513]/10 to-transparent border-t-2 border-[#d4af37]/40 rounded-t-[4rem] p-12 shadow-xl flex flex-col items-center group hover:bg-[#8b4513]/15 transition-all">
+                            <span className="text-[14px] uppercase font-black text-[#5c2a0d] tracking-[0.3em] mb-8">Karmic Velocity</span>
+                            <div className="relative w-40 h-40 flex items-center justify-center mb-8">
+                                <svg className="w-full h-full transform -rotate-90 filter drop-shadow-lg">
+                                    <circle cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="10" fill="transparent" className="text-amber-100/50" />
+                                    <circle cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="10" fill="transparent" strokeDasharray="452" strokeDashoffset="100" className="text-[#d4af37]" />
                                 </svg>
-                                <span className="absolute text-2xl font-mono font-bold text-[#8b4513]">78%</span>
+                                <span className="absolute text-4xl font-mono font-black text-[#4a0404]">78%</span>
                             </div>
-                            <p className="text-[10px] text-[#8b4513]/60 italic">Active Dharma</p>
+                            <p className="text-xs text-[#8b4513]/70 font-bold uppercase tracking-widest">Active Dharma</p>
                         </div>
                     </div>
 
-                    {/* Scribe Lines */}
-                    <div className="space-y-6 pt-10 opacity-30">
-                        <div className="h-[1px] bg-[#8b4513] w-full"></div>
-                        <div className="h-[1px] bg-[#8b4513] w-full"></div>
-                        <div className="h-[1px] bg-[#8b4513] w-11/12 mx-auto"></div>
+                    {/* Majestic Scribe Lines */}
+                    <div className="space-y-8 pt-12 opacity-40">
+                        <div className="h-[2px] bg-gradient-to-r from-transparent via-[#8b4513] to-transparent w-full"></div>
+                        <div className="h-[2px] bg-gradient-to-r from-transparent via-[#8b4513] to-transparent w-4/5 mx-auto"></div>
+                        <div className="h-[2px] bg-gradient-to-r from-transparent via-[#8b4513] to-transparent w-3/5 mx-auto"></div>
                     </div>
                 </div>
 
-                {/* 4. IMPERIAL FOOTER */}
-                <div className="absolute bottom-24 left-0 w-full flex flex-col items-center">
-                    <div className="text-4xl text-[#d4af37] mb-4 font-cinzel tracking-[1.5em] opacity-40">❂ ❂ ❂</div>
-                    <span className="text-[11px] uppercase tracking-[0.6em] font-cinzel font-black text-[#2a1a1a] opacity-60">Sacred Sanctum Scribe</span>
-                    <div className="mt-6 w-80 h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/50 to-transparent"></div>
-                    <span className="mt-4 text-[8px] font-mono text-[#8b4513]/40">ETHEREAL_HASH: {Math.random().toString(36).substring(2, 18).toUpperCase()}</span>
+                {/* 4. IMPERIAL ENHANCED FOOTER */}
+                <div className="absolute bottom-28 left-0 w-full flex flex-col items-center">
+                    <div className="text-5xl text-[#d4af37] mb-6 font-cinzel tracking-[1.8em] opacity-50">❂ ❂ ❂</div>
+                    <div className="flex items-center gap-8 mb-6">
+                        <div className="h-[1px] w-24 bg-[#d4af37]/30"></div>
+                        <span className="text-[14px] uppercase tracking-[0.7em] font-cinzel font-black text-[#2a1a1a] opacity-70">Sanctum High Scribe</span>
+                        <div className="h-[1px] w-24 bg-[#d4af37]/30"></div>
+                    </div>
+                    <div className="w-96 h-[2px] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent"></div>
+                    <div className="mt-6 flex gap-10 text-[9px] font-mono text-[#8b4513]/40 uppercase tracking-widest">
+                        <span>NODE: GLYPH_CENTRAL</span>
+                        <span>CERT: {Math.random().toString(36).substring(2, 10).toUpperCase()}</span>
+                        <span>TS: {new Date().getTime()}</span>
+                    </div>
                 </div>
              </div>
           </div>

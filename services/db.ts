@@ -37,13 +37,13 @@ export interface Transaction {
 
 /**
  * 🛡️ TIMEOUT WRAPPER
- * Standard Promise race to prevent UI hanging.
+ * Prevents UI hanging when RLS policies or network issues cause infinite waits.
  */
-const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 15000): Promise<T> => {
+const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 25000): Promise<T> => {
     let timeoutId: any;
     const timeoutPromise = new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
-            reject(new Error(`Cosmic Timeout: Database unresponsive after ${timeoutMs/1000}s. Usually caused by RLS conflicts or network lag.`));
+            reject(new Error(`Cosmic Timeout: Database unresponsive after ${timeoutMs/1000}s. This is almost certainly an RLS Infinite Recursion loop in Supabase.`));
         }, timeoutMs);
     });
 
@@ -189,27 +189,33 @@ class SupabaseDatabase {
   }
 
   /**
-   * ⚡ FIXED UPDATE
-   * Strips ID from payload to prevent primary key mutation errors.
+   * ⚡ SECURE UPDATE
+   * Strips immutable keys from the update object to prevent Postgres Primary Key mutation hangs.
    */
   async updateEntry(table: string, id: string | number, updates: any) {
-      console.info(`🛰️ DB: Updating ${table} record ${id}...`);
+      console.info(`🛰️ DB: Updating ${table}/${id}... Payload:`, updates);
       
-      // 🛡️ CRITICAL: Remove 'id' from the update object. 
-      // Supabase does not allow you to update the column that identifies the row.
-      const { id: _, created_at: __, ...cleanUpdates } = updates;
+      // 🛡️ CRITICAL: Remove PK and system fields. 
+      // Including the ID or timestamps in the body of an update can cause RLS/Postgres to hang.
+      const { id: _, created_at: __, updated_at: ___, ...cleanUpdates } = updates;
       
+      // Prevent empty updates which can cause some PostgREST versions to hang
+      if (Object.keys(cleanUpdates).length === 0) {
+          console.warn("🛰️ DB: No changes detected, skipping update.");
+          return;
+      }
+
       const { error, status } = await withTimeout(supabase
           .from(table)
           .update(cleanUpdates)
           .eq('id', id));
 
       if (error) {
-          console.error(`❌ DB Failure:`, error);
-          throw new Error(error.message || `Server responded with ${status}`);
+          console.error(`❌ DB Failure [${status}]:`, error);
+          throw new Error(error.message || `Server responded with status ${status}`);
       }
       
-      console.info(`✅ DB Update Accepted.`);
+      console.info(`✅ DB Update Success.`);
   }
 
   async createEntry(table: string, entry: any) {
