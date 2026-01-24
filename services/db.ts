@@ -37,15 +37,24 @@ export interface Transaction {
 
 /**
  * 🛡️ TIMEOUT WRAPPER
- * Increased to 30s to allow for cold starts or slow networks.
+ * Standard Promise race to prevent UI hanging.
  */
-const withTimeout = async <T = any>(promise: Promise<T> | any, timeoutMs: number = 30000): Promise<T> => {
-    return Promise.race([
-        Promise.resolve(promise),
-        new Promise<T>((_, reject) => 
-            setTimeout(() => reject(new Error(`Cosmic Timeout: Database unresponsive after ${timeoutMs/1000}s. Check network or Supabase RLS.`)), timeoutMs)
-        )
-    ]);
+const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 15000): Promise<T> => {
+    let timeoutId: any;
+    const timeoutPromise = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(`Cosmic Timeout: Database unresponsive after ${timeoutMs/1000}s. Usually caused by RLS conflicts or network lag.`));
+        }, timeoutMs);
+    });
+
+    try {
+        const result = await Promise.race([promise, timeoutPromise]);
+        clearTimeout(timeoutId);
+        return result;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+    }
 };
 
 class SupabaseDatabase {
@@ -56,7 +65,6 @@ class SupabaseDatabase {
 
   async getUserProfile(userId: string): Promise<User | null> {
       try {
-          console.info(`🛰️ DB: Fetching profile for ${userId}`);
           const { data, error } = await withTimeout(supabase
               .from('users')
               .select('*')
@@ -73,7 +81,6 @@ class SupabaseDatabase {
 
   async createUserProfile(user: Partial<User>) {
       try {
-          console.info(`🛰️ DB: Creating profile for ${user.email}`);
           const { data, error } = await withTimeout(supabase
               .from('users')
               .upsert([user], { onConflict: 'id' })
@@ -106,7 +113,6 @@ class SupabaseDatabase {
   }
 
   async saveReading(reading: Omit<Reading, 'id' | 'timestamp' | 'is_favorite'>): Promise<Reading> {
-      console.info(`🛰️ DB: Saving reading "${reading.title}"`);
       const newReading = {
           ...reading,
           timestamp: new Date().toISOString(),
@@ -183,27 +189,30 @@ class SupabaseDatabase {
   }
 
   /**
-   * ⚡ Simplified Update
-   * Removed .select() to avoid extra overhead and potential RLS issues during update.
+   * ⚡ FIXED UPDATE
+   * Strips ID from payload to prevent primary key mutation errors.
    */
   async updateEntry(table: string, id: string | number, updates: any) {
-      console.info(`🛰️ DB: Executing UPDATE on ${table} where id=${id}`, updates);
+      console.info(`🛰️ DB: Updating ${table} record ${id}...`);
+      
+      // 🛡️ CRITICAL: Remove 'id' from the update object. 
+      // Supabase does not allow you to update the column that identifies the row.
+      const { id: _, created_at: __, ...cleanUpdates } = updates;
       
       const { error, status } = await withTimeout(supabase
           .from(table)
-          .update(updates)
+          .update(cleanUpdates)
           .eq('id', id));
 
       if (error) {
-          console.error(`❌ DB: Update failed with status ${status}:`, error);
-          throw new Error(error.message || `Database error ${status}`);
+          console.error(`❌ DB Failure:`, error);
+          throw new Error(error.message || `Server responded with ${status}`);
       }
       
-      console.info(`✅ DB: Update command accepted by server.`);
+      console.info(`✅ DB Update Accepted.`);
   }
 
   async createEntry(table: string, entry: any) {
-      console.info(`🛰️ DB: Executing INSERT into ${table}...`);
       const { data, error } = await withTimeout(supabase.from(table).insert(entry).select());
       if (error) throw error;
       return data;

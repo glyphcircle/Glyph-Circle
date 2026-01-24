@@ -1,4 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+import React, { ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
 
@@ -15,11 +16,12 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-// Fix: Use named Component import to resolve inheritance visibility issues
-class ErrorBoundary extends Component<Props, State> {
-  // Fix: Explicitly initialize state in the constructor and call super(props) to ensure Component methods are properly recognized
+/* Fix: Explicitly using React.Component to ensure members like state, setState, and props are recognized by the TypeScript compiler */
+class ErrorBoundary extends React.Component<Props, State> {
+  // Explicitly initialize state in the constructor and call super(props)
   constructor(props: Props) {
     super(props);
+    /* Fix: Property 'state' is now correctly inherited and recognized on the component instance */
     this.state = {
       hasError: false,
       error: null,
@@ -31,7 +33,6 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  // Fix: Use ErrorInfo from named imports
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log the error to the console
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
@@ -39,14 +40,13 @@ class ErrorBoundary extends Component<Props, State> {
 
   /* Handle retry logic with an arrow function to preserve 'this' context */
   public handleRetry = () => {
-    // Fix: Access setState through explicit Component inheritance
+    /* Fix: Property 'setState' is now correctly recognized as part of the inherited React.Component class */
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   };
 
-  // Fix: Use ReactNode from named imports for return type
   public render(): ReactNode {
-    // Fix: Access state and props properties inherited from Component to resolve 'does not exist' errors
+    /* Fix: Properties 'state' and 'props' are now correctly identified via React.Component inheritance */
     const { hasError, error } = this.state;
     const { children } = this.props;
 

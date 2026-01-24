@@ -19,6 +19,7 @@ const AdminDB: React.FC = () => {
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const tableName = table || 'users';
   const data = db[tableName] || [];
@@ -59,6 +60,7 @@ const AdminDB: React.FC = () => {
   const openCreateModal = () => {
       setFormData({});
       setIsCreateModalOpen(true);
+      setLastError(null);
   };
 
   const getProcessedData = (raw: Record<string, string>) => {
@@ -80,16 +82,16 @@ const AdminDB: React.FC = () => {
 
   const submitCreate = async () => {
       setIsSaving(true);
+      setLastError(null);
       try {
-          console.log(`🚀 UI: Creating entry in ${tableName}...`);
           const payload = getProcessedData(formData);
           await createEntry(tableName, payload);
           setIsCreateModalOpen(false);
           setFormData({});
           await refresh();
       } catch (e: any) {
+          setLastError(e.message);
           console.error("UI: Create Error:", e);
-          alert(`Creation Failed: ${e.message}`);
       } finally {
           setIsSaving(false);
       }
@@ -106,30 +108,27 @@ const AdminDB: React.FC = () => {
       setFormData(editableData);
       setEditingId(record.id);
       setIsEditModalOpen(true);
+      setLastError(null);
   };
 
   const submitEdit = async () => {
       if (!editingId) return;
       
       setIsSaving(true);
+      setLastError(null);
       try {
-          console.log(`🚀 UI: Updating ${tableName} record ${editingId}...`);
-          
-          // 🛡️ SECURITY: Prevent changing the 'id' during an update. 
-          // Changing primary keys requires a separate workflow or specific DB permissions.
-          const { id: _, ...rawCleanData } = formData; 
-          const payload = getProcessedData(rawCleanData);
-          
+          const payload = getProcessedData(formData);
           await updateEntry(tableName, editingId, payload);
           
-          console.log(`✨ UI: Update successful.`);
           setIsEditModalOpen(false);
           setEditingId(null);
           setFormData({});
           await refresh();
       } catch (e: any) {
+          setLastError(e.message);
           console.error("UI: Update Error:", e);
-          alert(`Update Failed!\n\n${e.message || 'The network connection may be unstable.'}`);
+          // Safety fallback: if error is very sticky, reset saving state after a delay
+          setTimeout(() => setIsSaving(false), 2000);
       } finally {
           setIsSaving(false);
       }
@@ -248,6 +247,7 @@ const AdminDB: React.FC = () => {
                         </div>
                     ))}
                 </div>
+                {lastError && <div className="mt-4 p-3 bg-red-950/50 border border-red-500 rounded text-red-400 text-xs">{lastError}</div>}
                 <div className="mt-6 flex gap-3">
                     <Button onClick={submitCreate} disabled={isSaving} className="flex-1 bg-green-700">
                         {isSaving ? 'Creating...' : 'Create Record'}
@@ -260,7 +260,7 @@ const AdminDB: React.FC = () => {
         <Modal isVisible={isEditModalOpen} onClose={() => setIsEditModalOpen(false)}>
             <div className="p-6 bg-gray-900">
                 <h3 className="text-xl font-bold text-white mb-4 font-cinzel">Edit Record</h3>
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                <div className="space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
                     {Object.keys(formData).map(key => (
                         <div key={key}>
                             <label className="block text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">{key}</label>
@@ -274,21 +274,34 @@ const AdminDB: React.FC = () => {
                         </div>
                     ))}
                 </div>
+
+                {lastError && (
+                    <div className="mt-6 p-4 bg-red-950/30 border border-red-500/50 rounded-xl">
+                        <p className="text-red-400 font-bold text-xs mb-1">Failed to Reach Cloud</p>
+                        <p className="text-red-300/70 text-[10px] italic leading-tight mb-3">{lastError}</p>
+                        <button 
+                            onClick={() => { setIsSaving(false); setLastError(null); }}
+                            className="text-xs bg-red-900/50 text-red-200 px-3 py-1 rounded-full font-bold border border-red-700"
+                        >
+                            Reset UI & Try Again
+                        </button>
+                    </div>
+                )}
+
                 <div className="mt-6 flex gap-3">
                     <Button onClick={submitEdit} disabled={isSaving} className="flex-1 bg-blue-700 shadow-xl">
-                        {isSaving ? 'Saving Changes...' : 'Update Record'}
+                        {isSaving ? 'Scribing to Cloud...' : 'Update Record'}
                     </Button>
                     <button 
-                        onClick={() => setIsEditModalOpen(false)} 
-                        disabled={isSaving}
-                        className="flex-1 bg-gray-800 text-gray-400 hover:text-white rounded font-bold transition-colors disabled:opacity-50"
+                        onClick={() => { setIsEditModalOpen(false); setIsSaving(false); setLastError(null); }} 
+                        className="flex-1 bg-gray-800 text-gray-400 hover:text-white rounded font-bold transition-colors"
                     >
                         Cancel
                     </button>
                 </div>
                 {isSaving && (
                     <p className="mt-4 text-[10px] text-amber-500/60 text-center animate-pulse uppercase tracking-widest">
-                        Channeling updates to cloud... (Up to 30s)
+                        Handshaking with Supabase...
                     </p>
                 )}
             </div>
