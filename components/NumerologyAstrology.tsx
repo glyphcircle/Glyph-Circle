@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
@@ -39,20 +38,17 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
   const { db } = useDb();
   const { user, saveReading } = useAuth();
 
-  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com'];
+  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com', 'admin@glyph.circle'];
   const isAdmin = user && ADMIN_EMAILS.includes(user.email);
 
-  // Dynamic Price
   const serviceConfig = db.services?.find((s: any) => s.id === mode);
   const servicePrice = serviceConfig?.price || (mode === 'astrology' ? 99 : 49);
 
-  // Dynamic Report Image
   const assetId = mode === 'numerology' ? 'report_bg_numerology' : 'report_bg_astrology';
   const reportImage = db.image_assets?.find((a: any) => a.id === assetId)?.path 
       || db.services?.find((s:any) => s.id === mode)?.image 
       || "https://images.unsplash.com/photo-1509228627129-6690a87531bc?q=80&w=800";
 
-  // --- AUTOFILL LOGIC ---
   useEffect(() => {
     const cached = localStorage.getItem('glyph_user_details');
     if (cached) {
@@ -115,11 +111,9 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
     const validationError = validateForm();
     if (validationError) {
         setError(validationError);
-        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
         return;
     }
 
-    // Persist details for future autofill
     localStorage.setItem('glyph_user_details', JSON.stringify({ 
         name: formData.name, 
         dob: formData.dob,
@@ -134,43 +128,53 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
     setError('');
     setIsPaid(false);
 
-    const timer = setInterval(() => { setProgress(prev => (prev >= 90 ? prev : prev + (Math.random() * 10))); }, 500);
+    const timer = setInterval(() => { setProgress(prev => (prev >= 90 ? prev : prev + (Math.random() * 5))); }, 500);
 
-    try {
-      let calculatedStats = null;
-      setProgress(10);
-      if (mode === 'numerology') {
-          calculatedStats = calculateNumerology({ name: formData.name, dob: formData.dob, system: 'chaldean' });
-          const grid = generateVedicGrid(formData.dob);
-          calculatedStats = { ...calculatedStats, vedicGrid: grid };
-      } else {
-          calculatedStats = calculateAstrology({ name: formData.name, dob: formData.dob, tob: formData.tob, pob: formData.pob, lat: coords?.lat, lng: coords?.lng });
-      }
-      setEngineData(calculatedStats);
-      setProgress(30);
+    let retryCount = 0;
+    const maxRetries = 2;
 
-      const result = await getAstroNumeroReading({ mode, ...formData, language: getLanguageName(language) });
-      
-      clearInterval(timer);
-      setProgress(100);
-      setReading(result.reading);
+    const performRetrieval = async () => {
+        try {
+          let calculatedStats = null;
+          if (mode === 'numerology') {
+              calculatedStats = calculateNumerology({ name: formData.name, dob: formData.dob, system: 'chaldean' });
+              calculatedStats = { ...calculatedStats, vedicGrid: {} };
+          } else {
+              calculatedStats = calculateAstrology({ name: formData.name, dob: formData.dob, tob: formData.tob, pob: formData.pob, lat: coords?.lat, lng: coords?.lng });
+          }
+          setEngineData(calculatedStats);
 
-      const featureName = mode === 'astrology' ? t('astrology') : t('numerology');
-      
-      saveReading({
-          type: mode,
-          title: `${featureName} for ${formData.name}`,
-          content: result.reading,
-          image_url: cloudManager.resolveImage(reportImage),
-          meta_data: calculatedStats
-      });
+          const result = await getAstroNumeroReading({ mode, ...formData, language: getLanguageName(language) });
+          
+          if (!result.reading || result.reading.length < 20) throw new Error("Incomplete reading");
 
-    } catch (err: any) {
-      clearInterval(timer);
-      setError(`Failed to get reading: ${err.message}. Please try again.`);
-    } finally {
-      setIsLoading(false);
-    }
+          clearInterval(timer);
+          setProgress(100);
+          setReading(result.reading);
+
+          const featureName = mode === 'astrology' ? t('astrology') : t('numerology');
+          saveReading({
+              type: mode,
+              title: `${featureName} for ${formData.name}`,
+              content: result.reading,
+              image_url: cloudManager.resolveImage(reportImage),
+              meta_data: calculatedStats
+          });
+
+        } catch (err: any) {
+          if (retryCount < maxRetries) {
+              retryCount++;
+              console.warn(`Retry attempt ${retryCount}...`);
+              await performRetrieval();
+          } else {
+              clearInterval(timer);
+              setError(`The Oracle is currently busy. Please try again in a few moments.`);
+          }
+        }
+    };
+
+    await performRetrieval();
+    setIsLoading(false);
   }, [formData, mode, language, t, coords, saveReading, db, reportImage]);
   
   const handleReadMore = () => {
@@ -181,13 +185,6 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
     }, title, servicePrice);
   };
 
-  const generateVedicGrid = (dob: string) => {
-      const digits = dob.replace(/[^0-9]/g, '');
-      const counts: Record<string, number> = {};
-      for (const char of digits) counts[char] = (counts[char] || 0) + 1;
-      return counts;
-  };
-
   useEffect(() => {
     if ((reading || engineData) && !isLoading && canvasRef.current) {
         const canvas = canvasRef.current;
@@ -196,30 +193,12 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#0F0F23';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (mode === 'numerology' && formData.dob) drawLoShuGrid(ctx, canvas.width, canvas.height, formData.dob);
-        else if (mode === 'astrology' && engineData) drawNorthIndianChart(ctx, canvas.width, canvas.height, engineData);
+        ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2;
+        ctx.strokeRect(5, 5, canvas.width-10, canvas.height-10);
+        ctx.fillStyle = '#F59E0B'; ctx.font = '20px Cinzel'; ctx.textAlign = 'center';
+        ctx.fillText(mode.toUpperCase(), canvas.width/2, canvas.height/2);
     }
-  }, [reading, engineData, mode, isLoading, formData.dob]);
-
-  const drawLoShuGrid = (ctx: CanvasRenderingContext2D, w: number, h: number, dob: string) => {
-      const counts = generateVedicGrid(dob);
-      const posMap: Record<string, {x: number, y: number}> = { '3': {x: 0, y: 0}, '1': {x: 1, y: 0}, '9': {x: 2, y: 0}, '6': {x: 0, y: 1}, '7': {x: 1, y: 1}, '5': {x: 2, y: 1}, '2': {x: 0, y: 2}, '8': {x: 1, y: 2}, '4': {x: 2, y: 2} };
-      const cellW = w / 3; const cellH = h / 3;
-      ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(cellW, 0); ctx.lineTo(cellW, h); ctx.moveTo(cellW * 2, 0); ctx.lineTo(cellW * 2, h);
-      ctx.moveTo(0, cellH); ctx.lineTo(w, cellH); ctx.moveTo(0, cellH * 2); ctx.lineTo(w, cellH * 2);
-      ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 24px Cinzel'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      Object.keys(posMap).forEach(num => { if (counts[num]) { const {x, y} = posMap[num]; ctx.fillText(num.repeat(counts[num]), (x * cellW) + (cellW / 2), (y * cellH) + (cellH / 2)); } });
-  };
-
-  const drawNorthIndianChart = (ctx: CanvasRenderingContext2D, w: number, h: number, chart: AstroChart) => {
-      ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2; ctx.strokeRect(2, 2, w-4, h-4);
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w, h); ctx.moveTo(w, 0); ctx.lineTo(0, h); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(w/2, 0); ctx.lineTo(w, h/2); ctx.lineTo(w/2, h); ctx.lineTo(0, h/2); ctx.lineTo(w/2, 0); ctx.stroke();
-      ctx.fillStyle = '#FCD34D'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.fillText("Lagna: " + chart.lagna.signName, w/2, h/2);
-  };
+  }, [reading, engineData, mode, isLoading]);
 
   const featureName = mode === 'astrology' ? t('astrology') : t('numerology');
   const featureTitle = mode === 'astrology' ? t('astrologyReading') : t('numerologyReading');
@@ -232,17 +211,10 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
               {t('backToHome')}
           </Link>
 
-          {!showF4Help && mode === 'astrology' && (
-              <button onClick={() => setShowF4Help(true)} className="fixed bottom-24 right-6 bg-purple-700 hover:bg-purple-600 text-white rounded-full p-4 shadow-2xl z-40 border-2 border-purple-400 animate-pulse hidden md:flex items-center justify-center gap-2 font-bold" title="Press F4 for Smart Entry"><span>✨ F4</span><span className="text-[10px] uppercase">Smart Assist</span></button>
-          )}
-
         <Card>
           <div className="p-6">
             <h2 className="text-3xl font-bold text-center text-amber-300 mb-2">{featureTitle}</h2>
-            <p className="text-center text-amber-100 mb-8 flex items-center justify-center gap-2">
-              {t('enterDetailsPrompt', { featureName: featureName.toLowerCase() })}
-              {mode === 'astrology' && <span className="text-xs text-amber-500 bg-amber-900/30 px-2 py-1 rounded border border-amber-500/20">Tip: Try typing "F4"</span>}
-            </p>
+            <p className="text-center text-amber-100 mb-8">{t('enterDetailsPrompt', { featureName: featureName.toLowerCase() })}</p>
 
             <form onSubmit={handleGetReading} className="grid md:grid-cols-2 gap-6 mb-8">
               <div className="md:col-span-2">
@@ -270,7 +242,7 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
                               <div className="grid md:grid-cols-2 gap-8 items-center">
                                   <div className="bg-black/40 p-4 rounded-lg border border-amber-500/20 flex justify-center"><canvas ref={canvasRef} width={300} height={300} className="max-w-full h-auto rounded shadow-lg bg-[#1a1a1a]" /></div>
                                   <div className="space-y-4 text-amber-100">
-                                      <div className="whitespace-pre-wrap italic font-lora border-l-2 border-amber-500/30 pl-4 text-sm opacity-80">{reading.replace(/#/g, '').replace(/\*\*/g, '').split(' ').slice(0, 40).join(' ')}...</div>
+                                      <div className="whitespace-pre-wrap italic font-lora border-l-2 border-amber-500/30 pl-4 text-sm opacity-80 line-clamp-6">{reading}</div>
                                       <div className="pt-4 border-t border-amber-500/20 flex flex-col gap-2">
                                           <Button onClick={handleReadMore} className="w-full bg-gradient-to-r from-amber-600 to-maroon-700 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.4)]">{t('readMore')}</Button>
                                           {isAdmin && <button onClick={() => setIsPaid(true)} className="text-xs text-amber-500 hover:text-amber-300 underline font-mono">👑 Admin Access: Skip Payment</button>}

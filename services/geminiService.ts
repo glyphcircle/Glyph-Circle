@@ -1,18 +1,28 @@
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-let aiInstance: GoogleGenAI | null = null;
+// Fix: Added missing interface definitions for PalmMetricResponse, FaceMetricResponse and DreamAnalysisResponse
+export interface PalmMetricResponse {
+  rawMetrics: any;
+  textReading: string;
+}
+
+export interface FaceMetricResponse {
+  rawMetrics: any;
+  textReading: string;
+}
+
+export interface DreamAnalysisResponse {
+  meaning: string;
+  luckyNumbers: number[];
+  symbols: string[];
+}
 
 /**
- * 🌌 The Oracle Factory
- * Initializes the Gemini API using the environment variable API_KEY.
+ * Fix: Changed from singleton to per-call initialization as per guidelines
+ * "Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key"
  */
 const getAi = (): GoogleGenAI => {
-  if (aiInstance) return aiInstance;
-  
-  // Fix: Adhere strictly to the initialization pattern from the coding guidelines
-  aiInstance = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  return aiInstance;
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 }
 
 const fileToBase64 = (file: File): Promise<string> => {
@@ -27,7 +37,6 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-// --- AUDIO UTILS ---
 function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -67,7 +76,6 @@ export const generateMantraAudio = async (text: string, voiceName: 'Charon' | 'K
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
                     voiceConfig: {
-                        // Fix: Adhere to the correct nested structure for prebuilt voice configuration
                         prebuiltVoiceConfig: { voiceName },
                     },
                 },
@@ -97,22 +105,6 @@ export const generateMantraAudio = async (text: string, voiceName: 'Charon' | 'K
     }
 };
 
-export interface PalmMetricResponse {
-    rawMetrics: any;
-    textReading: string;
-}
-
-export interface FaceMetricResponse {
-    rawMetrics: any;
-    textReading: string;
-}
-
-export interface DreamAnalysisResponse {
-    meaning: string;
-    luckyNumbers: number[];
-    symbols: string[];
-}
-
 export const createSageSession = (contextReading: string, topic: string) => {
     try {
         const ai = getAi();
@@ -135,7 +127,6 @@ export const translateText = async (text: string, targetLanguage: string): Promi
             model: 'gemini-3-flash-preview',
             contents: `Translate the following report into ${targetLanguage}. Maintain all Markdown formatting strictly. Text: ${text}`
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
         return response.text || text;
     } catch (error: any) {
         console.error("Translation failed:", error);
@@ -161,7 +152,6 @@ export const getGemstoneGuidance = async (name: string, dob: string, intent: str
             contents: `User: ${name}, DOB: ${dob}, Intent: ${intent}. Recommend Gemstone & Mantra in ${language}.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
         return JSON.parse(response.text || "{}");
     } catch (error: any) {
         console.error("Gemstone Service Error:", error);
@@ -188,7 +178,6 @@ export const getAyurvedicAnalysis = async (answers: string, language: string = '
             contents: `Analyze Dosha: ${answers}. Provide result in ${language}.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
         return JSON.parse(response.text || "{}");
     } catch (error: any) {
         console.error("Ayurveda Service Error:", error);
@@ -214,7 +203,6 @@ export const getMuhurat = async (activity: string, date: string, language: strin
             contents: `Calculate Muhurat for: "${activity}" on ${date}. Output in ${language}.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
         return JSON.parse(response.text || "{}");
     } catch (error: any) {
         console.error("Muhurat Service Error:", error);
@@ -241,7 +229,6 @@ export const getCosmicSync = async (p1: any, p2: any, language: string = 'Englis
             contents: `Analyze Compatibility: Person A ${JSON.stringify(p1)}, Person B ${JSON.stringify(p2)}. Language: ${language}.`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
         return JSON.parse(response.text || "{}");
     } catch (error: any) {
         console.error("CosmicSync Error:", error);
@@ -258,8 +245,9 @@ export const getPalmReading = async (imageFile: File, language: string = 'Englis
       contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Palmistry analysis in ${language}.` }] },
       config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
     });
-    // Fix: Use response.text property directly as per guidelines for extracted string output
-    const json = JSON.parse(response.text || "{}");
+    const text = response.text;
+    if (!text) throw new Error("Empty response");
+    const json = JSON.parse(text);
     return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
   } catch (error: any) {
     console.error("Palm Reading Error:", error);
@@ -276,8 +264,9 @@ export const getFaceReading = async (imageFile: File, language: string = 'Englis
             contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Face analysis in ${language}.` }] },
             config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
-        const json = JSON.parse(response.text || "{}");
+        const text = response.text;
+        if (!text) throw new Error("Empty response");
+        const json = JSON.parse(text);
         return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
     } catch (error: any) {
         console.error("Face Reading Error:", error);
@@ -298,11 +287,14 @@ export const getAstroNumeroReading = async (details: any): Promise<{ reading: st
             model: 'gemini-3-flash-preview',
             contents: prompt,
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
-        return { reading: response.text || "The Oracle did not provide a text reading." };
+        const text = response.text;
+        if (!text || text.trim().length < 20) {
+            throw new Error("The Oracle's message was too faint. Retrying...");
+        }
+        return { reading: text };
     } catch (error: any) {
         console.error("AI Calculation Error:", error);
-        throw new Error(`AI calculation failed: ${error.message || 'Unknown error'}`);
+        throw new Error(error.message || 'AI calculation failed');
     }
 };
 
@@ -313,8 +305,9 @@ export const getTarotReading = async (cardName: string, language: string = 'Engl
             model: 'gemini-3-flash-preview',
             contents: `Tarot reading for "${cardName}" in ${language}.`,
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
-        return response.text || "No response.";
+        const text = response.text;
+        if (!text) throw new Error("Empty response");
+        return text;
     } catch (error: any) {
         console.error("Tarot Service Error:", error);
         throw new Error("Spirits of the deck are restless.");
@@ -328,8 +321,9 @@ export const getRemedy = async (concern: string, language: string = 'English'): 
             model: 'gemini-3-flash-preview',
             contents: `Remedies for: "${concern}" in ${language}.`,
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
-        return response.text || "No response.";
+        const text = response.text;
+        if (!text) throw new Error("Empty response");
+        return text;
     } catch (error: any) {
         console.error("Remedy Service Error:", error);
         throw new Error("Cosmic winds blocked guidance.");
@@ -349,8 +343,9 @@ export const analyzeDream = async (dreamText: string, language: string = 'Englis
             contents: `Interpret dream in ${language}: "${dreamText}"`,
             config: { responseMimeType: "application/json", responseSchema: schema }
         });
-        // Fix: Use response.text property directly as per guidelines for extracted string output
-        return JSON.parse(response.text || "{}");
+        const text = response.text;
+        if (!text) throw new Error("Empty response");
+        return JSON.parse(text);
     } catch (error: any) {
         console.error("Dream Service Error:", error);
         throw new Error("Subconscious mists too thick.");
