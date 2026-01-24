@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 // @ts-ignore
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -13,7 +12,7 @@ interface LoginProps {
     onLoginSuccess?: (username: string) => void;
 }
 
-const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1600609842388-3e4b489d71c6?q=80&w=600';
+const DEFAULT_BRAND_LOGO = 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [useMagicLink, setUseMagicLink] = useState(false);
@@ -30,7 +29,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const [logoImage, setLogoImage] = useState<string>('');
+
+  // Resolve brand logo from DB explicitly
+  const brandLogo = useMemo(() => {
+    const asset = db.image_assets?.find((a: any) => a.id === 'sacred_emblem' || a.tags?.includes('brand_logo'));
+    return asset ? cloudManager.resolveImage(asset.path) : DEFAULT_BRAND_LOGO;
+  }, [db.image_assets]);
 
   const adminAccessCode = db.config?.find((c: any) => c.key === 'admin_access_code')?.value || 'admin@admin';
 
@@ -47,20 +51,11 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           }
       }
 
-      const logoAsset = db.image_assets?.find((img: any) => img.id === 'login_logo') || 
-                        db.image_assets?.find((img: any) => img.tags?.includes('login_logo'));
-
-      if (logoAsset) {
-          setLogoImage(cloudManager.resolveImage(logoAsset.path));
-      } else {
-          setLogoImage(DEFAULT_LOGO);
-      }
-
       const isRegistered = localStorage.getItem('glyph_bio_registered') === 'true';
       if (isRegistered) {
           biometricService.isAvailable().then(avail => setHasBiometrics(avail));
       }
-  }, [db, location]);
+  }, [location]);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
@@ -113,17 +108,19 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       <div className="w-full max-w-md bg-skin-surface border border-skin-border rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden backdrop-blur-xl animate-fade-in-up">
         <div className="p-8">
           <div className="text-center mb-8">
-             {logoImage && (
-                 <div className="mx-auto w-24 h-24 mb-4 rounded-full p-1 bg-gradient-to-tr from-skin-accent to-purple-600 shadow-xl animate-float-gentle">
-                     <img 
-                        src={logoImage} 
-                        alt="Logo" 
-                        className="w-full h-full object-cover rounded-full border-2 border-black" 
+             {/* 🎯 PERFECT CENTER LOGO 🎯 */}
+             <div className="mx-auto w-28 h-28 md:w-36 md:h-36 mb-6 rounded-full p-1 bg-gradient-to-tr from-skin-accent to-purple-600 shadow-xl animate-float-gentle flex items-center justify-center overflow-hidden bg-black border-2 border-skin-accent/30 relative">
+                 <div className="absolute inset-0 flex items-center justify-center">
+                    <img 
+                        src={brandLogo} 
+                        alt="Glyph Circle Logo" 
+                        className="w-[85%] h-[85%] object-contain block m-auto transition-transform hover:scale-110 duration-700" 
                         referrerPolicy="no-referrer"
-                        onError={(e) => { e.currentTarget.src = DEFAULT_LOGO; }}
-                     />
+                    />
                  </div>
-             )}
+                 {/* Decorative spinning ring */}
+                 <div className="absolute inset-[-5px] border border-white/5 rounded-full animate-[spin_12s_linear_infinite]"></div>
+             </div>
              <h1 className="text-3xl font-cinzel font-bold text-skin-accent tracking-widest mb-1 uppercase drop-shadow-md">GlyphCircle</h1>
              <p className="text-skin-text/60 font-lora italic text-sm">Enter the Circle of Wisdom</p>
           </div>

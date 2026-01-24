@@ -199,10 +199,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
+        // Fix: Use a robust redirect URL that includes the subfolder (e.g. /Glyph-Circle/)
+        const redirectTo = window.location.origin + window.location.pathname;
         const { error } = await supabase.auth.signInWithOtp({ 
             email,
             options: {
-                emailRedirectTo: window.location.origin
+                emailRedirectTo: redirectTo
             }
         });
         if (error) throw error;
@@ -271,8 +273,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
+        // Fix: Ensure confirmation email redirects to the correct subfolder
+        const redirectTo = window.location.origin + window.location.pathname;
         const { error } = await supabase.auth.signUp({ 
-            email, password, options: { data: { full_name: name } }
+            email, password, options: { data: { full_name: name }, emailRedirectTo: redirectTo }
         });
         if (error) throw error;
     } catch (e: any) {

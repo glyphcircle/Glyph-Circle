@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 // @ts-ignore
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import Home from './components/Home';
@@ -53,15 +53,73 @@ import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
 import { ADMIN_EMAILS } from './constants';
 
-interface ProtectedRouteProps {
-  children?: React.ReactNode;
-}
+/**
+ * 🕉️ IdleCursor Component
+ * Changes cursor to Devanagari 'OM' when user is idle.
+ */
+const IdleCursor: React.FC = () => {
+  const [isIdle, setIsIdle] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  // Fix: Use any to avoid NodeJS.Timeout vs number namespace conflicts in browser
+  const idleTimer = useRef<any>(null);
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      setIsIdle(false);
+      setPos({ x: e.clientX, y: e.clientY });
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(() => setIsIdle(true), 3000);
+    };
+
+    const handleClick = () => setIsIdle(false);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mousedown', handleClick);
+    window.addEventListener('keydown', handleClick);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('keydown', handleClick);
+    };
+  }, []);
+
+  if (!isIdle) return null;
+
+  return (
+    <div 
+      className="fixed pointer-events-none z-[9999] select-none animate-pulse-glow"
+      style={{ 
+        left: pos.x, 
+        top: pos.y, 
+        transform: 'translate(-50%, -50%)',
+        cursor: 'none'
+      }}
+    >
+      <span className="text-5xl text-amber-400 font-bold drop-shadow-[0_0_20px_rgba(245,158,11,0.9)] select-none">ॐ</span>
+      <style>{`
+        body, button, a, input { cursor: none !important; }
+      `}</style>
+    </div>
+  );
+};
+
+/**
+ * 🔒 ProtectedRoute Component
+ * Redirects unauthenticated users to login or shows loading state during verification.
+ */
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!isAuthenticated) return <Navigate to="/login" />;
-  return <>{children}</>;
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-12 h-12 border-4 border-skin-accent border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 function App() {
@@ -73,10 +131,8 @@ function App() {
   const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/master-login';
   const showLayout = isAuthenticated && !isAuthPage && !isAdminPage;
 
-  // Strict Admin Check - ensures normal users never see gear/db buttons
   const isAdmin = useMemo(() => {
     if (!user) return false;
-    // Role must be explicitly 'admin' AND email must be in authorized list
     return user.role === 'admin' && ADMIN_EMAILS.includes(user.email || '');
   }, [user]);
 
@@ -85,7 +141,7 @@ function App() {
       <AnalyticsProvider>
         <PushNotifications>
           <div className="bg-skin-base min-h-screen text-skin-text flex flex-col font-lora overflow-x-hidden transition-colors duration-500">
-            
+            <IdleCursor />
             {showLayout && <Header onLogout={logout} isMobile={isMobile} />}
             
             {isAuthenticated && (
@@ -93,13 +149,9 @@ function App() {
                  <DailyReminder />
                  {!isMobile && <BadgeCounter />}
                  <LargeTextMode />
-                 
-                 {/* Guarded UI - Admin Only */}
                  {isAdmin && <ContextDbNavigator />}
                  {isAdmin && <ABTestStatus />}
-                 
                  {!isAdminPage && <GamificationHUD />}
-                 
                  {!isAdminPage && !isMobile && (
                     <Link to="/referrals" className="fixed bottom-6 left-6 z-40 animate-pulse-glow group">
                        <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-700 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center justify-center border-2 border-white/20 transform group-hover:scale-110 transition-transform">

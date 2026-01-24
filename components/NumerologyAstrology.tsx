@@ -1,13 +1,12 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
 import { getAstroNumeroReading } from '../services/geminiService';
 import { calculateNumerology } from '../services/numerologyEngine';
-import { calculateAstrology, AstroChart } from '../services/astrologyEngine';
+import { calculateAstrology } from '../services/astrologyEngine';
 import Button from './shared/Button';
 import ProgressBar from './shared/ProgressBar';
 import Card from './shared/Card';
-import Modal from './shared/Modal';
 import { useTranslation } from '../hooks/useTranslation';
 import { usePayment } from '../context/PaymentContext';
 import FullReport from './FullReport';
@@ -30,16 +29,13 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string>('');
   const [isPaid, setIsPaid] = useState<boolean>(false);
-  const [showF4Help, setShowF4Help] = useState(false);
   
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const { t, language } = useTranslation();
   const { openPayment } = usePayment();
   const { db } = useDb();
   const { user, saveReading } = useAuth();
 
-  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com', 'admin@glyph.circle'];
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
+  const isAdmin = user && ['master@glyphcircle.com', 'admin@glyphcircle.com', 'admin@glyph.circle'].includes(user.email);
 
   const serviceConfig = db.services?.find((s: any) => s.id === mode);
   const servicePrice = serviceConfig?.price || (mode === 'astrology' ? 99 : 49);
@@ -60,22 +56,11 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
   }, []);
 
   useEffect(() => {
-      setReading('');
-      setEngineData(null);
-      setIsPaid(false);
-      setError('');
+    setReading('');
+    setEngineData(null);
+    setIsPaid(false);
+    setError('');
   }, [mode]);
-
-  useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-          if (e.key === 'F4') {
-              e.preventDefault();
-              setShowF4Help(true);
-          }
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError('');
@@ -85,41 +70,35 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
   const handleSmartDateChange = (date: string) => { setFormData(prev => ({ ...prev, dob: date })); setError(''); };
   const handleSmartTimeChange = (time: string) => { setFormData(prev => ({ ...prev, tob: time })); setError(''); };
   const handleSmartCityChange = (city: string, coordinates?: {lat: number, lng: number}) => {
-      setFormData(prev => ({ ...prev, pob: city }));
-      if (coordinates) setCoords(coordinates);
-      setError('');
+    setFormData(prev => ({ ...prev, pob: city }));
+    if (coordinates) setCoords(coordinates);
+    setError('');
   };
 
   const validateForm = () => {
-    if (!validationService.isValidName(formData.name)) return t('invalidName') || 'Please enter a valid name.';
-    if (!validationService.isValidDate(formData.dob)) return t('invalidDob') || 'Please enter a valid Date of Birth.';
+    if (!validationService.isValidName(formData.name)) return 'Please enter a valid name.';
+    if (!validationService.isValidDate(formData.dob)) return 'Please enter a valid Date of Birth.';
     if (mode === 'astrology') {
-        if (!validationService.isNotEmpty(formData.pob)) return t('invalidPob') || 'Place of Birth is required for Astrology.';
-        if (!validationService.isValidTime(formData.tob)) return t('invalidTob') || 'Valid Time of Birth is required for Astrology.';
+      if (!validationService.isNotEmpty(formData.pob)) return 'Place of Birth is required for Astrology.';
+      if (!validationService.isValidTime(formData.tob)) return 'Valid Time of Birth is required.';
     }
     return '';
   };
 
   const getLanguageName = (code: string) => {
-      const map: Record<string, string> = { en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', mr: 'Marathi', es: 'Spanish', fr: 'French', ar: 'Arabic', pt: 'Portuguese' };
-      return map[code] || 'English';
+    const map: Record<string, string> = { en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', mr: 'Marathi', es: 'Spanish', fr: 'French', ar: 'Arabic', pt: 'Portuguese' };
+    return map[code] || 'English';
   };
 
   const handleGetReading = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    setShowF4Help(false);
     const validationError = validateForm();
     if (validationError) {
-        setError(validationError);
-        return;
+      setError(validationError);
+      return;
     }
 
-    localStorage.setItem('glyph_user_details', JSON.stringify({ 
-        name: formData.name, 
-        dob: formData.dob,
-        pob: formData.pob,
-        tob: formData.tob
-    }));
+    localStorage.setItem('glyph_user_details', JSON.stringify(formData));
 
     setIsLoading(true);
     setProgress(0);
@@ -128,150 +107,147 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
     setError('');
     setIsPaid(false);
 
-    const timer = setInterval(() => { setProgress(prev => (prev >= 90 ? prev : prev + (Math.random() * 5))); }, 500);
+    const timer = setInterval(() => { setProgress(prev => (prev >= 90 ? prev : prev + (Math.random() * 6))); }, 350);
 
-    let retryCount = 0;
-    const maxRetries = 2;
+    const maxRetries = 3;
+    let attempts = 0;
 
-    const performRetrieval = async () => {
-        try {
-          let calculatedStats = null;
-          if (mode === 'numerology') {
-              calculatedStats = calculateNumerology({ name: formData.name, dob: formData.dob, system: 'chaldean' });
-              calculatedStats = { ...calculatedStats, vedicGrid: {} };
-          } else {
-              calculatedStats = calculateAstrology({ name: formData.name, dob: formData.dob, tob: formData.tob, pob: formData.pob, lat: coords?.lat, lng: coords?.lng });
-          }
-          setEngineData(calculatedStats);
-
-          const result = await getAstroNumeroReading({ mode, ...formData, language: getLanguageName(language) });
-          
-          if (!result.reading || result.reading.length < 20) throw new Error("Incomplete reading");
-
-          clearInterval(timer);
-          setProgress(100);
-          setReading(result.reading);
-
-          const featureName = mode === 'astrology' ? t('astrology') : t('numerology');
-          saveReading({
-              type: mode,
-              title: `${featureName} for ${formData.name}`,
-              content: result.reading,
-              image_url: cloudManager.resolveImage(reportImage),
-              meta_data: calculatedStats
-          });
-
-        } catch (err: any) {
-          if (retryCount < maxRetries) {
-              retryCount++;
-              console.warn(`Retry attempt ${retryCount}...`);
-              await performRetrieval();
-          } else {
-              clearInterval(timer);
-              setError(`The Oracle is currently busy. Please try again in a few moments.`);
-          }
+    const performFetch = async () => {
+      try {
+        let calculatedStats = null;
+        if (mode === 'numerology') {
+          calculatedStats = calculateNumerology({ name: formData.name, dob: formData.dob });
+        } else {
+          calculatedStats = calculateAstrology({ name: formData.name, dob: formData.dob, tob: formData.tob, pob: formData.pob, lat: coords?.lat, lng: coords?.lng });
         }
+        setEngineData(calculatedStats);
+
+        const result = await getAstroNumeroReading({ mode, ...formData, language: getLanguageName(language) });
+        
+        if (!result.reading || result.reading.trim().length < 50) {
+          throw new Error("Message too faint.");
+        }
+
+        clearInterval(timer);
+        setProgress(100);
+        setReading(result.reading);
+
+        saveReading({
+          type: mode,
+          title: `${mode.toUpperCase()} reading for ${formData.name}`,
+          content: result.reading,
+          image_url: cloudManager.resolveImage(reportImage),
+          meta_data: calculatedStats
+        });
+
+      } catch (err: any) {
+        attempts++;
+        if (attempts < maxRetries) {
+          console.warn(`Attempt ${attempts} failed, retrying...`);
+          await new Promise(r => setTimeout(r, 1200));
+          await performFetch();
+        } else {
+          clearInterval(timer);
+          setError(`The Oracle is currently busy. Please realign your frequencies and try again.`);
+        }
+      }
     };
 
-    await performRetrieval();
+    await performFetch();
     setIsLoading(false);
-  }, [formData, mode, language, t, coords, saveReading, db, reportImage]);
+  }, [formData, mode, language, coords, saveReading, reportImage]);
   
   const handleReadMore = () => {
-    const title = mode === 'astrology' ? 'Astrology Reading' : 'Numerology Reading';
+    if (!reading) return;
+    const title = mode === 'astrology' ? 'Your Astrology Destiny' : 'Your Numerology Summary';
     openPayment(() => {
-        setIsPaid(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Callback from PaymentModal when payment logic finishes
+      setIsPaid(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }, title, servicePrice);
   };
 
-  useEffect(() => {
-    if ((reading || engineData) && !isLoading && canvasRef.current) {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#0F0F23';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2;
-        ctx.strokeRect(5, 5, canvas.width-10, canvas.height-10);
-        ctx.fillStyle = '#F59E0B'; ctx.font = '20px Cinzel'; ctx.textAlign = 'center';
-        ctx.fillText(mode.toUpperCase(), canvas.width/2, canvas.height/2);
-    }
-  }, [reading, engineData, mode, isLoading]);
-
-  const featureName = mode === 'astrology' ? t('astrology') : t('numerology');
   const featureTitle = mode === 'astrology' ? t('astrologyReading') : t('numerologyReading');
 
   return (
-    <>
-      <div className="max-w-4xl mx-auto relative">
-          <Link to="/home" className="inline-flex items-center text-amber-200 hover:text-amber-400 transition-colors mb-4 group">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              {t('backToHome')}
-          </Link>
+    <div className="max-w-4xl mx-auto relative pb-24">
+      <Link to="/home" className="inline-flex items-center text-amber-200 hover:text-amber-400 transition-colors mb-8 group">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 transform group-hover:-translate-x-2 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        {t('backToHome')}
+      </Link>
 
-        <Card>
-          <div className="p-6">
-            <h2 className="text-3xl font-bold text-center text-amber-300 mb-2">{featureTitle}</h2>
-            <p className="text-center text-amber-100 mb-8">{t('enterDetailsPrompt', { featureName: featureName.toLowerCase() })}</p>
+      <Card className="mb-10 p-10 border-amber-500/20 shadow-2xl">
+        <h2 className="text-4xl font-cinzel font-black text-center text-amber-300 mb-3 tracking-widest uppercase">{featureTitle}</h2>
+        <p className="text-center text-amber-100/60 mb-12 font-lora italic text-lg">Consult the ancient wisdom to reveal your path.</p>
 
-            <form onSubmit={handleGetReading} className="grid md:grid-cols-2 gap-6 mb-8">
-              <div className="md:col-span-2">
-                <label className="block text-amber-200 mb-1 font-cinzel text-xs font-bold uppercase tracking-widest">{t('fullName')}</label>
-                <input type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full p-3 bg-gray-900 border border-amber-500/30 rounded-lg text-amber-50 placeholder-gray-600 font-mono text-sm" placeholder="e.g. John Doe" />
-              </div>
-              <div className={mode === 'numerology' ? "md:col-span-2" : ""}><SmartDatePicker value={formData.dob} onChange={handleSmartDateChange} /></div>
-              {mode === 'astrology' && (<><div><SmartCitySearch value={formData.pob} onChange={handleSmartCityChange} /></div><div><SmartTimePicker value={formData.tob} date={formData.dob} onChange={handleSmartTimeChange} /></div></>)}
-              <div className="md:col-span-2 text-center">
-                  <Button type="submit" disabled={isLoading} className="mt-4 w-full md:w-auto px-12 bg-gradient-to-r from-amber-700 to-maroon-800 border-amber-500/50">{isLoading ? t('generating') : "Reveal My Destiny"}</Button>
-              </div>
-            </form>
-            {error && <p className="text-red-400 text-center mb-4 bg-red-900/20 p-2 rounded animate-pulse">{error}</p>}
+        <form onSubmit={handleGetReading} className="grid md:grid-cols-2 gap-10">
+          <div className="md:col-span-2">
+            <label className="block text-amber-200 mb-2 font-cinzel text-[10px] font-black uppercase tracking-[0.3em]">{t('fullName')}</label>
+            <input type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full p-4 bg-black/40 border border-amber-500/20 rounded-2xl text-white placeholder-gray-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/50 outline-none transition-all text-lg" placeholder="Seeker's Name" />
           </div>
-        </Card>
-        
-        {(isLoading || reading) && (
-          <Card className="mt-8 animate-fade-in-up">
-              <div className="p-6">
-                  <h3 className="text-2xl font-semibold text-amber-300 mb-4 text-center">{t('yourSummary', { featureName })}</h3>
-                  {isLoading && <ProgressBar progress={progress} message={`Consulting the ${mode === 'astrology' ? 'Stars' : 'Numbers'}...`} estimatedTime="Approx. 8 seconds" />}
-                  {reading && !isLoading && (
-                      <div className="w-full">
-                          {!isPaid ? (
-                              <div className="grid md:grid-cols-2 gap-8 items-center">
-                                  <div className="bg-black/40 p-4 rounded-lg border border-amber-500/20 flex justify-center"><canvas ref={canvasRef} width={300} height={300} className="max-w-full h-auto rounded shadow-lg bg-[#1a1a1a]" /></div>
-                                  <div className="space-y-4 text-amber-100">
-                                      <div className="whitespace-pre-wrap italic font-lora border-l-2 border-amber-500/30 pl-4 text-sm opacity-80 line-clamp-6">{reading}</div>
-                                      <div className="pt-4 border-t border-amber-500/20 flex flex-col gap-2">
-                                          <Button onClick={handleReadMore} className="w-full bg-gradient-to-r from-amber-600 to-maroon-700 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.4)]">{t('readMore')}</Button>
-                                          {isAdmin && <button onClick={() => setIsPaid(true)} className="text-xs text-amber-500 hover:text-amber-300 underline font-mono">👑 Admin Access: Skip Payment</button>}
-                                      </div>
-                                  </div>
-                              </div>
-                          ) : (
-                              <FullReport reading={reading} title={t('yourSummary', { featureName })} imageUrl={reportImage} chartData={engineData} />
-                          )}
+          <div className={mode === 'numerology' ? "md:col-span-2" : ""}><SmartDatePicker value={formData.dob} onChange={handleSmartDateChange} /></div>
+          {mode === 'astrology' && (<><div><SmartCitySearch value={formData.pob} onChange={handleSmartCityChange} /></div><div><SmartTimePicker value={formData.tob} date={formData.dob} onChange={handleSmartTimeChange} /></div></>)}
+          <div className="md:col-span-2 text-center mt-8">
+            <Button type="submit" disabled={isLoading} className="w-full md:w-auto px-20 py-5 bg-gradient-to-r from-amber-700 to-maroon-900 border-amber-500/50 shadow-[0_0_30px_rgba(139,92,5,0.3)] text-xl font-cinzel font-bold tracking-[0.2em] uppercase rounded-full">
+              {isLoading ? 'Channeling...' : 'Unlock Destiny'}
+            </Button>
+          </div>
+        </form>
+        {error && <p className="text-red-400 text-center mt-10 bg-red-950/20 p-4 rounded-xl border border-red-500/30 animate-shake">{error}</p>}
+      </Card>
+      
+      {(isLoading || reading) && (
+        <div className="animate-fade-in-up">
+          {!isPaid ? (
+            <Card className="overflow-hidden border-amber-500/40 bg-gray-900/60 backdrop-blur-xl">
+              <div className="p-10">
+                <h3 className="text-3xl font-cinzel font-black text-amber-300 mb-10 text-center uppercase tracking-[0.3em]">Oracle's First Vision</h3>
+                {isLoading ? (
+                  <ProgressBar progress={progress} message="Observing the celestial dance..." estimatedTime="~8 seconds" />
+                ) : (
+                  <div className="grid md:grid-cols-2 gap-12 items-center">
+                    <div className="bg-black/60 p-12 rounded-[2rem] border-2 border-[#d4af37]/40 flex flex-col items-center justify-center min-h-[400px] shadow-inner relative group overflow-hidden">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.08)_0%,transparent_80%)]"></div>
+                      <div className="w-40 h-40 bg-[#0d0d0d] rounded-full border-[5px] border-[#d4af37] flex items-center justify-center mb-10 shadow-[0_0_50px_rgba(212,175,55,0.5)] relative z-10 transition-transform group-hover:scale-110 duration-700">
+                        <span className="text-7xl drop-shadow-[0_2px_10px_rgba(245,158,11,0.8)]">❂</span>
                       </div>
-                  )}
-              </div>
-          </Card>
-        )}
-        <Modal isVisible={showF4Help} onClose={() => setShowF4Help(false)}>
-            <div className="p-6 bg-gray-900 text-amber-50 relative">
-                <div className="flex items-center gap-3 mb-6 border-b border-amber-500/30 pb-4"><div className="w-10 h-10 bg-purple-900 rounded-full flex items-center justify-center text-xl shadow-lg border border-purple-500/50">✨</div><div><h3 className="text-xl font-cinzel font-bold text-amber-300">Astro-Smart Entry</h3><p className="text-[10px] text-gray-400 font-mono">INTELLIGENT DATA VALIDATION WIZARD</p></div></div>
-                <div className="space-y-6">
-                    <div className="bg-black/30 p-4 rounded-lg border border-amber-500/20"><SmartDatePicker value={formData.dob} onChange={handleSmartDateChange} /></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-black/30 p-4 rounded-lg border border-amber-500/20"><SmartCitySearch value={formData.pob} onChange={handleSmartCityChange} /></div>
-                        <div className="bg-black/30 p-4 rounded-lg border border-amber-500/20"><SmartTimePicker value={formData.tob} date={formData.dob} onChange={handleSmartTimeChange} /></div>
+                      <span className="text-[#d4af37] font-cinzel font-black text-3xl tracking-[0.5em] uppercase relative z-10 drop-shadow-sm">{mode}</span>
                     </div>
-                    <div className="flex gap-4 pt-4"><button onClick={() => setShowF4Help(false)} className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded-lg font-bold border border-gray-600 transition-colors">Cancel</button><Button onClick={(e) => handleGetReading(e)} className="flex-1 bg-gradient-to-r from-purple-700 to-indigo-900 border-purple-500">Generate Reading ✨</Button></div>
-                </div>
-            </div>
-        </Modal>
-      </div>
-    </>
+                    <div className="space-y-10">
+                      <div className="relative">
+                        <div className="whitespace-pre-wrap italic font-lora text-amber-100/90 leading-relaxed text-2xl line-clamp-6 drop-shadow-lg">
+                          "{reading}"
+                        </div>
+                        <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-[#0F0F23] via-[#0F0F23]/80 to-transparent"></div>
+                      </div>
+                      <div className="pt-10 border-t border-amber-500/10 space-y-6">
+                        <Button onClick={handleReadMore} className="w-full py-6 bg-gradient-to-r from-amber-600 to-maroon-800 border-amber-400 shadow-2xl font-cinzel font-black tracking-[0.2em] text-xl transform hover:scale-[1.03] active:scale-95">Reveal Complete Report</Button>
+                        {isAdmin && <button onClick={() => setIsPaid(true)} className="w-full text-[11px] text-amber-500/60 hover:text-white underline font-mono tracking-widest uppercase transition-colors">Admin Direct Access</button>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          ) : (
+            <FullReport 
+              reading={reading} 
+              title={mode === 'astrology' ? 'Your Astrology Destiny' : 'Your Numerology Summary'} 
+              imageUrl={reportImage} 
+              chartData={{
+                ...engineData,
+                luckyNumbers: mode === 'numerology' ? [engineData?.coreNumbers?.mulank || 7, engineData?.coreNumbers?.bhagyank || 3, (engineData?.coreNumbers?.namank || 9)] : [7, 3, 9],
+                vedicMetrics: [
+                  { label: 'Karmic Potential', value: 88 },
+                  { label: 'Spiritual Sattva', value: 74 },
+                  { label: 'Material Success', value: 92 }
+                ]
+              }} 
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 

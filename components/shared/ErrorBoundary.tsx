@@ -1,4 +1,3 @@
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
@@ -16,35 +15,38 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-// Fix: Explicitly extend Component with Props and State interfaces to ensure properties like this.state and this.props are recognized.
+// Fix: Use the named Component import for clearer inheritance in strict TypeScript environments
 class ErrorBoundary extends Component<Props, State> {
-  // Fix: Initialize state as a class property to ensure it is recognized by the TypeScript compiler on the instance.
+  // Fix: Explicitly declare the state property on the class to ensure it's recognized by the compiler
   public state: State = {
     hasError: false,
     error: null,
   };
 
+  // Fix: Ensure super(props) is called in constructor for correct initialization of base class
   constructor(props: Props) {
     super(props);
   }
 
   public static getDerivedStateFromError(error: Error): State {
+    // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log the error to the console
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
   /* Handle retry logic with an arrow function to preserve 'this' context */
   public handleRetry = () => {
-    // Fix: setState is now correctly typed as a member inherited from the Component class.
+    // Fix: Access setState through inheritance from Component
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   };
 
   public render(): ReactNode {
-    // Fix: Access state and props from the class instance correctly with full type support.
+    // Fix: Access state and props properties inherited from Component
     const { hasError, error } = this.state;
     const { children } = this.props;
 

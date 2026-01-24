@@ -1,0 +1,32 @@
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies 🔧
+        run: npm install
+
+      - name: Build 🏗️
+        run: npm run build
+        env:
+          # This maps the GitHub Secret to a shell environment variable
+          # which Vite will then inject into your JS code.
+          API_KEY: ${{ secrets.API_KEY }}
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages

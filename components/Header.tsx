@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
@@ -9,13 +10,14 @@ import MasterToolsModal from './MasterToolsModal';
 import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
 import { ADMIN_EMAILS } from '../constants';
+import OptimizedImage from './shared/OptimizedImage';
 
 interface HeaderProps {
   onLogout: () => void;
   isMobile?: boolean;
 }
 
-const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=200';
+const DEFAULT_LOGO = 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
 
 const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
   const { t } = useTranslation();
@@ -28,10 +30,12 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
     return user?.role === 'admin' && ADMIN_EMAILS.includes(user.email || '');
   }, [user]);
 
-  const logoAsset = db.image_assets?.find((a: any) => a.id === 'header_logo') ||
-                    db.image_assets?.find((a: any) => a.tags?.includes('header_logo'));
-  
-  const logoUrl = logoAsset ? cloudManager.resolveImage(logoAsset.path) : null;
+  const logoUrl = useMemo(() => {
+    const logoAsset = db.image_assets?.find((a: any) => a.tags?.includes('brand_logo') && a.status === 'active') ||
+                      db.image_assets?.find((a: any) => a.id === 'header_logo');
+    
+    return logoAsset ? cloudManager.resolveImage(logoAsset.path) : DEFAULT_LOGO;
+  }, [db.image_assets]);
 
   return (
     <header className="bg-skin-surface/95 backdrop-blur-xl shadow-2xl sticky top-0 z-50 border-b border-skin-border/20 transition-all duration-500">
@@ -39,15 +43,14 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
         {/* LEFT: Logo & Title */}
         <div className="flex items-center gap-3 overflow-hidden min-w-0">
             <Link to="/home" className="cursor-pointer flex-shrink-0 group flex items-center gap-2 md:gap-3 min-w-0">
-                {logoUrl && (
-                    <img 
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-full border border-skin-accent/30 overflow-hidden shadow-lg group-hover:scale-110 group-hover:border-skin-accent/60 transition-all duration-500 flex-shrink-0 bg-black flex items-center justify-center">
+                    <OptimizedImage 
                         src={logoUrl} 
                         alt="Logo" 
-                        className="w-9 h-9 md:w-11 md:h-11 rounded-full border border-skin-accent/30 object-cover shadow-lg group-hover:scale-110 group-hover:border-skin-accent/60 transition-all duration-500 flex-shrink-0" 
-                        referrerPolicy="no-referrer"
-                        onError={(e) => { e.currentTarget.src = DEFAULT_LOGO; }}
+                        className="w-full h-full object-contain" 
+                        showSkeleton={false}
                     />
-                )}
+                </div>
                 <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-skin-accent tracking-widest font-cinzel group-hover:brightness-125 transition-all truncate drop-shadow-sm uppercase">
                   {t('glyphCircle')}
                 </h1>

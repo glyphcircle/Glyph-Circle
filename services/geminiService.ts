@@ -1,6 +1,5 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-// Fix: Added missing interface definitions for PalmMetricResponse, FaceMetricResponse and DreamAnalysisResponse
 export interface PalmMetricResponse {
   rawMetrics: any;
   textReading: string;
@@ -17,13 +16,7 @@ export interface DreamAnalysisResponse {
   symbols: string[];
 }
 
-/**
- * Fix: Changed from singleton to per-call initialization as per guidelines
- * "Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key"
- */
-const getAi = (): GoogleGenAI => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
-}
+const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -67,287 +60,195 @@ async function decodeAudioData(
 }
 
 export const generateMantraAudio = async (text: string, voiceName: 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir' = 'Charon'): Promise<AudioBuffer> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text: `Recite this with deep, mystical resonance: ${text}` }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName },
-                    },
-                },
-            },
-        });
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-preview-tts",
+    contents: [{ parts: [{ text: `Recite this with deep, mystical resonance: ${text}` }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
+      },
+    },
+  });
 
-        if (!response.candidates || response.candidates.length === 0) {
-            throw new Error("The Oracle is currently in silence.");
-        }
-
-        const parts = response.candidates[0].content.parts;
-        let base64Audio = '';
-        for (const part of parts) {
-            if (part.inlineData?.data) {
-                base64Audio = part.inlineData.data;
-                break;
-            }
-        }
-
-        if (!base64Audio) throw new Error("No audio data returned from the Oracle.");
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        const decodedBytes = decodeBase64(base64Audio);
-        return await decodeAudioData(decodedBytes, audioCtx, 24000, 1);
-    } catch (e: any) {
-        console.error("TTS Generation Failed:", e);
-        throw e;
-    }
+  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!base64Audio) throw new Error("No audio data returned.");
+  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+  return await decodeAudioData(decodeBase64(base64Audio), audioCtx, 24000, 1);
 };
 
 export const createSageSession = (contextReading: string, topic: string) => {
-    try {
-        const ai = getAi();
-        return ai.chats.create({
-            model: 'gemini-3-flash-preview',
-            config: {
-                systemInstruction: `You are Sage Vashishtha, an ancient Vedic Rishi and guide. User topic: ${topic}. Context: ${contextReading.substring(0, 5000)}`
-            }
-        });
-    } catch (e: any) {
-        console.error("Chat Session Creation Error:", e);
-        throw new Error("Sage Vashishtha is currently in deep meditation. Try later.");
+  const ai = getAi();
+  return ai.chats.create({
+    model: 'gemini-3-flash-preview',
+    config: {
+      systemInstruction: `You are Sage Vashishtha, an ancient Vedic Rishi. Context: ${contextReading.substring(0, 5000)}`
     }
+  });
 };
 
 export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Translate the following report into ${targetLanguage}. Maintain all Markdown formatting strictly. Text: ${text}`
-        });
-        return response.text || text;
-    } catch (error: any) {
-        console.error("Translation failed:", error);
-        return text;
-    }
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Translate the following report into ${targetLanguage}. Maintain all formatting: ${text}`
+  });
+  return response.text || text;
 };
 
 export const getGemstoneGuidance = async (name: string, dob: string, intent: string, language: string = 'English'): Promise<any> => {
-    try {
-        const ai = getAi();
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                primaryGem: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, sanskritName: { type: Type.STRING }, reason: { type: Type.STRING }, wearingMethod: { type: Type.STRING } } },
-                mantra: { type: Type.OBJECT, properties: { sanskrit: { type: Type.STRING }, pronunciation: { type: Type.STRING }, meaning: { type: Type.STRING }, benefits: { type: Type.STRING } } },
-                fullReading: { type: Type.STRING }
-            },
-            required: ["primaryGem", "mantra", "fullReading"]
-        };
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `User: ${name}, DOB: ${dob}, Intent: ${intent}. Recommend Gemstone & Mantra in ${language}.`,
-            config: { responseMimeType: "application/json", responseSchema: schema }
-        });
-        return JSON.parse(response.text || "{}");
-    } catch (error: any) {
-        console.error("Gemstone Service Error:", error);
-        throw new Error("The gemstone revelation was clouded.");
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Recommend gemstone for ${name}, DOB ${dob}, seeking ${intent} in ${language}.`,
+    config: { 
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          primaryGem: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, sanskritName: { type: Type.STRING }, reason: { type: Type.STRING }, wearingMethod: { type: Type.STRING } } },
+          mantra: { type: Type.OBJECT, properties: { sanskrit: { type: Type.STRING }, pronunciation: { type: Type.STRING }, meaning: { type: Type.STRING } } },
+          fullReading: { type: Type.STRING }
+        },
+        required: ["primaryGem", "mantra", "fullReading"]
+      }
     }
+  });
+  return JSON.parse(response.text || "{}");
 };
 
 export const getAyurvedicAnalysis = async (answers: string, language: string = 'English'): Promise<any> => {
-    try {
-        const ai = getAi();
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                dosha: { type: Type.STRING },
-                breakdown: { type: Type.OBJECT, properties: { vata: { type: Type.NUMBER }, pitta: { type: Type.NUMBER }, kapha: { type: Type.NUMBER } } },
-                diet: { type: Type.ARRAY, items: { type: Type.STRING } },
-                lifestyle: { type: Type.ARRAY, items: { type: Type.STRING } },
-                fullReading: { type: Type.STRING }
-            },
-            required: ["dosha", "breakdown", "diet", "lifestyle", "fullReading"]
-        };
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze Dosha: ${answers}. Provide result in ${language}.`,
-            config: { responseMimeType: "application/json", responseSchema: schema }
-        });
-        return JSON.parse(response.text || "{}");
-    } catch (error: any) {
-        console.error("Ayurveda Service Error:", error);
-        throw new Error("Dhanvantari is silent.");
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Ayurveda analysis for: ${answers} in ${language}.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          dosha: { type: Type.STRING },
+          breakdown: { type: Type.OBJECT, properties: { vata: { type: Type.NUMBER }, pitta: { type: Type.NUMBER }, kapha: { type: Type.NUMBER } } },
+          diet: { type: Type.ARRAY, items: { type: Type.STRING } },
+          lifestyle: { type: Type.ARRAY, items: { type: Type.STRING } },
+          fullReading: { type: Type.STRING }
+        }
+      }
     }
+  });
+  return JSON.parse(response.text || "{}");
 };
 
 export const getMuhurat = async (activity: string, date: string, language: string = 'English'): Promise<any> => {
-    try {
-        const ai = getAi();
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                bestTime: { type: Type.STRING },
-                rating: { type: Type.STRING },
-                reason: { type: Type.STRING },
-                fullReading: { type: Type.STRING }
-            },
-            required: ["bestTime", "rating", "reason", "fullReading"]
-        };
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Calculate Muhurat for: "${activity}" on ${date}. Output in ${language}.`,
-            config: { responseMimeType: "application/json", responseSchema: schema }
-        });
-        return JSON.parse(response.text || "{}");
-    } catch (error: any) {
-        console.error("Muhurat Service Error:", error);
-        throw new Error("Time is elusive.");
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Best time for ${activity} on ${date} in ${language}.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: { bestTime: { type: Type.STRING }, rating: { type: Type.STRING }, reason: { type: Type.STRING }, fullReading: { type: Type.STRING } }
+      }
     }
+  });
+  return JSON.parse(response.text || "{}");
 };
 
 export const getCosmicSync = async (p1: any, p2: any, language: string = 'English'): Promise<any> => {
-    try {
-        const ai = getAi();
-        const schema = {
-            type: Type.OBJECT,
-            properties: {
-                compatibilityScore: { type: Type.NUMBER },
-                relationshipType: { type: Type.STRING },
-                strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-                challenges: { type: Type.ARRAY, items: { type: Type.STRING } },
-                fullReading: { type: Type.STRING }
-            },
-            required: ["compatibilityScore", "relationshipType", "strengths", "challenges", "fullReading"]
-        };
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze Compatibility: Person A ${JSON.stringify(p1)}, Person B ${JSON.stringify(p2)}. Language: ${language}.`,
-            config: { responseMimeType: "application/json", responseSchema: schema }
-        });
-        return JSON.parse(response.text || "{}");
-    } catch (error: any) {
-        console.error("CosmicSync Error:", error);
-        throw new Error("Connection cloudy.");
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Compatibility: P1 ${JSON.stringify(p1)}, P2 ${JSON.stringify(p2)} in ${language}.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: { compatibilityScore: { type: Type.NUMBER }, relationshipType: { type: Type.STRING }, strengths: { type: Type.ARRAY, items: { type: Type.STRING } }, challenges: { type: Type.ARRAY, items: { type: Type.STRING } }, fullReading: { type: Type.STRING } }
+      }
     }
+  });
+  return JSON.parse(response.text || "{}");
 };
 
 export const getPalmReading = async (imageFile: File, language: string = 'English'): Promise<PalmMetricResponse> => {
-  try {
-    const ai = getAi();
-    const base64Data = await fileToBase64(imageFile);
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Palmistry analysis in ${language}.` }] },
-      config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
-    });
-    const text = response.text;
-    if (!text) throw new Error("Empty response");
-    const json = JSON.parse(text);
-    return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
-  } catch (error: any) {
-    console.error("Palm Reading Error:", error);
-    throw new Error("Line analysis failed.");
-  }
+  const ai = getAi();
+  const base64Data = await fileToBase64(imageFile);
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Palmistry analysis in ${language}.` }] },
+    config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
+  });
+  const text = response.text;
+  if (!text) throw new Error("Empty response from Oracle.");
+  const json = JSON.parse(text);
+  return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
 };
 
 export const getFaceReading = async (imageFile: File, language: string = 'English'): Promise<FaceMetricResponse> => {
-    try {
-        const ai = getAi();
-        const base64Data = await fileToBase64(imageFile);
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Face analysis in ${language}.` }] },
-            config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
-        });
-        const text = response.text;
-        if (!text) throw new Error("Empty response");
-        const json = JSON.parse(text);
-        return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
-    } catch (error: any) {
-        console.error("Face Reading Error:", error);
-        throw new Error("Facial mapping failed.");
-    }
+  const ai = getAi();
+  const base64Data = await fileToBase64(imageFile);
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: { parts: [{ inlineData: { mimeType: imageFile.type, data: base64Data } }, { text: `Vedic Face reading in ${language}.` }] },
+    config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { textReading: { type: Type.STRING } } } }
+  });
+  const text = response.text;
+  if (!text) throw new Error("Empty response from Oracle.");
+  const json = JSON.parse(text);
+  return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
 };
 
 export const getAstroNumeroReading = async (details: any): Promise<{ reading: string }> => {
-    try {
-        const ai = getAi();
-        let prompt = `Expert ${details.mode} reading for: Name: ${details.name}, DOB: ${details.dob}, Language: ${details.language}.`;
-        if (details.mode === 'astrology') {
-            prompt += ` TOB: ${details.tob}, POB: ${details.pob}. Comprehensive Kundli prediction.`;
-        } else {
-            prompt += ` Life Path, Expression, Soul Urge analysis.`;
-        }
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: prompt,
-        });
-        const text = response.text;
-        if (!text || text.trim().length < 20) {
-            throw new Error("The Oracle's message was too faint. Retrying...");
-        }
-        return { reading: text };
-    } catch (error: any) {
-        console.error("AI Calculation Error:", error);
-        throw new Error(error.message || 'AI calculation failed');
-    }
+  const ai = getAi();
+  let prompt = `Provide a detailed ${details.mode} reading for: Name: ${details.name}, DOB: ${details.dob}, Language: ${details.language}.`;
+  if (details.mode === 'astrology') prompt += ` TOB: ${details.tob}, POB: ${details.pob}. Comprehensive Prediction.`;
+  const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
+  const text = response.text;
+  if (!text || text.trim().length < 50) throw new Error("The Oracle's message was too faint. Please retry.");
+  return { reading: text };
 };
 
 export const getTarotReading = async (cardName: string, language: string = 'English'): Promise<string> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Tarot reading for "${cardName}" in ${language}.`,
-        });
-        const text = response.text;
-        if (!text) throw new Error("Empty response");
-        return text;
-    } catch (error: any) {
-        console.error("Tarot Service Error:", error);
-        throw new Error("Spirits of the deck are restless.");
-    }
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Detailed Tarot reading for "${cardName}" in ${language}.`,
+  });
+  const text = response.text;
+  if (!text || text.trim().length < 20) throw new Error("Tarot interpretation failed.");
+  return text;
 };
 
 export const getRemedy = async (concern: string, language: string = 'English'): Promise<string> => {
-    try {
-        const ai = getAi();
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Remedies for: "${concern}" in ${language}.`,
-        });
-        const text = response.text;
-        if (!text) throw new Error("Empty response");
-        return text;
-    } catch (error: any) {
-        console.error("Remedy Service Error:", error);
-        throw new Error("Cosmic winds blocked guidance.");
-    }
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Vedic remedies and guidance for: "${concern}" in ${language}.`,
+  });
+  const text = response.text;
+  if (!text || text.trim().length < 20) throw new Error("Guidance failed.");
+  return text;
 };
 
 export const analyzeDream = async (dreamText: string, language: string = 'English'): Promise<DreamAnalysisResponse> => {
-    try {
-        const ai = getAi();
-        const schema = {
-            type: Type.OBJECT,
-            properties: { meaning: { type: Type.STRING }, luckyNumbers: { type: Type.ARRAY, items: { type: Type.INTEGER } }, symbols: { type: Type.ARRAY, items: { type: Type.STRING } } },
-            required: ["meaning", "luckyNumbers", "symbols"]
-        };
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Interpret dream in ${language}: "${dreamText}"`,
-            config: { responseMimeType: "application/json", responseSchema: schema }
-        });
-        const text = response.text;
-        if (!text) throw new Error("Empty response");
-        return JSON.parse(text);
-    } catch (error: any) {
-        console.error("Dream Service Error:", error);
-        throw new Error("Subconscious mists too thick.");
+  const ai = getAi();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Interpret dream in ${language}: "${dreamText}"`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: { meaning: { type: Type.STRING }, luckyNumbers: { type: Type.ARRAY, items: { type: Type.INTEGER } }, symbols: { type: Type.ARRAY, items: { type: Type.STRING } } },
+        required: ["meaning", "luckyNumbers", "symbols"]
+      }
     }
+  });
+  const text = response.text;
+  if (!text) throw new Error("Dream interpretation failed.");
+  return JSON.parse(text);
 };

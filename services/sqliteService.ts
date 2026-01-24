@@ -13,16 +13,6 @@ const INITIAL_SCHEMA: Record<string, any[]> = {
       uses_biometrics: false,
       credits: 999999,
       created_at: new Date().toISOString()
-    },
-    { 
-      id: 'demo_user_001', 
-      name: 'Arjun Seeker', 
-      role: 'user', 
-      status: 'active', 
-      email: 'arjun@example.com', 
-      password: 'user123',
-      credits: 50,
-      created_at: new Date().toISOString()
     }
   ],
   ui_themes: [
@@ -35,81 +25,17 @@ const INITIAL_SCHEMA: Record<string, any[]> = {
       background_url: '',
       status: 'active',
       created_at: new Date().toISOString()
-    },
-    { 
-      id: 'theme_solar', 
-      name: 'Royal Maroon', 
-      css_class: 'bg-[#4a0404]', 
-      accent_color: 'text-gold-500', 
-      font_family: 'cinzel',
-      background_url: '',
-      status: 'inactive',
-      created_at: new Date().toISOString()
     }
   ],
-  report_formats: [
-    { id: 'rf_01', name: 'Ganesha Gold 1', url: 'https://drive.google.com/file/d/1gzsBJI3fx4MgRKoEdZZseAPibYA7dUex/view?usp=drive_link', type: 'background', status: 'active' }
-  ],
-  readings: [
-    {
-      id: 'seed_reading_01',
-      user_id: 'demo_user_001',
-      type: 'tarot',
-      title: 'The Sun',
-      content: 'A time of great joy and success is approaching.',
-      timestamp: new Date().toISOString(),
-      is_favorite: false,
-      paid: true,
-      meta_data: {}
-    }
-  ],
-  feedback: [],
-  store_items: [
-    { 
-      id: 101, 
-      name: '5 Mukhi Rudraksha', 
-      category: 'Rudraksha', 
-      price: 501.00, 
-      description: 'Original Nepali bead for peace and health. Lord Shiva blessing.', 
-      image_url: 'https://images.unsplash.com/photo-1620326887707-33a7df064375?q=80&w=400',
-      stock: 50, 
-      status: 'active' 
-    }
-  ],
-  store_categories: [
-    { id: 'cat_01', name: 'Rudraksha', status: 'active' }
-  ],
-  store_discounts: [
-    { id: 'disc_01', code: 'MYSTIC10', percentage: 10, status: 'active' }
-  ],
-  store_orders: [],
-  transactions: [],
-  gemstones: [
-    { 
-        id: 'ruby_01', 
-        name: 'Ruby', 
-        sanskrit: 'Manikya', 
-        planet: 'Sun (Surya)', 
-        deity: 'Lord Surya / Agni',
-        zodiac: 'Leo (Simha)', 
-        benefits: 'Promotes vitality, leadership, and professional success.', 
-        mantra: 'Om Ghrinih Suryaya Namah',
-        mantra_guide: 'Ohm Ghree-neeh Soor-yah-yah Na-ma-hah',
-        image: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?q=80&w=400', 
-        status: 'active' 
-    }
-  ],
-  remedy_requests: [],
-  featured_content: [],
   image_assets: [
-    { id: 'login_logo', name: 'Primary Emblem', path: 'https://drive.google.com/file/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO/view?usp=drive_link', tags: 'login_logo', status: 'active' },
-    { id: 'header_logo', name: 'Header Logo', path: 'https://drive.google.com/file/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO/view?usp=drive_link', tags: 'header_logo', status: 'active' },
-    { id: 'report_banner_sacred', name: 'Om Ganesha Banner', path: 'https://images.unsplash.com/photo-1567591414240-e13630603713?q=80&w=1920', tags: 'report_banner', status: 'active' },
-    { id: 'bg_ganesha', name: 'Ganesha Texture', path: 'https://images.unsplash.com/photo-1567591414240-e13630603713?q=80&w=1920', tags: 'home_bg', status: 'active' }
+    { id: 'sacred_emblem', name: 'Primary Sacred Emblem', path: 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO', tags: 'brand_logo,emblem', status: 'active' },
+    { id: 'login_logo', name: 'Legacy Logo', path: 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO', tags: 'login_logo', status: 'active' },
+    { id: 'header_logo', name: 'Header Logo', path: 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO', tags: 'header_logo', status: 'active' }
   ],
   services: [
     { id: 'numerology', name: 'Numerology', price: 49.00, description: 'Secrets in your name.', path: '/numerology', status: 'active' },
-    { id: 'astrology', name: 'Astrology', price: 99.00, description: 'Destiny in stars.', path: '/astrology', status: 'active' }
+    { id: 'astrology', name: 'Astrology', price: 99.00, description: 'Destiny in stars.', path: '/astrology', status: 'active' },
+    { id: 'tarot', name: 'Tarot', price: 49.00, description: 'Wisdom in cards.', path: '/tarot', status: 'active' }
   ],
   config: [
       { id: 'app_title', key: 'title', value: 'Glyph Circle', status: 'active'},
@@ -119,17 +45,24 @@ const INITIAL_SCHEMA: Record<string, any[]> = {
     { id: 'gdrive_main', provider: 'Google Drive', name: 'Primary Drive', is_active: true, status: 'active' }
   ],
   payment_providers: [
-    { id: 'rzp_main', name: 'Razorpay', provider_type: 'razorpay', is_active: true, currency: 'INR', status: 'active' }
+    { id: 'rzp_main', name: 'Razorpay', provider_type: 'razorpay', is_active: true, currency: 'INR', status: 'active', api_key: 'rzp_test_12345678', country_codes: 'IN,GLOBAL' }
   ],
   payment_config: [
     { id: 'pay_conf_01', account_email: 'billing@glyph.co', creditor_name: 'Glyph Circle', creditor_address: '123 Astral Plane, Cosmos', status: 'active' }
   ],
+  readings: [],
+  store_items: [],
+  transactions: [],
+  gemstones: [],
+  remedy_requests: [],
+  featured_content: [],
   user_subscriptions: [],
   logs: [],
   dosha_profiles: [],
   mood_entries: [],
   muhurat_queries: [],
-  synastry_reports: []
+  synastry_reports: [],
+  report_formats: []
 };
 
 declare global {

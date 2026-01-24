@@ -20,6 +20,8 @@ interface FullReportProps {
   chartData?: any; 
 }
 
+const DEFAULT_BRAND_LOGO = 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
+
 const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, imageUrl, chartData }) => {
   const { t, language } = useTranslation();
   const { db } = useDb();
@@ -93,8 +95,11 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
       handleTranslation();
   }, [language, reading]); 
 
-  const SACRED_LOGO_ID = '1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
-  const headerLogo = `https://lh3.googleusercontent.com/d/${SACRED_LOGO_ID}`;
+  // Resolve brand logo from DB image_assets explicitly
+  const logoUrl = useMemo(() => {
+    const asset = db.image_assets?.find((a: any) => a.id === 'sacred_emblem' || a.tags?.includes('brand_logo'));
+    return asset ? cloudManager.resolveImage(asset.path) : DEFAULT_BRAND_LOGO;
+  }, [db.image_assets]);
 
   const reportBackground = useMemo(() => {
       const formats = db.report_formats?.filter((f: any) => f.status === 'active') || [];
@@ -107,7 +112,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
     if (!text || text.trim() === '') return (
         <div className="flex flex-col items-center justify-center p-12 text-gray-400 italic">
             <span className="text-4xl mb-4 opacity-20">📜</span>
-            <p>The cosmic lines are still being drawn. Please wait for the Oracle.</p>
+            <p>The Oracle is still channeling your report. Please wait...</p>
         </div>
     );
     
@@ -143,7 +148,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
               scale: 3, 
               useCORS: true,
               logging: false,
-              backgroundColor: '#fff8e1'
+              backgroundColor: '#fffcf0'
           });
           const imgData = canvas.toDataURL('image/jpeg', 0.95);
           const pdf = new jsPDF({
@@ -168,7 +173,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         <SageChat context={displayContent} type={title} />
         
         <div 
-          className="relative transition-all duration-300 shadow-[0_30px_60px_rgba(0,0,0,0.4)] origin-top border-[16px] border-double border-[#d4af37]/60 rounded-lg bg-[#fff8e1] sacred-boundary"
+          className="relative transition-all duration-300 shadow-[0_40px_80px_rgba(0,0,0,0.6)] origin-top border-[16px] border-double border-[#d4af37] rounded-sm bg-[#fffcf0] sacred-boundary"
           style={{ 
             width: '210mm', 
             height: '297mm',
@@ -178,50 +183,53 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         >
             <div 
                 ref={reportRef} 
-                className="absolute inset-0 bg-[#fff8e1] text-black overflow-hidden flex flex-col p-14 report-canvas"
+                className="absolute inset-0 bg-[#fffcf0] text-black overflow-hidden flex flex-col p-14 report-canvas"
             >
-                {/* Decorative Boundary Elements */}
-                <div className="absolute top-4 left-4 text-5xl text-[#d4af37]/20 font-cinzel select-none">ॐ</div>
-                <div className="absolute top-4 right-4 text-5xl text-[#d4af37]/20 font-cinzel select-none">ॐ</div>
-                <div className="absolute inset-8 border border-[#d4af37]/10 z-0 pointer-events-none rounded"></div>
+                <div className="absolute top-8 left-8 text-7xl text-[#d4af37]/20 font-cinzel select-none leading-none">ॐ</div>
+                <div className="absolute top-8 right-8 text-7xl text-[#d4af37]/20 font-cinzel select-none leading-none">ॐ</div>
                 
                 {reportBackground && (
                     <OptimizedImage 
                         src={reportBackground} 
                         alt="" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-[0.05] z-0 grayscale"
+                        className="absolute inset-0 w-full h-full object-cover opacity-[0.03] z-0 grayscale"
                         showSkeleton={false}
                     />
                 )}
 
-                {/* 1. SACRED HEADER - DESIGN ENHANCEMENT */}
-                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-10 pb-6 border-b-2 border-[#d4af37]/30">
-                    <div className="w-28 h-28 relative mb-6">
-                        {/* Divine Seal Backdrop */}
-                        <div className="absolute inset-[-6px] rounded-full border-2 border-[#d4af37]/40"></div>
-                        <div className="absolute inset-[-12px] rounded-full border border-[#d4af37]/20 animate-pulse"></div>
-                        <div className="absolute inset-0 bg-[#1a0b12] rounded-full shadow-[0_0_30px_rgba(212,175,55,0.5)] border-4 border-[#d4af37] flex items-center justify-center overflow-hidden">
-                             <img 
-                                src={headerLogo} 
-                                alt="Emblem" 
-                                className="w-[80%] h-[80%] object-contain filter brightness-110 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
-                                onError={(e) => { e.currentTarget.src = 'https://cdn-icons-png.flaticon.com/512/3063/3063822.png'; }}
-                            />
+                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-12 pb-8 border-b border-[#d4af37]/30">
+                    {/* EMBLEM CONTAINER: Enhanced size and robust absolute flex centering */}
+                    <div className="w-48 h-48 md:w-64 md:h-64 relative mb-10 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-[#0d0d0d] rounded-full border-[5px] border-[#d4af37] shadow-[0_0_60px_rgba(212,175,55,0.4)] flex items-center justify-center overflow-hidden">
+                             <div className="absolute inset-0 flex items-center justify-center">
+                                <img 
+                                    src={logoUrl} 
+                                    alt="Sacred Seal" 
+                                    className="max-w-[85%] max-h-[85%] object-contain block m-auto" 
+                                    referrerPolicy="no-referrer"
+                                />
+                             </div>
                         </div>
+                        {/* Orbiting Ring Decoration */}
+                        <div className="absolute inset-[-18px] border-2 border-[#d4af37]/15 rounded-full animate-[spin_25s_linear_infinite]"></div>
+                        <div className="absolute inset-[-30px] border border-[#d4af37]/10 rounded-full animate-[spin_35s_linear_infinite_reverse]"></div>
                     </div>
 
-                    <h2 className="text-4xl font-cinzel font-black gold-gradient-text tracking-[0.15em] uppercase mb-2 text-center drop-shadow-sm">{title}</h2>
+                    <h2 className="text-4xl md:text-6xl font-cinzel font-black gold-gradient-text tracking-[0.1em] uppercase mb-2 text-center drop-shadow-sm leading-tight max-w-[90%]">
+                      {title}
+                    </h2>
                     {subtitle && (
-                        <p className="text-[#8b4513] text-[9px] font-black uppercase tracking-[0.6em] italic opacity-80 border-t border-[#8b4513]/10 pt-3">{subtitle}</p>
+                        <p className="text-[#8b4513] text-[11px] font-black uppercase tracking-[0.7em] mt-5 opacity-70 italic border-t border-[#d4af37]/25 pt-5 text-center">
+                          {subtitle}
+                        </p>
                     )}
                 </div>
 
-                {/* 2. REPORT CONTENT */}
                 <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-10">
                     {isTranslating ? (
                         <div className="flex flex-col items-center justify-center h-full">
-                            <div className="w-14 h-14 border-4 border-[#d4af37] border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-[#8b4513] font-cinzel font-bold mt-6 animate-pulse uppercase tracking-widest text-xs">Decoding Sacred Text...</p>
+                            <div className="w-16 h-16 border-4 border-[#d4af37] border-t-transparent rounded-full animate-spin"></div>
+                            <p className="text-[#8b4513] font-cinzel font-bold mt-8 animate-pulse uppercase tracking-[0.3em] text-xs">Transcending Worldly Tongues...</p>
                         </div>
                     ) : (
                         <div className="flex flex-col gap-6">
@@ -229,21 +237,19 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                                 {renderFormattedText(displayContent)}
                             </div>
 
-                            {/* 3. DYNAMIC DATA SECTION */}
                             {chartData && (
-                                <div className="mt-8 pt-8 border-t border-[#d4af37]/20 grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* Energy Signature */}
+                                <div className="mt-10 pt-10 border-t border-[#d4af37]/20 grid grid-cols-1 md:grid-cols-2 gap-10">
                                     {chartData.vedicMetrics && (
-                                        <div className="bg-[#8b4513]/5 p-6 rounded-xl border border-[#d4af37]/20 shadow-inner">
-                                            <h4 className="text-[10px] font-cinzel font-bold text-[#5c2a0d] mb-4 uppercase tracking-[0.3em]">Temporal Alignment</h4>
-                                            <div className="space-y-4">
+                                        <div className="bg-[#8b4513]/5 p-7 rounded-2xl border border-[#d4af37]/20 shadow-inner">
+                                            <h4 className="text-[11px] font-cinzel font-bold text-[#5c2a0d] mb-5 uppercase tracking-[0.4em]">Celestial Vibrations</h4>
+                                            <div className="space-y-5">
                                                 {chartData.vedicMetrics.map((m: any, i: number) => (
                                                     <div key={i}>
-                                                        <div className="flex justify-between text-[9px] uppercase font-bold text-[#8b4513] mb-1">
-                                                            <span>{m.label} <span className="opacity-40 italic">({m.sub})</span></span>
-                                                            <span>{m.value}%</span>
+                                                        <div className="flex justify-between text-[10px] uppercase font-black text-[#8b4513] mb-1.5">
+                                                            <span>{m.label}</span>
+                                                            <span className="font-mono">{m.value}%</span>
                                                         </div>
-                                                        <div className="w-full h-1.5 bg-[#8b4513]/10 rounded-full overflow-hidden">
+                                                        <div className="w-full h-2 bg-[#8b4513]/10 rounded-full overflow-hidden">
                                                             <div className="h-full bg-gradient-to-r from-[#8b4513] to-[#d4af37]" style={{ width: `${m.value}%` }}></div>
                                                         </div>
                                                     </div>
@@ -252,20 +258,16 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                                         </div>
                                     )}
 
-                                    {/* Lucky Numbers / Frequency */}
                                     {chartData.luckyNumbers && (
-                                        <div className="bg-[#d4af37]/10 p-6 rounded-xl border border-[#d4af37]/30 text-center shadow-inner">
-                                            <h4 className="text-[10px] font-cinzel font-bold text-[#4a0404] mb-4 uppercase tracking-[0.3em]">Vibrational Indices</h4>
-                                            <div className="flex flex-wrap justify-center gap-4">
+                                        <div className="bg-[#d4af37]/10 p-7 rounded-2xl border border-[#d4af37]/30 text-center shadow-inner flex flex-col justify-center">
+                                            <h4 className="text-[11px] font-cinzel font-bold text-[#4a0404] mb-5 uppercase tracking-[0.4em]">Propitious Frequencies</h4>
+                                            <div className="flex flex-wrap justify-center gap-6 mt-2">
                                                 {chartData.luckyNumbers.map((num: number, i: number) => (
-                                                    <div key={i} className="relative">
-                                                        <div className="w-12 h-12 rounded-full border-2 border-[#d4af37] bg-white flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
-                                                            <span className="font-cinzel font-black text-xl text-[#4a0404]">{num}</span>
-                                                        </div>
+                                                    <div key={i} className="w-16 h-16 rounded-full border-[3px] border-[#d4af37] bg-white flex items-center justify-center shadow-2xl transform hover:scale-110 transition-all cursor-default">
+                                                        <span className="font-cinzel font-black text-3xl text-[#4a0404]">{num}</span>
                                                     </div>
                                                 ))}
                                             </div>
-                                            <p className="mt-6 text-[8px] italic text-[#8b4513]/60 leading-tight uppercase tracking-widest font-bold">Resonant Cycles of Destiny</p>
                                         </div>
                                     )}
                                 </div>
@@ -273,36 +275,34 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                         </div>
                     )}
 
-                    {/* FOOTER */}
-                    <div className="mt-16 pt-10 text-center opacity-40 border-t border-[#d4af37]/30">
-                        <div className="text-2xl text-[#d4af37] mb-4 font-cinzel tracking-[0.8em]">❖ ❖ ❖</div>
-                        <span className="text-[#8b4513] text-[9px] font-cinzel font-bold tracking-[0.4em] uppercase block mb-1">Authenticated by the Sanctuary of Glyphs</span>
-                        <span className="text-[#8b4513]/50 text-[7px] font-mono">SCRIBE_ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
+                    <div className="mt-24 pt-10 text-center opacity-40 border-t border-[#d4af37]/30">
+                        <div className="text-2xl text-[#d4af37] mb-5 font-cinzel tracking-[1em]">❂ ❂ ❂</div>
+                        <span className="text-[#8b4513] text-[10px] font-cinzel font-black tracking-[0.5em] uppercase block mb-1">Authenticated by Glyph Circle Enclave</span>
+                        <span className="text-[#8b4513]/50 text-[7px] font-mono">ETHEREAL_CERT: {Math.random().toString(36).substring(2, 18).toUpperCase()}</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        {/* CONTROLS */}
-        <div className="flex flex-col sm:flex-row gap-6 justify-center w-full max-w-xl mb-12 no-print">
+        <div className="flex flex-col sm:flex-row gap-6 justify-center w-full max-w-xl mb-16 no-print px-4">
               <Button 
                 onClick={handleDownloadPDF} 
                 disabled={isDownloading || isTranslating} 
-                className="flex-1 h-16 text-sm bg-[#4a0404] hover:bg-[#5a0505] text-white flex items-center justify-center gap-4 shadow-2xl border-none font-cinzel tracking-[0.2em] rounded-xl transform hover:scale-105 transition-all"
+                className="flex-1 h-16 text-sm bg-[#4a0404] hover:bg-[#5a0505] text-white flex items-center justify-center gap-4 shadow-2xl border-none font-cinzel tracking-[0.2em] rounded-2xl transform hover:scale-105 transition-all"
               >
-                  {isDownloading ? <span className="animate-pulse">SCRIBING...</span> : <><span className="text-2xl">📜</span> {t('downloadPDF')}</>}
+                  {isDownloading ? <span className="animate-pulse">SCRIBING...</span> : <><span className="text-2xl">📜</span> Download Scroll</>}
               </Button>
               <Button 
-                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Your sacred report from Glyph Circle is ready: " + window.location.href)}`} 
-                className="flex-1 h-16 text-sm bg-white hover:bg-gray-50 text-[#4a0404] flex items-center justify-center gap-4 shadow-xl border-2 border-[#4a0404]/20 font-cinzel tracking-[0.2em] rounded-xl transform hover:scale-105 transition-all"
+                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Your sacred report is ready.")}`} 
+                className="flex-1 h-16 text-sm bg-white hover:bg-gray-50 text-[#4a0404] flex items-center justify-center gap-4 shadow-xl border-2 border-[#4a0404]/20 font-cinzel tracking-[0.2em] rounded-2xl transform hover:scale-105 transition-all"
               >
-                  <span className="text-2xl">✉️</span> {t('emailReport')}
+                  <span className="text-2xl">✉️</span> Email Wisdom
               </Button>
         </div>
 
-        <Link to="/home" className="mb-24 no-print group">
-            <button className="text-skin-accent font-cinzel font-bold text-xs uppercase tracking-[0.4em] hover:text-white transition-colors flex items-center gap-3">
-                <span className="text-xl">←</span> Return to Sanctum
+        <Link to="/home" className="mb-24 no-print">
+            <button className="text-skin-accent font-cinzel font-bold text-xs uppercase tracking-[0.5em] hover:text-white transition-all flex items-center gap-3 active:scale-95">
+                <span className="text-xl">←</span> Return to Sanctuary
             </button>
         </Link>
     </div>
