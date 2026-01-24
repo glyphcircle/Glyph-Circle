@@ -37,8 +37,7 @@ const Palmistry: React.FC = () => {
   const { user, saveReading } = useAuth();
   const { db } = useDb();
 
-  const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com'];
-  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
+  const isAdmin = user?.role === 'admin';
 
   // Dynamic Price & Image
   const serviceConfig = db.services?.find((s: any) => s.id === 'palmistry');

@@ -37,13 +37,13 @@ export interface Transaction {
 
 /**
  * 🛡️ TIMEOUT WRAPPER
- * Prevents UI hanging when RLS policies or network issues cause infinite waits.
+ * Increased to 20s to allow for heavy metadata processing, but still fail if recursion loops occur.
  */
-const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 25000): Promise<T> => {
+const withTimeout = async <T = any>(promise: Promise<T>, timeoutMs: number = 20000): Promise<T> => {
     let timeoutId: any;
     const timeoutPromise = new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
-            reject(new Error(`Cosmic Timeout: Database unresponsive after ${timeoutMs/1000}s. This is almost certainly an RLS Infinite Recursion loop in Supabase.`));
+            reject(new Error(`Cosmic Timeout: Database unresponsive. This indicates an RLS recursion loop in your Supabase policies or a hung trigger. Please run the SQL Repair tool in Admin Config.`));
         }, timeoutMs);
     });
 
@@ -190,19 +190,23 @@ class SupabaseDatabase {
 
   /**
    * ⚡ SECURE UPDATE
-   * Strips immutable keys from the update object to prevent Postgres Primary Key mutation hangs.
+   * Strips immutable keys and logs payload size to help debug recursion/hang issues.
    */
   async updateEntry(table: string, id: string | number, updates: any) {
-      console.info(`🛰️ DB: Updating ${table}/${id}... Payload:`, updates);
+      console.info(`🛰️ DB: Initiating Update on ${table}/${id}`);
       
-      // 🛡️ CRITICAL: Remove PK and system fields. 
-      // Including the ID or timestamps in the body of an update can cause RLS/Postgres to hang.
       const { id: _, created_at: __, updated_at: ___, ...cleanUpdates } = updates;
       
-      // Prevent empty updates which can cause some PostgREST versions to hang
       if (Object.keys(cleanUpdates).length === 0) {
-          console.warn("🛰️ DB: No changes detected, skipping update.");
+          console.warn("🛰️ DB: Empty payload, update aborted.");
           return;
+      }
+
+      // Debug logging for specific large payloads (like the Google Drive URL)
+      const payloadString = JSON.stringify(cleanUpdates);
+      console.debug(`🛰️ DB: Payload Size: ${payloadString.length} chars`);
+      if (payloadString.length > 500) {
+          console.warn("🛰️ DB: Large update payload detected. Checking for recursion risks...");
       }
 
       const { error, status } = await withTimeout(supabase
@@ -211,11 +215,11 @@ class SupabaseDatabase {
           .eq('id', id));
 
       if (error) {
-          console.error(`❌ DB Failure [${status}]:`, error);
-          throw new Error(error.message || `Server responded with status ${status}`);
+          console.error(`❌ DB Error [${status}]:`, error);
+          throw new Error(error.message || `Database update failed with status ${status}`);
       }
       
-      console.info(`✅ DB Update Success.`);
+      console.info(`✅ DB Update Successful.`);
   }
 
   async createEntry(table: string, entry: any) {

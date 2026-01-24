@@ -58,10 +58,7 @@ const Home: React.FC = () => {
       return opacityConfig ? parseFloat(opacityConfig.value) : 0.8;
   }, [db.config]);
 
-  const isAdmin = useMemo(() => {
-      const ADMIN_EMAILS = ['master@gylphcircle.com', 'admin@gylphcircle.com'];
-      return user && ADMIN_EMAILS.includes(user.email);
-  }, [user]);
+  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
   const logoUrl = useMemo(() => {
       const logoAsset = db.image_assets?.find((a: any) => a.id === 'login_logo') ||

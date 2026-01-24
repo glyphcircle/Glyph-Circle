@@ -1,4 +1,3 @@
-
 import React, { ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
@@ -16,9 +15,8 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-// Fix: Use React.Component explicitly to ensure inheritance is properly resolved by TypeScript, 
-// allowing access to this.setState and this.props.
 class ErrorBoundary extends React.Component<Props, State> {
+  // Initialize state using property initializer
   public state: State = {
     hasError: false,
     error: null,
@@ -36,13 +34,14 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   // Use arrow function to preserve 'this' context for inherited methods
   public handleRetry = () => {
-    // Correctly call inherited setState from React.Component
+    // Fix: Access setState inherited from the base Component class
     this.setState({ hasError: false, error: null });
+    // Reloading realigns the state with the server after a potential recursion hang
     window.location.reload(); 
   };
 
   public render(): ReactNode {
-    // Access inherited state and props from React.Component correctly
+    // Fix: Access inherited state and props from the base Component class
     const { hasError, error } = this.state;
     const { children } = this.props;
 

@@ -9,7 +9,6 @@ import ThemeSwitcher from './ThemeSwitcher';
 import MasterToolsModal from './MasterToolsModal';
 import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
-import { ADMIN_EMAILS } from '../constants';
 import OptimizedImage from './shared/OptimizedImage';
 
 interface HeaderProps {
@@ -25,9 +24,9 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
   const { db } = useDb();
   const [isMasterToolsOpen, setIsMasterToolsOpen] = useState(false);
 
-  // Strictest admin check: Verify role AND email list
+  // Admin Check: Rely on DB role
   const isAdmin = useMemo(() => {
-    return user?.role === 'admin' && ADMIN_EMAILS.includes(user.email || '');
+    return user?.role === 'admin';
   }, [user]);
 
   const logoUrl = useMemo(() => {
@@ -71,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
         
         {/* RIGHT: Actions */}
         <div className="flex items-center gap-2 md:gap-4 justify-end flex-shrink-0 relative">
-            {/* Gear Icon - STRICTLY ADMIN ONLY */}
+            {/* Gear Icon - ADMIN ONLY */}
             {isAdmin && (
                 <button 
                     onClick={() => setIsMasterToolsOpen(true)}

@@ -129,8 +129,9 @@ const AdminDB: React.FC = () => {
       } catch (e: any) {
           console.error("UI: Update Error:", e);
           let errorMsg = e.message;
-          if (errorMsg.includes('Timeout')) {
-              errorMsg += " Tip: Check for RLS infinite recursion on this table in Supabase.";
+          // DETECTION: Specifically check for recursion/timeout
+          if (errorMsg.includes('Timeout') || errorMsg.includes('Database unresponsive')) {
+              errorMsg = "Cosmic Timeout detected. This is a database security loop (RLS Recursion). Please use the SQL Repair tool in the Config panel.";
           }
           setLastError(errorMsg);
       } finally {
@@ -311,11 +312,6 @@ const AdminDB: React.FC = () => {
                         Cancel
                     </button>
                 </div>
-                {isSaving && (
-                    <p className="mt-4 text-[10px] text-amber-500/60 text-center animate-pulse uppercase tracking-widest">
-                        Handshaking with Supabase...
-                    </p>
-                )}
             </div>
         </Modal>
         

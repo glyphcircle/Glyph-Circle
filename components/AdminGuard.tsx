@@ -1,34 +1,33 @@
 
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 interface Props {
   children: React.ReactNode;
 }
 
 const AdminGuard: React.FC<Props> = ({ children }) => {
-  // Check Layer 4: LocalStorage Session
-  const sessionStr = localStorage.getItem('glyph_admin_session');
+  const { user } = useAuth();
   
-  if (!sessionStr) {
-      // Redirect to standard Login instead of Master Login to keep Failsafe hidden
-      console.warn("⛔ AdminGuard: No session found. Redirecting to Login.");
-      return <Navigate to="/login" replace />;
-  }
-
-  try {
-      const session = JSON.parse(sessionStr);
-      if (session.role !== 'admin') {
-          throw new Error("Role is not admin");
+  // 1. Check Layer: LocalStorage Session (Master Login)
+  const sessionStr = localStorage.getItem('glyph_admin_session');
+  if (sessionStr) {
+      try {
+          const session = JSON.parse(sessionStr);
+          if (session.role === 'admin') return <>{children}</>;
+      } catch (e) {
+          localStorage.removeItem('glyph_admin_session');
       }
-      console.log(`🔐 AdminGuard: Access Granted via ${session.method}`);
-  } catch (e) {
-      console.error("⛔ AdminGuard: Invalid session");
-      localStorage.removeItem('glyph_admin_session');
-      return <Navigate to="/login" replace />;
   }
 
-  return <>{children}</>;
+  // 2. Check Layer: Standard Auth Context (Normal Login with Admin Role)
+  if (user?.role === 'admin') {
+      return <>{children}</>;
+  }
+
+  console.warn("⛔ AdminGuard: Access Denied. User role:", user?.role);
+  return <Navigate to="/login" replace />;
 };
 
 export default AdminGuard;

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 // @ts-ignore
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
@@ -51,7 +52,6 @@ import { useTheme } from './context/ThemeContext';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
-import { ADMIN_EMAILS } from './constants';
 
 /**
  * 🕉️ IdleCursor Component
@@ -132,8 +132,7 @@ function App() {
   const showLayout = isAuthenticated && !isAuthPage && !isAdminPage;
 
   const isAdmin = useMemo(() => {
-    if (!user) return false;
-    return user.role === 'admin' && ADMIN_EMAILS.includes(user.email || '');
+    return user?.role === 'admin';
   }, [user]);
 
   return (
