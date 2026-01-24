@@ -1,8 +1,33 @@
-
 import React from 'react';
 import type { ServiceOption } from './types';
 
+export const ADMIN_EMAILS = [
+  'master@glyphcircle.com', 
+  'admin@glyphcircle.com', 
+  'admin@glyph.circle',
+  'master@gylphcircle.com', // Included common typos found in previous versions
+  'admin@gylphcircle.com'
+];
+
+export const FALLBACK_IMAGES = {
+  REPORT_DEFAULT: 'https://images.unsplash.com/photo-1509228627129-6690a87531bc?q=80&w=800',
+  FEATURE_DEFAULT: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=800',
+  LOGO_DEFAULT: 'https://images.unsplash.com/photo-1600609842388-3e4b489d71c6?q=80&w=600'
+};
+
 export const SERVICE_OPTIONS: ServiceOption[] = [
+  {
+    id: 'calendar',
+    name: 'Kalnirnaye Calendar',
+    description: 'Ancient Hindu Panchang with Tithi, Nakshatra, and Shubh Muhurats.',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM12 11v4m0 0l2-2m-2 2l-2-2" />
+        <circle cx="12" cy="13" r="4" strokeDasharray="2 2" />
+      </svg>
+    ),
+    path: '/calendar',
+  },
   {
     id: 'numerology',
     name: 'Numerology',

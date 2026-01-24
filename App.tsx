@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo } from 'react';
 // @ts-ignore
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
@@ -33,6 +32,8 @@ import CosmicSync from './components/CosmicSync';
 import VoiceOracle from './components/VoiceOracle';
 import PanchangBar from './components/PanchangBar';
 import SigilGallery from './components/SigilGallery';
+import ReportDesigner from './components/ReportDesigner';
+import KalnirnayeCalendar from './components/KalnirnayeCalendar';
 
 import { useAuth } from './context/AuthContext';
 import { PushNotifications } from './components/PushNotifications';
@@ -50,6 +51,7 @@ import { useTheme } from './context/ThemeContext';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
+import { ADMIN_EMAILS } from './constants';
 
 interface ProtectedRouteProps {
   children?: React.ReactNode;
@@ -61,8 +63,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   if (!isAuthenticated) return <Navigate to="/login" />;
   return <>{children}</>;
 };
-
-const ADMIN_EMAILS = ['master@glyphcircle.com', 'admin@glyphcircle.com', 'admin@glyph.circle'];
 
 function App() {
   const { isAuthenticated, logout, user } = useAuth();
@@ -128,6 +128,7 @@ function App() {
                 <Route path="/admin/revenue" element={<AdminGuard><RevenueDashboard /></AdminGuard>} />
                 <Route path="/admin/db/:table" element={<AdminGuard><AdminDB /></AdminGuard>} />
                 <Route path="/admin/backup" element={<AdminGuard><BackupManager /></AdminGuard>} />
+                <Route path="/admin/report-designer" element={<AdminGuard><ReportDesigner /></AdminGuard>} />
 
                 <Route path="/home" element={<ProtectedRoute><ErrorBoundary><Home /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/history" element={<ProtectedRoute><ErrorBoundary><ReadingHistory /></ErrorBoundary></ProtectedRoute>} />
@@ -150,6 +151,7 @@ function App() {
                 <Route path="/muhurat" element={<ProtectedRoute><ErrorBoundary><MuhuratPicker /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/cosmic-sync" element={<ProtectedRoute><ErrorBoundary><CosmicSync /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/voice-oracle" element={<ProtectedRoute><ErrorBoundary><VoiceOracle /></ErrorBoundary></ProtectedRoute>} />
+                <Route path="/calendar" element={<ProtectedRoute><ErrorBoundary><KalnirnayeCalendar /></ErrorBoundary></ProtectedRoute>} />
 
                 <Route path="*" element={<Navigate to="/login" />} />
               </Routes>

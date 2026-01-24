@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
@@ -9,6 +8,7 @@ import ThemeSwitcher from './ThemeSwitcher';
 import MasterToolsModal from './MasterToolsModal';
 import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
+import { ADMIN_EMAILS } from '../constants';
 
 interface HeaderProps {
   onLogout: () => void;
@@ -16,7 +16,6 @@ interface HeaderProps {
 }
 
 const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=200';
-const ADMIN_EMAILS = ['master@glyphcircle.com', 'admin@glyphcircle.com', 'admin@glyph.circle'];
 
 const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
   const { t } = useTranslation();

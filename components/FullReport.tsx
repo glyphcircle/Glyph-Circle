@@ -181,55 +181,112 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                     />
                 )}
 
-                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-10 pb-8 border-b-2 border-[#d4af37]/30">
+                {/* 1. SACRED HEADER */}
+                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-8 pb-6 border-b-2 border-[#d4af37]/30">
                     <div className="absolute -top-4 left-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none">ॐ</div>
                     <div className="absolute -top-4 right-0 opacity-10 text-8xl text-[#8b4513] font-cinzel select-none">ॐ</div>
                     
-                    <div className="w-28 h-28 relative mb-6">
+                    <div className="w-24 h-24 relative mb-4">
                         <div className="absolute inset-0 bg-[#1a0b12] rounded-full shadow-2xl scale-110 border-2 border-[#d4af37]/50"></div>
-                        <div className="absolute -inset-4 bg-gradient-to-tr from-[#d4af37]/30 to-transparent rounded-full blur animate-pulse"></div>
                         <img 
                             src={headerLogo} 
                             alt="Sacred Emblem" 
                             className="w-full h-full object-contain relative z-30 drop-shadow-xl rounded-full p-2"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                const parent = e.currentTarget.parentElement;
-                                if (parent) parent.innerHTML = '<div class="w-full h-full rounded-full bg-[#1a0b12] flex items-center justify-center text-5xl">🕉️</div>';
-                            }}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         />
                     </div>
 
-                    <h2 className="text-4xl font-cinzel font-black text-[#4a0404] tracking-[0.2em] uppercase drop-shadow-sm mb-3">{title}</h2>
+                    <h2 className="text-3xl font-cinzel font-black text-[#4a0404] tracking-[0.2em] uppercase drop-shadow-sm mb-2">{title}</h2>
                     {subtitle && (
-                        <div className="flex items-center gap-6">
-                            <div className="h-[1px] w-16 bg-gradient-to-r from-transparent to-[#d4af37]/60"></div>
-                            <p className="text-[#8b4513] text-sm font-bold uppercase tracking-[0.4em] italic">{subtitle}</p>
-                            <div className="h-[1px] w-16 bg-gradient-to-l from-transparent to-[#d4af37]/60"></div>
-                        </div>
+                        <p className="text-[#8b4513] text-xs font-bold uppercase tracking-[0.4em] italic opacity-80">{subtitle}</p>
                     )}
                 </div>
 
-                <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-8">
+                {/* 2. REPORT CONTENT */}
+                <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-6">
                     {isTranslating ? (
                         <div className="flex flex-col items-center justify-center h-full">
                             <div className="w-14 h-14 border-4 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
                             <p className="text-[#8b4513] font-cinzel font-bold mt-6 animate-pulse uppercase tracking-widest text-sm">Decoding Ancient Script...</p>
                         </div>
                     ) : (
-                        <div className="font-lora text-[#2a1a1a] text-lg leading-relaxed space-y-4">
-                            {renderFormattedText(displayContent)}
+                        <div className="flex flex-col gap-6">
+                            <div className="font-lora text-[#2a1a1a] text-lg leading-relaxed space-y-4">
+                                {renderFormattedText(displayContent)}
+                            </div>
+
+                            {/* 3. DYNAMIC DATA SECTION */}
+                            {chartData && (
+                                <div className="mt-8 pt-8 border-t border-[#8b4513]/20 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    
+                                    {/* Energy Signature (Vedic Metrics) */}
+                                    {chartData.vedicMetrics && (
+                                        <div className="bg-[#8b4513]/5 p-6 rounded-lg border border-[#8b4513]/10">
+                                            <h4 className="text-xs font-cinzel font-bold text-[#5c2a0d] mb-4 uppercase tracking-[0.2em]">Energy Alignment</h4>
+                                            <div className="space-y-4">
+                                                {chartData.vedicMetrics.map((m: any, i: number) => (
+                                                    <div key={i}>
+                                                        <div className="flex justify-between text-[10px] uppercase font-bold text-[#8b4513] mb-1">
+                                                            <span>{m.label} <span className="opacity-50 font-normal italic">({m.sub})</span></span>
+                                                            <span>{m.value}%</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-[#8b4513]/10 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-gradient-to-r from-[#8b4513] to-[#d2691e]" style={{ width: `${m.value}%` }}></div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Cosmic Frequencies (Lucky Numbers) */}
+                                    {chartData.luckyNumbers && (
+                                        <div className="bg-[#d4af37]/10 p-6 rounded-lg border border-[#d4af37]/30 text-center">
+                                            <h4 className="text-xs font-cinzel font-bold text-[#4a0404] mb-4 uppercase tracking-[0.2em]">Cosmic Frequencies</h4>
+                                            <div className="flex flex-wrap justify-center gap-4">
+                                                {chartData.luckyNumbers.map((num: number, i: number) => (
+                                                    <div key={i} className="relative group">
+                                                        <div className="absolute inset-0 bg-[#d4af37] rounded-full blur-sm opacity-20 group-hover:opacity-40 transition-opacity"></div>
+                                                        <div className="w-12 h-12 rounded-full border-2 border-[#d4af37] bg-[#fff8e1] flex items-center justify-center relative z-10 shadow-lg">
+                                                            <span className="font-cinzel font-black text-xl text-[#4a0404]">{num}</span>
+                                                        </div>
+                                                        <div className="mt-1 text-[8px] uppercase font-bold text-[#d4af37]">Seal {i+1}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <p className="mt-6 text-[9px] italic text-[#8b4513]/60 leading-tight">These vibrational indices align with your current temporal trajectory.</p>
+                                        </div>
+                                    )}
+
+                                    {/* Elemental Harmony */}
+                                    {chartData.elementalBalance && (
+                                        <div className="md:col-span-2 grid grid-cols-4 gap-2">
+                                            {chartData.elementalBalance.map((e: any, i: number) => (
+                                                <div key={i} className="text-center">
+                                                    <div className="text-[9px] uppercase font-bold text-[#8b4513] mb-1">{e.element}</div>
+                                                    <div className="text-[10px] font-cinzel text-[#d2691e] italic">{e.sanskrit}</div>
+                                                    <div className="mt-1 h-1 w-full bg-[#8b4513]/10 rounded-full">
+                                                        <div className="h-full bg-[#d2691e]" style={{ width: `${e.score}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    <div className="mt-20 pt-10 text-center opacity-40 border-t border-[#d4af37]/30">
-                        <div className="text-3xl text-[#d4af37] mb-6 font-cinzel tracking-[0.8em] opacity-60">❖ ❖ ❖</div>
-                        <span className="text-[#8b4513] text-[12px] font-cinzel font-bold tracking-[0.5em] uppercase block mb-1">Encoded by Glyph Circle Sanctuary</span>
+                    <div className="mt-12 pt-8 text-center opacity-40 border-t border-[#d4af37]/30">
+                        <div className="text-2xl text-[#d4af37] mb-4 font-cinzel tracking-[0.6em] opacity-60">❖ ❖ ❖</div>
+                        <span className="text-[#8b4513] text-[10px] font-cinzel font-bold tracking-[0.3em] uppercase block mb-1">Encoded by Glyph Circle Sanctuary</span>
+                        <span className="text-[#8b4513]/50 text-[8px] font-mono">HASHID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
                     </div>
                 </div>
             </div>
         </div>
 
+        {/* CONTROLS */}
         <div className="flex flex-col sm:flex-row gap-6 justify-center w-full max-w-xl mb-12 no-print">
               <Button 
                 onClick={handleDownloadPDF} 

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Button from './shared/Button';
@@ -48,18 +47,19 @@ const DreamAnalysis: React.FC = () => {
         setProgress(100);
         setResult(response);
 
-        // Generate Chart Data for FullReport based on random/hash logic for demo
+        // Generate Chart Data for FullReport
         setChartData({
+            luckyNumbers: response.luckyNumbers, // Pass actual lucky numbers
             vedicMetrics: [
-                { label: 'Sattva (Purity)', sub: 'Clarity', value: Math.floor(Math.random() * 40 + 30) },
+                { label: 'Sattva (Purity)', sub: 'Clarity', value: Math.floor(Math.random() * 30 + 60) },
                 { label: 'Rajas (Passion)', sub: 'Action', value: Math.floor(Math.random() * 40 + 30) },
                 { label: 'Tamas (Inertia)', sub: 'Subconscious', value: Math.floor(Math.random() * 40 + 20) },
             ],
             elementalBalance: [
-                { element: 'Ether', sanskrit: 'Akasha', score: Math.floor(Math.random() * 100) },
-                { element: 'Water', sanskrit: 'Jala', score: Math.floor(Math.random() * 100) },
-                { element: 'Fire', sanskrit: 'Agni', score: Math.floor(Math.random() * 100) },
-                { element: 'Air', sanskrit: 'Vayu', score: Math.floor(Math.random() * 100) },
+                { element: 'Ether', sanskrit: 'Akasha', score: Math.floor(Math.random() * 50 + 50) },
+                { element: 'Water', sanskrit: 'Jala', score: Math.floor(Math.random() * 50 + 30) },
+                { element: 'Fire', sanskrit: 'Agni', score: Math.floor(Math.random() * 50 + 20) },
+                { element: 'Air', sanskrit: 'Vayu', score: Math.floor(Math.random() * 50 + 40) },
             ]
         });
 
@@ -89,41 +89,76 @@ const DreamAnalysis: React.FC = () => {
             <div className="grid md:grid-cols-2 gap-8 items-start">
                 <div className="space-y-4">
                     <div className="relative">
-                        <textarea value={dreamText} onChange={(e) => setDreamText(e.target.value)} placeholder="I was flying over a golden ocean..." className="w-full h-64 p-4 bg-black/40 border border-indigo-500/30 rounded-lg text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none placeholder-indigo-400/30 font-lora text-lg leading-relaxed" />
+                        <textarea value={dreamText} onChange={(e) => setDreamText(e.target.value)} placeholder="I was flying over a golden ocean..." className="w-full h-64 p-4 bg-black/40 border border-indigo-500/30 rounded-lg text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none placeholder-indigo-400/30 font-lora text-lg leading-relaxed shadow-inner" />
                         <div className="absolute bottom-4 right-4"><VoiceInput onResult={(text) => setDreamText(prev => prev + ' ' + text)} /></div>
                     </div>
-                    <Button onClick={handleAnalyze} disabled={isLoading} className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 border-indigo-400/50">{isLoading ? "Consulting the Oracle..." : "Interpret Dream"}</Button>
-                    {error && <p className="text-red-400 text-center text-sm">{error}</p>}
+                    <Button onClick={handleAnalyze} disabled={isLoading} className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 border-indigo-400/50 shadow-lg">
+                        {isLoading ? "Consulting the Oracle..." : "Interpret Dream"}
+                    </Button>
+                    {error && <p className="text-red-400 text-center text-sm bg-red-900/20 p-2 rounded border border-red-500/20 animate-shake">{error}</p>}
                 </div>
 
-                <div className="min-h-[20rem] bg-black/20 rounded-lg border border-indigo-500/20 p-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/20 rounded-full blur-3xl -z-10"></div>
-                    {isLoading && <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-20"><ProgressBar progress={progress} message="Decoding Symbols..." /></div>}
-                    {!result && !isLoading && <div className="h-full flex flex-col items-center justify-center text-indigo-300/40"><span className="text-6xl mb-4">🌙</span><p>Describe your dream to reveal its hidden meaning.</p></div>}
+                <div className="min-h-[20rem] bg-black/20 rounded-lg border border-indigo-500/20 p-6 relative overflow-hidden flex flex-col">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 rounded-full blur-3xl -z-10"></div>
+                    {isLoading && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-20">
+                            <ProgressBar progress={progress} message="Decoding Symbols..." />
+                        </div>
+                    )}
+                    {!result && !isLoading && (
+                        <div className="flex-grow flex flex-col items-center justify-center text-indigo-300/40 text-center">
+                            <span className="text-7xl mb-4 animate-float opacity-50">🌙</span>
+                            <p className="font-lora italic">Describe your dream to reveal its hidden meaning and cosmic frequencies.</p>
+                        </div>
+                    )}
 
                     {result && !isLoading && (
                         <div className="space-y-6 animate-fade-in-up">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-indigo-900/30 p-3 rounded border border-indigo-500/30">
-                                    <h4 className="text-xs text-indigo-300 uppercase tracking-widest mb-2">Key Symbols</h4>
-                                    <div className="flex flex-wrap gap-2">{result.symbols.map((s, i) => <span key={i} className="text-xs bg-black/40 px-2 py-1 rounded text-indigo-200 border border-indigo-500/20">{s}</span>)}</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="bg-indigo-900/30 p-3 rounded-xl border border-indigo-500/30 shadow-lg">
+                                    <h4 className="text-[10px] text-indigo-300 uppercase tracking-widest mb-3 font-bold">Key Symbols</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {result.symbols.map((s, i) => (
+                                            <span key={i} className="text-[10px] bg-black/40 px-2 py-1 rounded-full text-indigo-200 border border-indigo-500/20">{s}</span>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="bg-purple-900/30 p-3 rounded border border-purple-500/30 text-center">
-                                    <h4 className="text-xs text-purple-300 uppercase tracking-widest mb-2">Dream Numbers</h4>
-                                    <div className="flex justify-center gap-2">{result.luckyNumbers.map((n, i) => <div key={i} className="w-8 h-8 flex items-center justify-center bg-black/40 rounded-full text-purple-100 font-bold border border-purple-500/40 shadow-lg">{n}</div>)}</div>
+                                <div className="bg-amber-900/20 p-3 rounded-xl border border-amber-500/30 text-center shadow-lg group">
+                                    <h4 className="text-[10px] text-amber-300 uppercase tracking-widest mb-3 font-bold">Luck Frequencies</h4>
+                                    <div className="flex justify-center gap-2">
+                                        {result.luckyNumbers.map((n, i) => (
+                                            <div key={i} className="w-8 h-8 flex items-center justify-center bg-gradient-to-br from-amber-600 to-amber-900 rounded-full text-white font-cinzel font-black border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.3)] transform group-hover:scale-110 transition-transform">
+                                                {n}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="relative">
+
+                            <div className="relative flex-grow">
                                 {!isPaid ? (
-                                    <>
-                                        <div className="bg-black/30 p-4 rounded border border-indigo-500/20 text-indigo-100 font-lora italic leading-relaxed">
-                                            "{result.meaning.substring(0, 150)}..."
-                                            <div className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-black/80 to-transparent"></div>
+                                    <div className="flex flex-col h-full">
+                                        <div className="bg-black/40 p-4 rounded-xl border border-indigo-500/20 text-indigo-100 font-lora italic leading-relaxed text-sm relative overflow-hidden flex-grow">
+                                            <span className="text-3xl text-indigo-500/30 absolute top-0 left-2">"</span>
+                                            {result.meaning.substring(0, 160)}...
+                                            <div className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-gray-900/90 to-transparent"></div>
                                         </div>
-                                        <div className="mt-4"><Button onClick={handleReadMore} className="w-full bg-indigo-700 hover:bg-indigo-600 border-indigo-400">Unlock Full Interpretation</Button></div>
-                                    </>
+                                        <div className="mt-4">
+                                            <Button onClick={handleReadMore} className="w-full bg-gradient-to-r from-amber-600 to-amber-800 border-amber-500 shadow-xl py-4 font-cinzel tracking-widest">
+                                                Unlock Full Interpretation
+                                            </Button>
+                                        </div>
+                                    </div>
                                 ) : (
-                                    <FullReport reading={result.meaning} title="Dream Interpretation" subtitle="Subconscious Wisdom" imageUrl={cloudManager.resolveImage(reportImage)} chartData={chartData} />
+                                    <div className="max-h-[30rem] overflow-y-auto custom-scrollbar pr-2">
+                                        <FullReport 
+                                            reading={result.meaning} 
+                                            title="Dream Interpretation" 
+                                            subtitle="Subconscious Wisdom" 
+                                            imageUrl={cloudManager.resolveImage(reportImage)} 
+                                            chartData={chartData} 
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </div>
