@@ -32,6 +32,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     'cloud_providers', 
     'payment_providers', 
     'payment_config',
+    'payment_methods', 
     'image_assets',
     'gemstones',
     'store_orders',
@@ -39,7 +40,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     'mood_entries',     
     'synastry_reports',
     'report_formats',
-    'ui_themes' // Added ui_themes to core sync
+    'ui_themes' 
   ];
 
   const parseSupabaseError = (err: any): string => {
@@ -65,13 +66,11 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             return;
         }
 
-        // Lightweight check
         const { error: tableError } = await supabase.from('services').select('id').limit(1);
         
         if (tableError) {
             const msg = parseSupabaseError(tableError);
             if (msg.includes('aborted') || msg.includes('AbortError')) {
-                console.debug("Refresh aborted");
                 setIsReady(true);
                 return;
             }
@@ -88,12 +87,10 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
         setConnStatus('connected');
         
-        // Fetch all tables in parallel
         await Promise.all(CORE_TABLES.map(async (table) => {
             try {
                 newState[table] = await dbService.getAll(table);
             } catch (e: any) {
-                // console.warn(`Could not load table ${table}:`, e.message);
                 newState[table] = [];
             }
         }));
@@ -111,22 +108,16 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     refresh();
   }, [refresh]);
 
-  // --- GENERIC TOGGLE (Active/Inactive) ---
   const toggleStatus = useCallback(async (tableName: string, recordId: number | string) => {
     const list = dbState[tableName];
     if (!list) return;
     
-    // Loose equality check (==) to handle string/number mismatch
     const record = list.find((r:any) => r.id == recordId);
-    if (!record) {
-        console.warn(`Record ${recordId} not found in ${tableName}`);
-        return;
-    }
+    if (!record) return;
 
     const originalStatus = record.status;
     const newStatus = originalStatus === 'active' ? 'inactive' : 'active';
 
-    // Optimistic Update
     setDbState((prev: any) => ({
         ...prev,
         [tableName]: prev[tableName].map((r: any) => 
@@ -138,20 +129,17 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         await dbService.updateEntry(tableName, recordId, { status: newStatus });
     } catch (e: any) {
         console.error("Status toggle failed:", e.message);
-        // Revert
         setDbState((prev: any) => ({
             ...prev,
             [tableName]: prev[tableName].map((r: any) => 
                 r.id == recordId ? { ...r, status: originalStatus } : r
             )
         }));
-        alert(`Toggle Failed: ${e.message}\nCheck RLS policies.`);
+        alert(`Toggle Failed: ${e.message}`);
     }
   }, [dbState]);
 
-  // --- RADIO BUTTON TOGGLE (Single Active) ---
   const activateTheme = useCallback(async (themeId: string) => {
-      // 1. Optimistic Update: Set target active, all others inactive
       setDbState((prev: any) => ({
           ...prev,
           ui_themes: (prev.ui_themes || []).map((t: any) => ({
@@ -161,17 +149,13 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       }));
 
       try {
-          // 2. DB Updates
-          // First, set all to inactive (SQL call)
           await supabase.from('ui_themes').update({ status: 'inactive' }).neq('id', 'placeholder');
-          
-          // Then set target to active
           await dbService.updateEntry('ui_themes', themeId, { status: 'active' });
       } catch (e: any) {
           console.error("Theme activation failed", e);
-          refresh(); // Revert/Sync on error
+          refresh(); 
       }
-  }, []);
+  }, [refresh]);
   
   const createEntry = useCallback(async (tableName: string, data: Record<string, any>) => {
     try {
@@ -181,7 +165,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         await refresh();
     } catch (e: any) { 
         console.error("Create failed:", e);
-        alert(`Creation failed: ${e.message}`);
+        throw e; // Re-throw to allow UI to handle
     }
   }, [refresh]);
 
@@ -189,13 +173,11 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     try {
         await dbService.updateEntry(tableName, id, data);
         await refresh();
-    } catch (e) { console.error("Update failed", e); }
+    } catch (e: any) { 
+        console.error("Update failed", e);
+        throw e; // Re-throw to allow UI to handle
+    }
   }, [refresh]);
-
-  const ULTIMATE_RECOVERY_SQL = `-- ⚛️ ULTIMATE RECOVERY SCRIPT (v3)
-ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.services DISABLE ROW LEVEL SECURITY;
--- (Policies dropped/recreated in full script) --`;
 
   if (!isReady) {
       return (

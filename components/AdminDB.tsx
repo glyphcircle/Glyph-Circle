@@ -23,7 +23,6 @@ const AdminDB: React.FC = () => {
   const tableName = table || 'users';
   const data = db[tableName] || [];
 
-  // Should we use Radio behavior?
   const isThemeTable = tableName === 'ui_themes';
 
   useEffect(() => {
@@ -62,15 +61,35 @@ const AdminDB: React.FC = () => {
       setIsCreateModalOpen(true);
   };
 
+  const getProcessedData = (raw: Record<string, string>) => {
+      const processed: Record<string, any> = {};
+      Object.keys(raw).forEach(key => {
+          const val = raw[key];
+          if (typeof val === 'string' && (val.trim().startsWith('{') || val.trim().startsWith('['))) {
+              try {
+                  processed[key] = JSON.parse(val);
+              } catch {
+                  processed[key] = val;
+              }
+          } else {
+              processed[key] = val;
+          }
+      });
+      return processed;
+  };
+
   const submitCreate = async () => {
       setIsSaving(true);
       try {
-          await createEntry(tableName, formData);
+          console.log(`🚀 UI: Creating entry in ${tableName}...`);
+          const payload = getProcessedData(formData);
+          await createEntry(tableName, payload);
           setIsCreateModalOpen(false);
           setFormData({});
-          refresh();
-      } catch (e) {
-          alert("Failed to create entry.");
+          await refresh();
+      } catch (e: any) {
+          console.error("UI: Create Error:", e);
+          alert(`Creation Failed: ${e.message}`);
       } finally {
           setIsSaving(false);
       }
@@ -81,7 +100,7 @@ const AdminDB: React.FC = () => {
       Object.keys(record).forEach(key => {
           if (!systemFields.includes(key)) {
               const val = record[key];
-              editableData[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+              editableData[key] = typeof val === 'object' ? JSON.stringify(val) : String(val || '');
           }
       });
       setFormData(editableData);
@@ -90,20 +109,29 @@ const AdminDB: React.FC = () => {
   };
 
   const submitEdit = async () => {
-      if (editingId) {
-          setIsSaving(true);
-          try {
-              const { id, ...cleanData } = formData;
-              await updateEntry(tableName, editingId, cleanData);
-              setIsEditModalOpen(false);
-              setEditingId(null);
-              setFormData({});
-              refresh();
-          } catch (e) {
-              alert("Failed to save.");
-          } finally {
-              setIsSaving(false);
-          }
+      if (!editingId) return;
+      
+      setIsSaving(true);
+      try {
+          console.log(`🚀 UI: Updating ${tableName} record ${editingId}...`);
+          
+          // 🛡️ SECURITY: Prevent changing the 'id' during an update. 
+          // Changing primary keys requires a separate workflow or specific DB permissions.
+          const { id: _, ...rawCleanData } = formData; 
+          const payload = getProcessedData(rawCleanData);
+          
+          await updateEntry(tableName, editingId, payload);
+          
+          console.log(`✨ UI: Update successful.`);
+          setIsEditModalOpen(false);
+          setEditingId(null);
+          setFormData({});
+          await refresh();
+      } catch (e: any) {
+          console.error("UI: Update Error:", e);
+          alert(`Update Failed!\n\n${e.message || 'The network connection may be unstable.'}`);
+      } finally {
+          setIsSaving(false);
       }
   };
 
@@ -146,14 +174,12 @@ const AdminDB: React.FC = () => {
                         </thead>
                         <tbody>
                             {filteredData.map((row: any, i: number) => (
-                                <tr key={i} className={`hover:bg-gray-700/50 border-b border-gray-700 last:border-0 transition-colors ${row.status === 'active' && isThemeTable ? 'bg-green-900/10' : ''}`}>
+                                <tr key={i} className={`hover:bg-gray-700/50 border-b border-gray-800 last:border-0 transition-colors ${row.status === 'active' && isThemeTable ? 'bg-green-900/10' : ''}`}>
                                     {headers.map(h => {
                                         const val = row[h];
                                         
-                                        // STATUS COLUMN LOGIC
                                         if (h === 'status') {
                                             if (isThemeTable) {
-                                                // RADIO BUTTON BEHAVIOR for Themes
                                                 return (
                                                     <td key={h} className="p-3">
                                                         <button 
@@ -166,7 +192,6 @@ const AdminDB: React.FC = () => {
                                                     </td>
                                                 );
                                             } else {
-                                                // STANDARD TOGGLE for others
                                                 return (
                                                     <td key={h} className="p-3">
                                                         <div 
@@ -208,14 +233,14 @@ const AdminDB: React.FC = () => {
         </div>
 
         <Modal isVisible={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)}>
-            <div className="p-6">
+            <div className="p-6 bg-gray-900">
                 <h3 className="text-xl font-bold text-white mb-4">Add New Record</h3>
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
                     {headers.filter(h => !systemFields.includes(h)).map(key => (
                         <div key={key}>
                             <label className="block text-gray-400 text-xs uppercase mb-1">{key}</label>
                             <input 
-                                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white"
+                                className="w-full bg-black border border-gray-700 rounded p-2 text-white"
                                 placeholder={key === 'id' ? 'Leave empty for auto-gen' : `Enter ${key}`}
                                 value={formData[key] || ''}
                                 onChange={e => handleFormChange(key, e.target.value)}
@@ -224,32 +249,48 @@ const AdminDB: React.FC = () => {
                     ))}
                 </div>
                 <div className="mt-6 flex gap-3">
-                    <Button onClick={submitCreate} disabled={isSaving} className="flex-1 bg-green-700">{isSaving ? 'Creating...' : 'Create'}</Button>
+                    <Button onClick={submitCreate} disabled={isSaving} className="flex-1 bg-green-700">
+                        {isSaving ? 'Creating...' : 'Create Record'}
+                    </Button>
                     <button onClick={() => setIsCreateModalOpen(false)} className="flex-1 bg-gray-700 text-white rounded font-bold">Cancel</button>
                 </div>
             </div>
         </Modal>
 
         <Modal isVisible={isEditModalOpen} onClose={() => setIsEditModalOpen(false)}>
-            <div className="p-6">
-                <h3 className="text-xl font-bold text-white mb-4">Edit Record</h3>
-                <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+            <div className="p-6 bg-gray-900">
+                <h3 className="text-xl font-bold text-white mb-4 font-cinzel">Edit Record</h3>
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
                     {Object.keys(formData).map(key => (
                         <div key={key}>
-                            <label className="block text-gray-400 text-xs uppercase mb-1">{key}</label>
+                            <label className="block text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">{key}</label>
                             <input 
                                 disabled={key === 'id'} 
-                                className={`w-full bg-gray-900 border border-gray-700 rounded p-2 text-white ${key === 'id' ? 'opacity-50' : ''}`}
+                                className={`w-full bg-black border border-gray-700 rounded p-3 text-white font-mono text-xs ${key === 'id' ? 'opacity-50 cursor-not-allowed border-blue-900/30' : 'focus:border-blue-500 outline-none'}`}
                                 value={formData[key]}
                                 onChange={e => handleFormChange(key, e.target.value)}
                             />
+                            {key === 'id' && <p className="text-[9px] text-gray-600 mt-1 uppercase italic">Read Only Key</p>}
                         </div>
                     ))}
                 </div>
                 <div className="mt-6 flex gap-3">
-                    <Button onClick={submitEdit} disabled={isSaving} className="flex-1 bg-blue-700">{isSaving ? 'Saving...' : 'Save'}</Button>
-                    <button onClick={() => setIsEditModalOpen(false)} className="flex-1 bg-gray-700 text-white rounded font-bold">Cancel</button>
+                    <Button onClick={submitEdit} disabled={isSaving} className="flex-1 bg-blue-700 shadow-xl">
+                        {isSaving ? 'Saving Changes...' : 'Update Record'}
+                    </Button>
+                    <button 
+                        onClick={() => setIsEditModalOpen(false)} 
+                        disabled={isSaving}
+                        className="flex-1 bg-gray-800 text-gray-400 hover:text-white rounded font-bold transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
                 </div>
+                {isSaving && (
+                    <p className="mt-4 text-[10px] text-amber-500/60 text-center animate-pulse uppercase tracking-widest">
+                        Channeling updates to cloud... (Up to 30s)
+                    </p>
+                )}
             </div>
         </Modal>
         

@@ -23,7 +23,7 @@ const PAGE_TABLE_MAP: Record<string, string[]> = {
   '/leaderboard': ['users'],
   '/admin/revenue': ['transactions', 'store_orders'],
   '/admin/config': ['config', 'advertisement_config', 'payment_config', 'report_formats'],
-  '/admin/payments': ['payment_providers', 'payment_config'],
+  '/admin/payments': ['payment_providers', 'payment_config', 'payment_methods'],
   '/profile': ['users', 'user_subscriptions', 'transactions']
 };
 

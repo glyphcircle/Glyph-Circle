@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import Button from './shared/Button';
 import { useTranslation } from '../hooks/useTranslation';
@@ -24,17 +25,6 @@ interface PaymentModalProps {
 
 const CURRENCIES: Currency[] = ['INR', 'USD', 'EUR', 'SAR', 'BRL', 'RUB', 'JPY', 'CNY'];
 
-/**
- * 💳 High-Quality Regional Payment Icons
- * Specifically chosen to match the circular aesthetic requested in the screenshots.
- */
-const CIRCULAR_ICONS: Record<string, string> = {
-    paytm: "https://cdn.iconscout.com/icon/free/png-256/free-paytm-226448.png",
-    phonepe: "https://raw.githubusercontent.com/justpay/upi-icons/master/png/phonepe.png",
-    gpay: "https://raw.githubusercontent.com/justpay/upi-icons/master/png/googlepay.png",
-    bhim: "https://raw.githubusercontent.com/justpay/upi-icons/master/png/bhim.png"
-};
-
 const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSuccess, basePrice, serviceName }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -50,6 +40,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
   const { t, getRegionalPrice, currency, setCurrency } = useTranslation();
   const { user, pendingReading, commitPendingReading, refreshUser } = useAuth();
   const { db } = useDb();
+
+  // Load payment methods from database
+  const upiMethods = useMemo(() => {
+    return (db.payment_methods || []).filter((m: any) => m.type === 'upi' && m.status === 'active');
+  }, [db.payment_methods]);
 
   useEffect(() => {
     if (isVisible) {
@@ -82,6 +77,10 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
   const priceDisplay = getRegionalPrice(finalPriceINR);
   const originalPriceDisplay = getRegionalPrice(basePrice);
 
+  /**
+   * 🛡️ ROBUST SUCCESS FLOW
+   * Fixes "Stuck" issue by ensuring state updates happen gracefully
+   */
   const handlePaymentSuccess = async (paymentId: string) => {
     setIsLoading(false);
     setIsSuccess(true);
@@ -89,25 +88,25 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
     // Play success haptic
     if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-    // Delay the actual reveal slightly to let the animation play
+    // Record transaction immediately in background
+    if (user) {
+        dbService.recordTransaction({
+          user_id: user.id,
+          amount: finalPriceINR,
+          description: pendingReading ? `Payment for ${pendingReading.title}` : `${serviceName}`,
+          status: 'success'
+        });
+    }
+
+    // Trigger parent success callback IMMEDIATELY to unlock content in the background
+    onSuccess(); 
+
+    // Delay the visual close just enough for the animation to be seen
     setTimeout(() => {
-        onSuccess(); 
-        if (user) {
-          dbService.recordTransaction({
-            user_id: user.id,
-            amount: finalPriceINR,
-            description: pendingReading ? `Payment for ${pendingReading.title}` : `${serviceName}`,
-            status: 'success'
-          });
-          if (pendingReading) commitPendingReading();
-          refreshUser();
-        }
-    }, 1800);
-    
-    // Auto-close modal after animation sequence
-    setTimeout(() => {
-        onClose();
-    }, 2800);
+        if (pendingReading && user) commitPendingReading();
+        refreshUser();
+        onClose(); 
+    }, 3500); 
   };
 
   const handleInitiatePayment = (specificMethod?: string) => {
@@ -180,7 +179,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
 
   return (
     <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
-      <div className="bg-[#0b0c15] border border-amber-500/30 w-full max-w-sm rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.8)] overflow-hidden relative min-h-[500px] flex flex-col justify-center transition-all duration-500">
+      <div className="bg-[#0b0c15] border border-amber-500/30 w-full max-w-sm rounded-[2rem] shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden relative min-h-[500px] flex flex-col justify-center transition-all duration-500 animate-fade-in-up">
         {!isSuccess && (
           <button 
             onClick={onClose} 
@@ -192,29 +191,35 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
 
         <div className="p-8 text-center flex flex-col h-full justify-center items-center">
           {isSuccess ? (
-            /* ✨ DIVINE SUCCESS ANIMATION ✨ */
+            /* ✨ SUCCESS UI - MATCHING SCREENSHOT ✨ */
             <div className="animate-fade-in-up flex flex-col items-center">
-              <div className="relative mb-8">
-                <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(34,197,94,0.6)] animate-[bounce_1.2s_ease-in-out_infinite_alternate]">
-                  <svg className="w-14 h-14 text-white drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+              <div className="relative mb-10">
+                <div className="w-28 h-28 bg-[#10b981] rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(16,185,129,0.5)] animate-[bounce_1.5s_ease-in-out_infinite]">
+                  <svg className="w-16 h-16 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                {/* Orbital particles for success */}
-                <div className="absolute inset-[-10px] border-2 border-green-500/20 rounded-full animate-ping"></div>
-                <div className="absolute inset-[-20px] border border-green-500/10 rounded-full animate-pulse"></div>
+                <div className="absolute inset-[-15px] border-2 border-[#10b981]/20 rounded-full animate-ping"></div>
               </div>
               
-              <h3 className="text-3xl font-cinzel font-black text-white mb-2 uppercase tracking-widest drop-shadow-lg">Divine Offering Received</h3>
-              <p className="text-green-400 font-lora italic text-sm animate-pulse tracking-wide">Unveiling your sacred report...</p>
+              <h3 className="text-4xl font-cinzel font-black text-white mb-3 uppercase tracking-[0.1em] drop-shadow-xl">Offer Accepted</h3>
+              <p className="text-[#10b981] font-bold uppercase tracking-[0.2em] text-xs animate-pulse">Your Path is Now Illuminated</p>
+              
+              {/* Manual View Button to prevent getting stuck */}
+              <button 
+                onClick={onClose}
+                className="mt-12 px-8 py-3 bg-gray-900 border border-amber-500/20 text-amber-200/50 text-[10px] font-bold uppercase tracking-widest rounded-full hover:text-white transition-all active:scale-95"
+              >
+                Reveal Report Now &rarr;
+              </button>
             </div>
           ) : (
             /* 💳 PAYMENT FORM 💳 */
             <div className="w-full transition-all">
-              <h3 className="text-3xl font-cinzel font-bold text-amber-100 mb-1 tracking-tight">Dakshina</h3>
-              <p className="text-amber-200/50 text-[10px] uppercase tracking-[0.4em] mb-8">Sacred exchange for your destiny</p>
+              <h3 className="text-3xl font-cinzel font-bold text-amber-100 mb-1 tracking-tight uppercase">Dakshina</h3>
+              <p className="text-amber-200/50 text-[10px] uppercase tracking-[0.4em] mb-8">Sacred Exchange</p>
 
-              <div className="mb-8 bg-black/60 p-8 rounded-[2rem] border border-amber-500/20 relative group shadow-inner">
+              <div className="mb-10 bg-black/60 p-8 rounded-[2rem] border border-amber-500/20 relative group shadow-inner">
                 <div className="absolute top-3 right-5">
                   <select 
                     value={currency} 
@@ -242,23 +247,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isVisible, onClose, onSucce
 
               {paymentMethod === 'upi' ? (
                 <div className="space-y-6">
-                  {/* INDIVIDUAL CIRCULAR PROVIDER ICONS - Exactly as per Screenshot 2 */}
+                  {/* INDIVIDUAL CIRCULAR PROVIDER ICONS - LOADED FROM DB SEEDS */}
                   <div className="grid grid-cols-4 gap-4 px-1">
-                    {Object.entries(CIRCULAR_ICONS).map(([id, url]) => (
+                    {upiMethods.map((method: any) => (
                       <button 
-                        key={id} 
-                        onClick={() => handleInitiatePayment(id)} 
+                        key={method.id} 
+                        onClick={() => handleInitiatePayment(method.name.toLowerCase().replace(/\s/g, ''))} 
                         className="flex flex-col items-center gap-2 group cursor-pointer transition-transform active:scale-90"
                       >
-                        <div className="w-14 h-14 flex items-center justify-center bg-white rounded-full p-2.5 border-2 border-transparent group-hover:border-amber-500 transition-all shadow-[0_5px_15px_rgba(0,0,0,0.3)] group-hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] overflow-hidden">
-                          <img src={url} alt={id} className="w-full h-full object-contain" />
+                        <div className="w-14 h-14 flex items-center justify-center bg-white rounded-full p-2.5 border-2 border-transparent group-hover:border-amber-500 transition-all shadow-[0_10px_25px_rgba(0,0,0,0.4)] group-hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] overflow-hidden">
+                          <img src={method.logo_url} alt={method.name} className="w-full h-full object-contain" />
                         </div>
-                        <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest group-hover:text-amber-200 transition-colors">{id}</span>
+                        <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest group-hover:text-amber-200 transition-colors">{method.name}</span>
                       </button>
                     ))}
                   </div>
                   
-                  <div className="mt-8 pt-6 border-t border-white/5">
+                  <div className="mt-10 pt-6 border-t border-white/5">
                     <button onClick={() => setShowVpaInput(!showVpaInput)} className="w-full py-3.5 bg-gray-900 border border-gray-800 rounded-2xl text-[10px] font-black text-amber-200/60 hover:text-white transition-colors uppercase tracking-[0.2em]">
                       {showVpaInput ? 'Hide manual entry' : 'Pay via manual UPI ID'}
                     </button>

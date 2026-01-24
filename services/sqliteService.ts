@@ -47,6 +47,13 @@ const INITIAL_SCHEMA: Record<string, any[]> = {
   payment_providers: [
     { id: 'rzp_main', name: 'Razorpay', provider_type: 'razorpay', is_active: true, currency: 'INR', status: 'active', api_key: 'rzp_test_12345678', country_codes: 'IN,GLOBAL' }
   ],
+  // --- NEW: Added payment_methods to local schema ---
+  payment_methods: [
+    { id: 'pm_paytm', provider_id: 'rzp_main', name: 'Paytm', logo_url: 'https://raw.githubusercontent.com/justpay/upi-icons/master/png/paytm.png', type: 'upi', status: 'active' },
+    { id: 'pm_phonepe', provider_id: 'rzp_main', name: 'PhonePe', logo_url: 'https://raw.githubusercontent.com/justpay/upi-icons/master/png/phonepe.png', type: 'upi', status: 'active' },
+    { id: 'pm_gpay', provider_id: 'rzp_main', name: 'Google Pay', logo_url: 'https://raw.githubusercontent.com/justpay/upi-icons/master/png/googlepay.png', type: 'upi', status: 'active' },
+    { id: 'pm_bhim', provider_id: 'rzp_main', name: 'BHIM', logo_url: 'https://raw.githubusercontent.com/justpay/upi-icons/master/png/bhim.png', type: 'upi', status: 'active' }
+  ],
   payment_config: [
     { id: 'pay_conf_01', account_email: 'billing@glyph.co', creditor_name: 'Glyph Circle', creditor_address: '123 Astral Plane, Cosmos', status: 'active' }
   ],

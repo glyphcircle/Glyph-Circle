@@ -41,7 +41,7 @@ const TABLE_GROUPS = [
         gradient: "from-gray-800/40 to-gray-900/40",
         border: "border-gray-500/30",
         text: "text-gray-300",
-        tables: ['config', 'ui_themes', 'report_formats', 'cloud_providers', 'payment_providers', 'payment_config', 'logs']
+        tables: ['config', 'ui_themes', 'report_formats', 'cloud_providers', 'payment_providers', 'payment_config', 'payment_methods', 'logs']
     }
 ];
 

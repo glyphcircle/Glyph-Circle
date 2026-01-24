@@ -15,17 +15,15 @@ interface State {
  * 🌌 ErrorBoundary Component
  * Catches runtime errors in the mystical fabric and provides a recovery path.
  */
-// Fix: Use the named Component import for clearer inheritance in strict TypeScript environments
+// Fix: Use named Component import to resolve inheritance visibility issues
 class ErrorBoundary extends Component<Props, State> {
-  // Fix: Explicitly declare the state property on the class to ensure it's recognized by the compiler
-  public state: State = {
-    hasError: false,
-    error: null,
-  };
-
-  // Fix: Ensure super(props) is called in constructor for correct initialization of base class
+  // Fix: Explicitly initialize state in the constructor and call super(props) to ensure Component methods are properly recognized
   constructor(props: Props) {
     super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
   }
 
   public static getDerivedStateFromError(error: Error): State {
@@ -33,6 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  // Fix: Use ErrorInfo from named imports
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log the error to the console
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
@@ -40,13 +39,14 @@ class ErrorBoundary extends Component<Props, State> {
 
   /* Handle retry logic with an arrow function to preserve 'this' context */
   public handleRetry = () => {
-    // Fix: Access setState through inheritance from Component
+    // Fix: Access setState through explicit Component inheritance
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   };
 
+  // Fix: Use ReactNode from named imports for return type
   public render(): ReactNode {
-    // Fix: Access state and props properties inherited from Component
+    // Fix: Access state and props properties inherited from Component to resolve 'does not exist' errors
     const { hasError, error } = this.state;
     const { children } = this.props;
 
