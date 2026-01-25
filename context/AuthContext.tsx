@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { dbService, User, Reading } from '../services/db';
@@ -55,7 +54,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAILS = ['master@glyphcircle.com', 'admin@glyphcircle.com', 'admin@glyph.circle'];
+const ADMIN_EMAILS = [
+  'master@glyphcircle.com', 
+  'admin@glyphcircle.com', 
+  'admin@glyph.circle',
+  'mitaakxi@glyphcircle.com'
+];
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -121,20 +125,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (sessionError) throw sessionError;
 
         if (session?.user) {
-            let profile = await dbService.getUserProfile(session.user.id);
+            // Defensive timeout to prevent hang if RLS is broken
+            const profilePromise = dbService.getUserProfile(session.user.id);
+            const profile = await Promise.race([
+                profilePromise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Database Unresponsive")), 3000))
+            ]) as User | null;
 
             if (!profile) {
-                const isAdmin = ADMIN_EMAILS.includes(session.user.email || '');
-                profile = await dbService.createUserProfile({
-                    id: session.user.id,
-                    email: session.user.email || '',
-                    name: session.user.user_metadata.full_name || 'Seeker',
-                    role: isAdmin ? 'admin' : 'user',
-                    credits: 50 
-                }) as User;
-            }
-
-            if (profile) {
+                const isAdmin = ADMIN_EMAILS.includes(session.user.email?.toLowerCase() || '');
+                try {
+                  const newProfile = await dbService.createUserProfile({
+                      id: session.user.id,
+                      email: session.user.email || '',
+                      name: session.user.user_metadata.full_name || 'Seeker',
+                      role: isAdmin ? 'admin' : 'seeker',
+                      credits: 100,
+                      currency: 'INR'
+                  }) as User;
+                  
+                  if (newProfile) {
+                      setUser(syncGamification(newProfile));
+                  }
+                } catch (createErr: any) {
+                  // If RLS fails on insert, show clear error
+                  if (createErr.message.includes('row-level security')) {
+                    setError("Security Alignment Required: Please ask your Admin to run the V17 SQL Repair script.");
+                  } else {
+                    setError(createErr.message);
+                  }
+                }
+            } else {
                 const gamifiedUser = syncGamification(profile);
                 setUser(gamifiedUser);
                 const readings = await dbService.getReadings(profile.id);
@@ -157,7 +178,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         }
     } catch (err: any) {
-        console.warn("Auth Sync:", err.message);
+        console.warn("Auth Sync Error:", err.message);
+        setError(err.message);
     } finally {
         setIsLoading(false);
     }
@@ -167,7 +189,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     refreshUser();
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log(`🔐 Auth Event: ${event}`);
         if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
             await refreshUser();
         }
@@ -188,6 +209,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await refreshUser();
     } catch (e: any) {
         setError(e.message);
         setIsLoading(false);
@@ -199,13 +221,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-        // Fix: Use a robust redirect URL that includes the subfolder (e.g. /Glyph-Circle/)
         const redirectTo = window.location.origin + window.location.pathname;
         const { error } = await supabase.auth.signInWithOtp({ 
             email,
-            options: {
-                emailRedirectTo: redirectTo
-            }
+            options: { emailRedirectTo: redirectTo }
         });
         if (error) throw error;
     } catch (e: any) {
@@ -273,7 +292,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     setError(null);
     try {
-        // Fix: Ensure confirmation email redirects to the correct subfolder
         const redirectTo = window.location.origin + window.location.pathname;
         const { error } = await supabase.auth.signUp({ 
             email, password, options: { data: { full_name: name }, emailRedirectTo: redirectTo }
@@ -292,12 +310,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const devLogin = async (email: string, name: string) => {
       setIsLoading(true);
-      const isAdmin = ADMIN_EMAILS.includes(email);
+      const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase());
       const mockUser: User = {
           id: 'dev_user_' + btoa(email).substring(0,8),
           email, name,
-          role: isAdmin ? 'admin' : 'user',
+          role: isAdmin ? 'admin' : 'seeker',
           credits: 100,
+          currency: 'INR',
           created_at: new Date().toISOString()
       };
       localStorage.setItem('glyph_dev_user', JSON.stringify(mockUser));
@@ -306,16 +325,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    try { await supabase.auth.signOut(); } catch (e) {}
-    localStorage.removeItem('glyph_admin_session');
-    localStorage.removeItem('glyph_dev_user');
-    setUser(null);
-    setHistory([]);
+    try {
+        // Clear everything immediately to prevent hang
+        setUser(null);
+        setHistory([]);
+        localStorage.removeItem('glyph_admin_session');
+        localStorage.removeItem('glyph_dev_user');
+        
+        // Force cleanup the session
+        await supabase.auth.signOut();
+    } catch (e) {
+        console.warn("Sign out cleaning...");
+    } finally {
+        // Sledgehammer fix for stuck buttons
+        window.location.hash = '#/login';
+        window.location.reload(); 
+    }
   };
 
   const addCredits = useCallback(async (amount: number) => {
     if (user) {
-      const updated = await dbService.addCredits(user.id, amount);
+      // Fix: Cast the result of addCredits to any to avoid TypeScript 'unknown' type error on line 350
+      const updated = await dbService.addCredits(user.id, amount) as any;
       setUser(prev => prev ? { ...prev, credits: updated.credits } : null);
     }
   }, [user]);

@@ -7,7 +7,7 @@ interface HelpStep {
 }
 
 interface AdminContextHelpProps {
-  context: 'db' | 'cloud' | 'payment' | 'dashboard';
+  context: 'db' | 'cloud' | 'payment' | 'dashboard' | 'setup';
 }
 
 const HELP_CONTENT: Record<string, { title: string, steps: HelpStep[] }> = {
@@ -16,41 +16,47 @@ const HELP_CONTENT: Record<string, { title: string, steps: HelpStep[] }> = {
     steps: [
       { title: 'System Status', desc: 'Check the health of your Cloud (Supabase) and Cache (Local) connections.' },
       { title: 'Navigation', desc: 'Use the grid buttons to jump to specific configuration sections.' },
-      { title: 'Security', desc: 'Use the "De-Authorize" button to safely lock the admin panel.' }
+      { title: 'Security', desc: 'Use the "De-Authorize" button to safely lock the admin panel.' },
+      { title: 'Setup Wizard', desc: 'Click the (?) bubble for the initial setup checklist (Auth/Roles).' }
+    ]
+  },
+  setup: {
+    title: 'Initial Setup Checklist',
+    steps: [
+      { title: '1. Disable Confirm Email', desc: 'Go to Authentication > Providers > Email and toggle "Confirm email" to OFF. This allows instant login during development.' },
+      { title: '2. Assign Admin Role', desc: 'In the Supabase Table Editor, find your user in the "users" table. Change the "role" column from "seeker" to "admin" and set "credits" to 999999.' },
+      { title: '3. Storage Buckets', desc: 'Create a public bucket named "assets" in Supabase Storage if you intend to host custom images directly on your cloud.' },
+      { title: '4. Redirect URLs', desc: 'Under Auth > URL Configuration, set your Site URL and Redirect URLs to include your GitHub Pages domain with a wildcard (**).' }
     ]
   },
   db: {
     title: 'Database Management Guide',
     steps: [
-      { title: 'Enable/Disable Records', desc: 'Locate the "Active/Inactive" button in the Actions column on the right. Click it to toggle the status instantly.' },
-      { title: 'Edit Content', desc: 'Click the blue "Edit" button. A modal will appear where you can modify fields. Ensure links (like images) are valid.' },
-      { title: 'Add New Entry', desc: 'Click the "+ New Entry" button at the top right. Fill in the required fields. Leave ID blank for auto-generation.' },
-      { title: 'Validation', desc: 'The system automatically checks if your image links match an active Cloud Provider.' }
+      { title: 'Enable/Disable Records', desc: 'Locate the "Active/Inactive" button in the Actions column. Click it to toggle the status instantly.' },
+      { title: 'Edit Content', desc: 'Click blue "Edit" to modify fields. Ensure image paths are resolved via active Cloud Providers.' },
+      { title: 'Syncing', desc: 'If data looks stale, use the Refresh button (↻) to force a cloud re-fetch.' }
     ]
   },
   cloud: {
     title: 'Cloud Provider Setup',
     steps: [
-      { title: 'Add New Provider', desc: 'Click "+ NEW" in the sidebar. Select a provider type (e.g., Dropbox, Google Drive).' },
-      { title: 'Configuration', desc: 'Enter a Name (e.g., "My Dropbox"). Enter any required API keys or Folder IDs. For public links, keys might be optional depending on provider.' },
-      { title: 'Activation', desc: 'IMPORTANT: After saving, locate the provider in the list. Click the "OFF" button to toggle it to "● LIVE".' },
-      { title: 'Multiple Clouds', desc: 'You can have multiple providers active simultaneously. The system will detect which one to use based on the link URL.' }
+      { title: 'Add New Provider', desc: 'Click "+ NEW" in the sidebar. Select a provider type (e.g., Google Drive).' },
+      { title: 'Activation', desc: 'Locate the provider in the list. Click the "OFF" button to toggle it to "● LIVE".' }
     ]
   },
   payment: {
     title: 'Payment Gateway Setup',
     steps: [
-      { title: 'Select Provider', desc: 'Choose between Razorpay (India/Global), Stripe (Global), or PayPal.' },
-      { title: 'Credentials', desc: 'Enter your Public Key (Client ID) and Secret Key. These are provided by your payment processor dashboard.' },
-      { title: 'Region Locking', desc: 'Use "IN" for India-only gateways, or "GLOBAL" for worldwide. The app auto-switches based on user location.' },
-      { title: 'Testing', desc: 'Use the "Initiate Test" button to verify credentials before going live.' }
+      { title: 'Select Provider', desc: 'Choose Razorpay (IN), Stripe (Global), or PayPal.' },
+      { title: 'Testing', desc: 'Use "Initiate ₹1 Test" to verify your credentials work before going live.' }
     ]
   }
 };
 
 const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const content = HELP_CONTENT[context] || HELP_CONTENT['db'];
+  const [activeContext, setActiveContext] = useState(context);
+  const content = HELP_CONTENT[activeContext] || HELP_CONTENT['db'];
   
   // Dragging State
   const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 100 });
@@ -67,7 +73,7 @@ const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
     };
   };
 
-  // --- TOUCH EVENTS (Mobile) ---
+  // --- TOUCH EVENTS ---
   const handleTouchStart = (e: React.TouchEvent) => {
     setIsDragging(true);
     const touch = e.touches[0];
@@ -77,27 +83,21 @@ const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
     };
   };
 
-  // Global Move/Up listeners to handle dragging outside the button area
   useEffect(() => {
     const handleMove = (clientX: number, clientY: number) => {
       if (isDragging) {
         let newX = clientX - dragOffset.current.x;
         let newY = clientY - dragOffset.current.y;
-
-        // Boundary Checks
         const maxX = window.innerWidth - 60;
         const maxY = window.innerHeight - 60;
-        
         newX = Math.max(10, Math.min(newX, maxX));
         newY = Math.max(10, Math.min(newY, maxY));
-
         setPosition({ x: newX, y: newY });
       }
     };
 
     const onMouseMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
     const onTouchMove = (e: TouchEvent) => handleMove(e.touches[0].clientX, e.touches[0].clientY);
-
     const onEnd = () => setIsDragging(false);
 
     if (isDragging) {
@@ -116,7 +116,6 @@ const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
   }, [isDragging]);
 
   const handleClick = (e: React.MouseEvent) => {
-      // Only toggle if we didn't drag significantly (prevents opening on drag release)
       if (!isDragging) {
           setIsOpen(!isOpen);
       }
@@ -124,7 +123,6 @@ const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
 
   return (
     <>
-      {/* Floating Trigger */}
       <button
         ref={buttonRef}
         onMouseDown={handleMouseDown}
@@ -133,22 +131,22 @@ const AdminContextHelp: React.FC<AdminContextHelpProps> = ({ context }) => {
         style={{ 
             left: `${position.x}px`, 
             top: `${position.y}px`,
-            touchAction: 'none' // Critical for mobile drag
+            touchAction: 'none'
         }}
         className={`fixed z-[1000] w-14 h-14 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.5)] font-bold text-xl flex items-center justify-center border-2 border-white/20 transition-transform active:scale-95 cursor-move ${isDragging ? 'bg-cyan-700 scale-110' : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:scale-105'}`}
-        title="Drag me! Click for Help."
+        title="Admin Help Guide"
       >
         <span className="text-white pointer-events-none text-2xl drop-shadow-md">?</span>
       </button>
 
-      {/* Help Window */}
       {isOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in-up">
           <div className="w-full max-w-md bg-gray-900 border border-cyan-500/30 rounded-xl shadow-2xl overflow-hidden relative">
             <div className="bg-gradient-to-r from-blue-900/50 to-cyan-900/50 p-4 border-b border-white/10 flex justify-between items-center">
-              <h3 className="font-cinzel font-bold text-cyan-100 flex items-center gap-2">
-                <span>🛡️</span> Admin Guide
-              </h3>
+              <div className="flex gap-2">
+                 <button onClick={() => setActiveContext('setup')} className={`text-[9px] px-2 py-1 rounded uppercase font-bold border ${activeContext === 'setup' ? 'bg-cyan-500 text-black border-cyan-400' : 'text-cyan-500 border-cyan-800'}`}>Initial Setup</button>
+                 <button onClick={() => setActiveContext(context)} className={`text-[9px] px-2 py-1 rounded uppercase font-bold border ${activeContext !== 'setup' ? 'bg-cyan-500 text-black border-cyan-400' : 'text-cyan-500 border-cyan-800'}`}>Context Guide</button>
+              </div>
               <button onClick={() => setIsOpen(false)} className="text-cyan-200 hover:text-white text-2xl leading-none">&times;</button>
             </div>
             

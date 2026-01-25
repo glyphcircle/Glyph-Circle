@@ -1,3 +1,4 @@
+
 import { dbService } from './db';
 
 export interface CloudProvider {
@@ -71,9 +72,11 @@ class CloudManager {
         return `https://images.unsplash.com/${url}?q=80&w=800&auto=format`;
     }
     
-    // 2. GOOGLE DRIVE OPTIMIZATION
-    if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) {
-        const idMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    // 2. GOOGLE DRIVE OPTIMIZATION (Support all common variants)
+    if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com') || url.includes('googleusercontent.com')) {
+        const idMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || 
+                        url.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+                        url.match(/\/d\/([a-zA-Z0-9_-]+)\//);
         if (idMatch && idMatch[1]) return `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
     }
     
@@ -90,7 +93,6 @@ class CloudManager {
 
     // 5. SECURITY: Default to placeholder if not a valid URL
     if (!url.startsWith('http') && !url.startsWith('data:')) {
-        console.warn("🛠️ CloudManager: Invalid URL detected:", url);
         return 'https://images.unsplash.com/photo-1600609842388-3e4b489d71c6?q=80&w=400';
     }
 
