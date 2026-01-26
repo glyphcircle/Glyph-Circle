@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useDb } from '../hooks/useDb';
 import Card from './shared/Card';
 import Modal from './shared/Modal';
@@ -26,7 +26,8 @@ const MASTER_SCHEMA: Record<string, string[]> = {
 
 const AdminDB: React.FC = () => {
   const { table } = useParams<{ table: string }>();
-  const { db, toggleStatus, createEntry, updateEntry, deleteEntry, refresh, errorMessage } = useDb();
+  const [searchParams] = useSearchParams();
+  const { db, toggleStatus, createEntry, updateEntry, deleteEntry, refresh } = useDb();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -40,6 +41,13 @@ const AdminDB: React.FC = () => {
   const tableName = table || 'users';
   const data = db[tableName] || [];
 
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+        setFormData({});
+        setIsCreateModalOpen(true);
+    }
+  }, [searchParams]);
+
   const headers = useMemo<string[]>(() => {
     if (data.length > 0) return Array.from(new Set(data.flatMap((record: any) => Object.keys(record)))) as string[];
     return (MASTER_SCHEMA[tableName] || ['id', 'status']) as string[];
@@ -47,15 +55,19 @@ const AdminDB: React.FC = () => {
 
   const handleRefresh = async () => {
       setIsRefreshing(true);
-      await refresh();
-      setTimeout(() => setIsRefreshing(false), 800);
+      try {
+        await refresh();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
   };
 
   const handleToggle = async (id: string | number) => {
       setProcessingId(id);
       try {
-        if (navigator.vibrate) navigator.vibrate(40);
         await toggleStatus(tableName, id);
+      } catch (e: any) {
+        alert(`Status Update Failed: ${e.message}`);
       } finally {
         setProcessingId(null);
       }
@@ -65,7 +77,6 @@ const AdminDB: React.FC = () => {
       if (window.confirm(`Permanently destroy this record in ${tableName}? This action cannot be undone.`)) {
           setProcessingId(id);
           try {
-              if (navigator.vibrate) navigator.vibrate([100, 50]);
               await deleteEntry(tableName, id);
           } catch (e: any) { 
               alert(`Action Denied: ${e.message}. Ensure your admin role is active in the database.`); 
@@ -79,7 +90,7 @@ const AdminDB: React.FC = () => {
       const editableData: Record<string, string> = {};
       headers.forEach(h => {
           if (!['created_at', 'updated_at'].includes(h)) {
-              editableData[h] = typeof record[h] === 'object' ? JSON.stringify(record[h]) : String(record[h] || '');
+              editableData[h] = typeof record[h] === 'object' ? JSON.stringify(record[h]) : String(record[h] === null ? '' : record[h]);
           }
       });
       setFormData(editableData);
@@ -87,11 +98,38 @@ const AdminDB: React.FC = () => {
       setIsEditModalOpen(true);
   };
 
+  const preparePayload = (raw: Record<string, string>) => {
+    const payload: Record<string, any> = {};
+    Object.entries(raw).forEach(([key, val]) => {
+        if (['created_at', 'updated_at'].includes(key)) return;
+        
+        const trimmedVal = String(val || '').trim();
+        
+        // Strict Type Casting for Supabase/Postgres
+        if (['price', 'stock', 'credits', 'amount', 'rating'].includes(key.toLowerCase())) {
+            const num = parseFloat(trimmedVal);
+            payload[key] = isNaN(num) ? null : num;
+        } else if (['is_active', 'is_favorite', 'is_processed'].includes(key.toLowerCase())) {
+            payload[key] = trimmedVal.toLowerCase() === 'true' || trimmedVal === '1';
+        } else if (trimmedVal.startsWith('{') || trimmedVal.startsWith('[')) {
+            try {
+                payload[key] = JSON.parse(trimmedVal);
+            } catch {
+                payload[key] = trimmedVal;
+            }
+        } else {
+            payload[key] = trimmedVal === '' ? null : trimmedVal;
+        }
+    });
+    return payload;
+  };
+
   const submitCreate = async () => {
       setIsSaving(true);
       try {
-          const finalData = { ...formData, id: formData.id || uuidv4() };
-          await createEntry(tableName, finalData);
+          const payload = preparePayload(formData);
+          if (!payload.id) payload.id = uuidv4();
+          await createEntry(tableName, payload);
           setIsCreateModalOpen(false);
           setFormData({});
       } catch (e: any) { 
@@ -105,12 +143,14 @@ const AdminDB: React.FC = () => {
       if (!editingId) return;
       setIsSaving(true);
       try {
-          await updateEntry(tableName, editingId, formData);
+          const payload = preparePayload(formData);
+          const { id: _, ...updatePayload } = payload;
+          await updateEntry(tableName, editingId, updatePayload);
           setIsEditModalOpen(false);
           setEditingId(null);
           setFormData({});
       } catch (e: any) { 
-          alert(`Update Failed: ${e.message}`); 
+          alert(`Update Failed: ${e.message || 'Check column types or RLS permissions.'}`); 
       } finally { 
           setIsSaving(false); 
       }
@@ -121,7 +161,11 @@ const AdminDB: React.FC = () => {
       if (['image', 'image_url', 'path', 'logo_url', 'url'].includes(key.toLowerCase()) && val) {
           return (
             <div className="flex items-center gap-2 group/cell">
-               <img src={cloudManager.resolveImage(strVal)} className="w-8 h-8 object-cover rounded border border-white/10 transition-transform group-hover/cell:scale-150" />
+               <img 
+                 src={cloudManager.resolveImage(strVal)} 
+                 className="w-8 h-8 object-cover rounded border border-white/10 transition-transform group-hover/cell:scale-150" 
+                 onError={(e) => (e.currentTarget.src = 'https://placehold.co/50x50?text=Err')}
+               />
                <span className="truncate max-w-[100px] opacity-30">{strVal}</span>
             </div>
           );
@@ -184,11 +228,6 @@ const AdminDB: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {data.length === 0 && (
-                                <tr>
-                                    <td colSpan={headers.length + 1} className="p-20 text-center text-gray-600 italic">No records found in the {tableName} archives.</td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
@@ -196,10 +235,10 @@ const AdminDB: React.FC = () => {
         </div>
 
         <Modal isVisible={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)}>
-            <div className="p-8 bg-[#0b0c15] border border-amber-500/30 rounded-2xl w-full max-w-2xl shadow-2xl">
+            <div className="p-8 bg-[#0b0c15] border border-amber-500/30 rounded-2xl w-full max-w-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-cinzel font-black text-amber-400 uppercase mb-6 tracking-widest border-b border-white/5 pb-4">Initialize Record</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                    {headers.filter(h => !['created_at', 'updated_at'].includes(h)).map(key => (
+                    {headers.filter(h => !['created_at', 'updated_at', 'id'].includes(h)).map(key => (
                         <div key={key}>
                             <label className="block text-gray-500 text-[9px] uppercase font-black mb-1.5 ml-1">{key}</label>
                             <input 
@@ -221,7 +260,7 @@ const AdminDB: React.FC = () => {
         </Modal>
 
         <Modal isVisible={isEditModalOpen} onClose={() => setIsEditModalOpen(false)}>
-            <div className="p-8 bg-[#0b0c15] border border-amber-500/30 rounded-2xl w-full max-w-2xl shadow-2xl">
+            <div className="p-8 bg-[#0b0c15] border border-amber-500/30 rounded-2xl w-full max-w-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
                 <h3 className="text-xl font-cinzel font-black text-blue-400 uppercase mb-6 tracking-widest border-b border-white/5 pb-4">Modify Artifact</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                     {Object.keys(formData).map(key => (

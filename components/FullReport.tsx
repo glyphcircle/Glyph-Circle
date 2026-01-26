@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
@@ -95,7 +96,6 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
       handleTranslation();
   }, [language, reading]); 
 
-  // Resolve brand logo from DB image_assets explicitly
   const logoUrl = useMemo(() => {
     const asset = db.image_assets?.find((a: any) => a.id === 'sacred_emblem' || a.tags?.includes('brand_logo'));
     return asset ? cloudManager.resolveImage(asset.path) : DEFAULT_BRAND_LOGO;
@@ -173,7 +173,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
         <SageChat context={displayContent} type={title} />
         
         <div 
-          className="relative transition-all duration-300 shadow-[0_40px_80px_rgba(0,0,0,0.6)] origin-top border-[16px] border-double border-[#d4af37] rounded-sm bg-[#fffcf0] sacred-boundary"
+          className="relative transition-all duration-300 shadow-[0_40px_80px_rgba(0,0,0,0.6)] origin-top rounded-sm bg-[#fffcf0] sacred-boundary"
           style={{ 
             width: '210mm', 
             height: '297mm',
@@ -185,72 +185,102 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                 ref={reportRef} 
                 className="absolute inset-0 bg-[#fffcf0] text-black overflow-hidden flex flex-col p-14 report-canvas"
             >
-                <div className="absolute top-8 left-8 text-7xl text-[#d4af37]/20 font-cinzel select-none leading-none">ॐ</div>
-                <div className="absolute top-8 right-8 text-7xl text-[#d4af37]/20 font-cinzel select-none leading-none">ॐ</div>
+                {/* Decorative Elements */}
+                <div className="absolute top-8 left-8 text-7xl text-[#d4af37]/15 font-cinzel select-none leading-none pointer-events-none">ॐ</div>
+                <div className="absolute top-8 right-8 text-7xl text-[#d4af37]/15 font-cinzel select-none leading-none pointer-events-none">ॐ</div>
                 
                 {reportBackground && (
                     <OptimizedImage 
                         src={reportBackground} 
                         alt="" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-[0.03] z-0 grayscale"
+                        className="absolute inset-0 w-full h-full object-cover opacity-[0.04] z-0 grayscale"
                         showSkeleton={false}
                     />
                 )}
 
-                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-12 pb-8 border-b border-[#d4af37]/30">
-                    {/* EMBLEM CONTAINER: Enhanced size and robust absolute flex centering */}
-                    <div className="w-48 h-48 md:w-64 md:h-64 relative mb-10 flex items-center justify-center">
-                        <div className="absolute inset-0 bg-[#0d0d0d] rounded-full border-[5px] border-[#d4af37] shadow-[0_0_60px_rgba(212,175,55,0.4)] flex items-center justify-center overflow-hidden">
-                             <div className="absolute inset-0 flex items-center justify-center">
+                {/* 🛡️ ENHANCED DECORATIVE BORDER (Sacred Frame) */}
+                <div className="absolute inset-0 z-40 pointer-events-none p-6 md:p-8">
+                    <div className="w-full h-full border-[12px] md:border-[16px] border-double border-[#d4af37]/50 shadow-[inset_0_0_60px_rgba(0,0,0,0.03)] relative">
+                        {/* Inner hair-line border */}
+                        <div className="absolute inset-1 border border-[#d4af37]/20"></div>
+                    </div>
+                    
+                    {/* Corner Ornaments - High detail */}
+                    <div className="absolute top-4 left-4 w-16 h-16 text-[#b38728]/40">
+                        <svg viewBox="0 0 100 100" fill="currentColor"><path d="M0 0 L40 0 L40 5 L5 5 L5 40 L0 40 Z M15 15 L30 15 L30 20 L20 20 L20 30 L15 30 Z"/></svg>
+                    </div>
+                    <div className="absolute top-4 right-4 w-16 h-16 text-[#b38728]/40 rotate-90">
+                        <svg viewBox="0 0 100 100" fill="currentColor"><path d="M0 0 L40 0 L40 5 L5 5 L5 40 L0 40 Z M15 15 L30 15 L30 20 L20 20 L20 30 L15 30 Z"/></svg>
+                    </div>
+                    <div className="absolute bottom-4 left-4 w-16 h-16 text-[#b38728]/40 -rotate-90">
+                        <svg viewBox="0 0 100 100" fill="currentColor"><path d="M0 0 L40 0 L40 5 L5 5 L5 40 L0 40 Z M15 15 L30 15 L30 20 L20 20 L20 30 L15 30 Z"/></svg>
+                    </div>
+                    <div className="absolute bottom-4 right-4 w-16 h-16 text-[#b38728]/40 rotate-180">
+                        <svg viewBox="0 0 100 100" fill="currentColor"><path d="M0 0 L40 0 L40 5 L5 5 L5 40 L0 40 Z M15 15 L30 15 L30 20 L20 20 L20 30 L15 30 Z"/></svg>
+                    </div>
+                </div>
+
+                {/* 🌟 ENHANCED HEADER (Orbital Astral Seal) */}
+                <div className="relative z-20 w-full flex flex-col items-center flex-shrink-0 mb-12 pb-10 border-b border-[#d4af37]/25 pt-8">
+                    <div className="w-48 h-48 relative mb-6 flex items-center justify-center">
+                        {/* Animated orbits */}
+                        <div className="absolute inset-0 border-2 border-dashed border-[#d4af37]/20 rounded-full animate-[spin_120s_linear_infinite]"></div>
+                        <div className="absolute inset-4 border border-dotted border-[#d4af37]/30 rounded-full animate-[spin_80s_linear_infinite_reverse]"></div>
+                        <div className="absolute inset-8 border border-[#d4af37]/10 rounded-full"></div>
+                        
+                        {/* Central Seal */}
+                        <div className="w-32 h-32 bg-[#0d0d0d] rounded-full border-[4px] border-[#d4af37] shadow-[0_0_60px_rgba(212,175,55,0.25)] flex items-center justify-center overflow-hidden group">
+                             <div className="absolute inset-0 flex items-center justify-center p-5 transform group-hover:scale-110 transition-transform duration-1000">
                                 <img 
                                     src={logoUrl} 
                                     alt="Sacred Seal" 
-                                    className="max-w-[85%] max-h-[85%] object-contain block m-auto" 
+                                    className="max-w-full max-h-full object-contain brightness-125" 
                                     referrerPolicy="no-referrer"
                                 />
                              </div>
+                             {/* Gloss layer */}
+                             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none"></div>
                         </div>
-                        {/* Orbiting Ring Decoration */}
-                        <div className="absolute inset-[-18px] border-2 border-[#d4af37]/15 rounded-full animate-[spin_25s_linear_infinite]"></div>
-                        <div className="absolute inset-[-30px] border border-[#d4af37]/10 rounded-full animate-[spin_35s_linear_infinite_reverse]"></div>
                     </div>
 
-                    <h2 className="text-4xl md:text-6xl font-cinzel font-black gold-gradient-text tracking-[0.1em] uppercase mb-2 text-center drop-shadow-sm leading-tight max-w-[90%]">
+                    <h2 className="text-4xl md:text-5xl font-cinzel font-black gold-gradient-text tracking-[0.15em] uppercase mb-1 text-center drop-shadow-sm leading-tight max-w-[85%]">
                       {title}
                     </h2>
                     {subtitle && (
-                        <p className="text-[#8b4513] text-[11px] font-black uppercase tracking-[0.7em] mt-5 opacity-70 italic border-t border-[#d4af37]/25 pt-5 text-center">
+                        <p className="text-[#8b4513] text-[9px] md:text-[10px] font-black uppercase tracking-[0.6em] mt-3 opacity-60 italic pt-3 text-center border-t border-[#d4af37]/10 w-[60%]">
                           {subtitle}
                         </p>
                     )}
                 </div>
 
-                <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-10">
+                {/* 📜 CONTENT AREA */}
+                <div className="relative z-10 flex-grow overflow-y-auto custom-scrollbar px-12 md:px-16">
                     {isTranslating ? (
                         <div className="flex flex-col items-center justify-center h-full">
                             <div className="w-16 h-16 border-4 border-[#d4af37] border-t-transparent rounded-full animate-spin"></div>
-                            <p className="text-[#8b4513] font-cinzel font-bold mt-8 animate-pulse uppercase tracking-[0.3em] text-xs">Transcending Worldly Tongues...</p>
+                            <p className="text-[#8b4513] font-cinzel font-bold mt-8 animate-pulse uppercase tracking-[0.3em] text-xs">Transcending Tongues...</p>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-6">
-                            <div className="font-lora text-[#2a1a1a] text-lg leading-relaxed space-y-4">
+                        <div className="flex flex-col gap-8">
+                            <div className="font-lora text-[#2a1a1a] text-lg md:text-xl leading-relaxed space-y-6">
                                 {renderFormattedText(displayContent)}
                             </div>
 
+                            {/* PERSISTED CHARTS / METADATA */}
                             {chartData && (
-                                <div className="mt-10 pt-10 border-t border-[#d4af37]/20 grid grid-cols-1 md:grid-cols-2 gap-10">
+                                <div className="mt-12 pt-12 border-t border-[#d4af37]/20 grid grid-cols-1 md:grid-cols-2 gap-12">
                                     {chartData.vedicMetrics && (
-                                        <div className="bg-[#8b4513]/5 p-7 rounded-2xl border border-[#d4af37]/20 shadow-inner">
-                                            <h4 className="text-[11px] font-cinzel font-bold text-[#5c2a0d] mb-5 uppercase tracking-[0.4em]">Celestial Vibrations</h4>
-                                            <div className="space-y-5">
+                                        <div className="bg-[#8b4513]/5 p-8 rounded-3xl border border-[#d4af37]/15 shadow-inner">
+                                            <h4 className="text-[10px] font-cinzel font-bold text-[#5c2a0d] mb-6 uppercase tracking-[0.5em] text-center border-b border-[#8b4513]/10 pb-3">Celestial Alignment</h4>
+                                            <div className="space-y-6">
                                                 {chartData.vedicMetrics.map((m: any, i: number) => (
                                                     <div key={i}>
-                                                        <div className="flex justify-between text-[10px] uppercase font-black text-[#8b4513] mb-1.5">
+                                                        <div className="flex justify-between text-[9px] uppercase font-black text-[#8b4513] mb-2 tracking-widest">
                                                             <span>{m.label}</span>
-                                                            <span className="font-mono">{m.value}%</span>
+                                                            <span className="font-mono text-xs">{m.value}%</span>
                                                         </div>
-                                                        <div className="w-full h-2 bg-[#8b4513]/10 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-gradient-to-r from-[#8b4513] to-[#d4af37]" style={{ width: `${m.value}%` }}></div>
+                                                        <div className="w-full h-2.5 bg-[#8b4513]/10 rounded-full overflow-hidden p-[1px]">
+                                                            <div className="h-full bg-gradient-to-r from-[#8b4513] to-[#d4af37] rounded-full shadow-[0_0_10px_rgba(139,69,19,0.2)]" style={{ width: `${m.value}%` }}></div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -259,12 +289,12 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                                     )}
 
                                     {chartData.luckyNumbers && (
-                                        <div className="bg-[#d4af37]/10 p-7 rounded-2xl border border-[#d4af37]/30 text-center shadow-inner flex flex-col justify-center">
-                                            <h4 className="text-[11px] font-cinzel font-bold text-[#4a0404] mb-5 uppercase tracking-[0.4em]">Propitious Frequencies</h4>
-                                            <div className="flex flex-wrap justify-center gap-6 mt-2">
+                                        <div className="bg-[#d4af37]/8 p-8 rounded-3xl border border-[#d4af37]/25 text-center shadow-inner flex flex-col justify-center">
+                                            <h4 className="text-[10px] font-cinzel font-bold text-[#4a0404] mb-6 uppercase tracking-[0.5em] text-center border-b border-[#d4af37]/20 pb-3">Propitious Frequencies</h4>
+                                            <div className="flex flex-wrap justify-center gap-5 mt-2">
                                                 {chartData.luckyNumbers.map((num: number, i: number) => (
-                                                    <div key={i} className="w-16 h-16 rounded-full border-[3px] border-[#d4af37] bg-white flex items-center justify-center shadow-2xl transform hover:scale-110 transition-all cursor-default">
-                                                        <span className="font-cinzel font-black text-3xl text-[#4a0404]">{num}</span>
+                                                    <div key={i} className="w-16 h-16 rounded-full border-[3px] border-[#d4af37]/60 bg-white/80 flex items-center justify-center shadow-xl transform hover:scale-110 transition-transform">
+                                                        <span className="font-cinzel font-black text-2xl text-[#4a0404] drop-shadow-sm">{num}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -275,34 +305,36 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, image
                         </div>
                     )}
 
-                    <div className="mt-24 pt-10 text-center opacity-40 border-t border-[#d4af37]/30">
-                        <div className="text-2xl text-[#d4af37] mb-5 font-cinzel tracking-[1em]">❂ ❂ ❂</div>
-                        <span className="text-[#8b4513] text-[10px] font-cinzel font-black tracking-[0.5em] uppercase block mb-1">Authenticated by Glyph Circle Enclave</span>
-                        <span className="text-[#8b4513]/50 text-[7px] font-mono">ETHEREAL_CERT: {Math.random().toString(36).substring(2, 18).toUpperCase()}</span>
+                    {/* Authenticated Seal Footer */}
+                    <div className="mt-28 pt-12 text-center opacity-40 border-t border-[#d4af37]/25 pb-10">
+                        <div className="text-3xl text-[#d4af37] mb-6 font-cinzel tracking-[1.5em] pl-[1.5em]">❂ ❂ ❂</div>
+                        <span className="text-[#8b4513] text-[9px] font-cinzel font-black tracking-[0.6em] uppercase block mb-1">Authenticated Sovereign Decree</span>
+                        <span className="text-[#8b4513]/50 text-[7px] font-mono tracking-widest uppercase">ENCLAVE_TOKEN: {Math.random().toString(36).substring(2, 18).toUpperCase()}</span>
                     </div>
                 </div>
             </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-6 justify-center w-full max-w-xl mb-16 no-print px-4">
               <Button 
                 onClick={handleDownloadPDF} 
                 disabled={isDownloading || isTranslating} 
-                className="flex-1 h-16 text-sm bg-[#4a0404] hover:bg-[#5a0505] text-white flex items-center justify-center gap-4 shadow-2xl border-none font-cinzel tracking-[0.2em] rounded-2xl transform hover:scale-105 transition-all"
+                className="flex-1 h-16 text-sm bg-[#3a0303] hover:bg-[#4a0404] text-white flex items-center justify-center gap-4 shadow-2xl border-none font-cinzel tracking-[0.25em] rounded-2xl transform hover:scale-105 transition-all"
               >
                   {isDownloading ? <span className="animate-pulse">SCRIBING...</span> : <><span className="text-2xl">📜</span> Download Scroll</>}
               </Button>
               <Button 
-                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent("Your sacred report is ready.")}`} 
-                className="flex-1 h-16 text-sm bg-white hover:bg-gray-50 text-[#4a0404] flex items-center justify-center gap-4 shadow-xl border-2 border-[#4a0404]/20 font-cinzel tracking-[0.2em] rounded-2xl transform hover:scale-105 transition-all"
+                onClick={() => window.location.href = `mailto:?subject=${encodeURIComponent("My Sacred Report: " + title)}&body=${encodeURIComponent("My spiritual report is ready. View it here.")}`} 
+                className="flex-1 h-16 text-sm bg-white hover:bg-gray-50 text-[#3a0303] flex items-center justify-center gap-4 shadow-xl border-2 border-[#3a0303]/20 font-cinzel tracking-[0.25em] rounded-2xl transform hover:scale-105 transition-all"
               >
                   <span className="text-2xl">✉️</span> Email Wisdom
               </Button>
         </div>
 
         <Link to="/home" className="mb-24 no-print">
-            <button className="text-skin-accent font-cinzel font-bold text-xs uppercase tracking-[0.5em] hover:text-white transition-all flex items-center gap-3 active:scale-95">
-                <span className="text-xl">←</span> Return to Sanctuary
+            <button className="text-skin-accent font-cinzel font-bold text-xs uppercase tracking-[0.6em] hover:text-white transition-all flex items-center gap-3 active:scale-95">
+                <span className="text-xl">←</span> Sanctuary
             </button>
         </Link>
     </div>

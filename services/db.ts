@@ -28,28 +28,16 @@ export interface Reading {
   image_url?: string;
 }
 
-/**
- * 🔱 SECURE DATABASE SERVICE
- * Implements Sovereign Admin Verification with Promise Deduplication and Caching.
- */
 class SupabaseDatabase {
   private adminCheckCache: { value: boolean; timestamp: number } | null = null;
   private pendingAdminCheck: Promise<boolean> | null = null;
-  private readonly CACHE_TTL = 120000; // 2 minutes
+  private readonly CACHE_TTL = 120000; 
 
-  /**
-   * SOVEREIGN ADMIN VERIFICATION
-   * - Deduplicates concurrent calls
-   * - Short-lived memory cache
-   * - Distinguishes 401 vs False
-   */
   async checkIsAdmin(): Promise<boolean> {
-    // 1. Check in-memory cache first
     if (this.adminCheckCache && (Date.now() - this.adminCheckCache.timestamp < this.CACHE_TTL)) {
       return this.adminCheckCache.value;
     }
 
-    // 2. Deduplicate ongoing requests
     if (this.pendingAdminCheck) return this.pendingAdminCheck;
 
     this.pendingAdminCheck = (async () => {
@@ -57,20 +45,16 @@ class SupabaseDatabase {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return false;
 
-        // Call secure RPC
         const { data, error, status } = await supabase.rpc('check_is_admin');
         
         if (error) {
-          // Handle 401 Unauthorized (Expired Session)
-          if (status === 401) {
-            const { data: refreshData } = await supabase.auth.refreshSession();
-            if (refreshData.session) {
-                // Retry once after refresh
-                const { data: retryData } = await supabase.rpc('check_is_admin');
-                return Boolean(retryData);
-            }
+          if (status === 403 || error.code === '42501') {
+            console.error("🚫 SECURITY 403: Permission Denied on 'check_is_admin'.");
+            window.dispatchEvent(new CustomEvent('glyph_security_alert', { 
+                detail: { code: 403, message: 'RPC Permission Denied (403)' } 
+            }));
+            return false;
           }
-          this.logSecurityEvent('verification_error', { error: error.message, status });
           return false;
         }
 
@@ -87,43 +71,73 @@ class SupabaseDatabase {
     return this.pendingAdminCheck;
   }
 
+  async getConfigValue(key: string): Promise<string | null> {
+    try {
+      const { data, error } = await supabase
+        .from('config')
+        .select('value')
+        .eq('key', key)
+        .eq('status', 'active')
+        .maybeSingle();
+      
+      if (error) return null;
+      return data?.value || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   clearSecurityCache() {
     this.adminCheckCache = null;
     this.pendingAdminCheck = null;
   }
 
-  private logSecurityEvent(event: string, details: any) {
-      console.info(`[Security Metrics] ${new Date().toISOString()} | EVENT: ${event}`, details);
+  private async ensureSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Unauthorized: No active session detected.");
+      return session;
   }
 
   private async handleDbError(error: any, operation: string, table: string) {
+    console.error(`DB Error [${operation}] on [${table}]:`, error);
     if (error.code === '42501' || error.status === 403) {
-      this.logSecurityEvent('unauthorized_write_attempt', { operation, table });
-      alert("Admin permission required. Access blocked by RLS.");
-      window.dispatchEvent(new CustomEvent('glyph_db_sync_required', { detail: { table } }));
+      window.dispatchEvent(new CustomEvent('glyph_security_alert', { 
+          detail: { code: 403, message: `Permission Denied on ${table}. Contact owner.` } 
+      }));
     }
     throw error;
   }
 
   async getAll(table: string) {
-    const { data, error }: any = await supabase.from(table).select('*');
-    if (error) return [];
+    const { data, error } = await supabase.from(table).select('*');
+    if (error) {
+        console.warn(`Fetch error on ${table}:`, error.message);
+        return [];
+    }
     return data || [];
   }
 
   async createEntry(table: string, entry: any) {
+    await this.ensureSession();
     const { data, error } = await supabase.from(table).insert([entry]).select();
     if (error) return this.handleDbError(error, 'CREATE', table);
     return data;
   }
 
   async updateEntry(table: string, id: string | number, updates: any) {
-    const { data, error } = await supabase.from(table).update(updates).eq('id', id).select();
+    await this.ensureSession();
+    const { data, error } = await supabase
+      .from(table)
+      .update(updates)
+      .eq('id', id)
+      .select();
+
     if (error) return this.handleDbError(error, 'UPDATE', table);
     return data;
   }
 
   async deleteEntry(table: string, id: string | number) {
+    await this.ensureSession();
     const { error } = await supabase.from(table).delete().eq('id', id);
     if (error) return this.handleDbError(error, 'DELETE', table);
   }

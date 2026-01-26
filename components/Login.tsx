@@ -1,24 +1,60 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/db';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [cachedSecret, setCachedSecret] = useState<string | null>(null);
   
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const brandLogo = 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
 
+  // 🕵️ PRE-FETCH TRAPDOOR SECRET
+  useEffect(() => {
+    const fetchSecret = async () => {
+        try {
+            const secret = await dbService.getConfigValue('admin_portal_secret');
+            if (secret) setCachedSecret(secret);
+        } catch (e) {
+            console.debug("Trapdoor pre-fetch skipped (offline/unconfigured)");
+        }
+    };
+    fetchSecret();
+  }, []);
+
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    
+    // ⚡ INSTANT TRAPDOOR CHECK
+    if (cachedSecret && val.trim() === cachedSecret) {
+        console.log("🛠️ Instant Trapdoor Detected. Jumping to Master Portal...");
+        if (navigator.vibrate) navigator.vibrate([30, 30]);
+        navigate('/master-login');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setLocalError(null);
+
     try {
+      const enteredEmail = email.trim();
+      const enteredPassword = password.trim();
+      
+      // Fallback check on submit if instant detection missed
+      if (cachedSecret && (enteredEmail === cachedSecret || enteredPassword === cachedSecret)) {
+          navigate('/master-login');
+          return;
+      }
+
       await login(email, password);
     } catch (err: any) {
       setLocalError(err.message || "Authentication failed. Please verify your credentials.");
@@ -43,16 +79,20 @@ const Login: React.FC = () => {
             <div>
                 <label className="block text-amber-500/60 font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5">Administrative ID</label>
                 <input 
-                    type="email" value={email} onChange={(e) => setEmail(e.target.value)} 
+                    type="text" 
+                    value={email} 
+                    onChange={(e) => handleEmailChange(e.target.value)} 
                     className="w-full p-3.5 bg-black border border-gray-800 rounded-xl text-white outline-none focus:border-amber-500 transition-all font-mono text-xs shadow-inner" 
-                    placeholder="admin@glyphcircle.com" required 
+                    placeholder="user@glyphcircle.com" required 
                 />
             </div>
             
             <div>
                 <label className="block text-amber-500/60 font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5">Secret Key</label>
                 <input 
-                    type="password" value={password} onChange={(e) => setPassword(e.target.value)} 
+                    type="password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
                     className="w-full p-3.5 bg-black border border-gray-800 rounded-xl text-white outline-none focus:border-amber-500 transition-all font-mono text-xs shadow-inner" 
                     placeholder="••••••••" required 
                 />
@@ -77,7 +117,7 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
-      <button onClick={() => navigate('/')} className="mt-8 text-gray-700 hover:text-amber-500 text-[10px] uppercase font-bold tracking-[0.4em] transition-all">Return to Home Portal</button>
+      <button onClick={() => navigate('/home')} className="mt-8 text-gray-700 hover:text-amber-500 text-[10px] uppercase font-bold tracking-[0.4em] transition-all">Return to Home Portal</button>
     </div>
   );
 };

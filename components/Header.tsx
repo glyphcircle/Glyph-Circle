@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
 import { useTranslation } from '../hooks/useTranslation';
@@ -23,15 +23,28 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
   const { isAdminVerified, isAdminLoading, user, refreshUser } = useAuth();
   const { db } = useDb();
   const [isMasterToolsOpen, setIsMasterToolsOpen] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
 
-  // Determine if we should even consider showing admin tools
-  const isPotentialAdmin = user?.role === 'admin' || localStorage.getItem('glyph_admin_session');
+  // Listen for low-level diagnostic errors from dbService
+  useEffect(() => {
+      const handleSecurityAlert = (e: any) => {
+          setSecurityError(e.detail.message);
+      };
+      window.addEventListener('glyph_security_alert', handleSecurityAlert);
+      return () => window.removeEventListener('glyph_security_alert', handleSecurityAlert);
+  }, []);
 
   const logoUrl = useMemo(() => {
     const logoAsset = db.image_assets?.find((a: any) => a.tags?.includes('brand_logo') && a.status === 'active') ||
                       db.image_assets?.find((a: any) => a.id === 'header_logo');
     return logoAsset ? cloudManager.resolveImage(logoAsset.path) : DEFAULT_LOGO;
   }, [db.image_assets]);
+
+  const handleFixSecurity = () => {
+      const sql = `GRANT USAGE ON SCHEMA public TO anon, authenticated;\nGRANT EXECUTE ON FUNCTION public.check_is_admin() TO anon, authenticated;\nALTER FUNCTION public.check_is_admin() SECURITY DEFINER;`;
+      navigator.clipboard.writeText(sql);
+      alert(`🛡️ SECURITY REPAIR INITIATED\n\nError: 403 Permission Denied.\nThe app cannot verify your admin status because Supabase is blocking the RPC call.\n\nI have copied the REPAIR SQL to your clipboard. Run it in your Supabase SQL Editor to fix this.`);
+  };
 
   return (
     <header className="bg-skin-surface/95 backdrop-blur-xl shadow-2xl sticky top-0 z-50 border-b border-skin-border/20 transition-all duration-500">
@@ -45,51 +58,37 @@ const Header: React.FC<HeaderProps> = ({ onLogout, isMobile }) => {
                   {t('glyphCircle')}
                 </h1>
             </Link>
-            {!isMobile && (
-              <Link to="/history" className="hidden lg:flex items-center justify-center w-10 h-10 rounded-full bg-skin-base/30 hover:bg-skin-accent/10 text-skin-text border border-skin-border/30 hover:border-skin-accent transition-all ml-4 flex-shrink-0 group" title="Your History">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              </Link>
-            )}
         </div>
         <div className="flex items-center gap-2 md:gap-4 justify-end flex-shrink-0 relative">
             
-            {/* 🛡️ MASTER TOOLS GEAR - IMPROVED VISIBILITY */}
-            {isPotentialAdmin && (
-                <div className="relative">
-                    {isAdminLoading ? (
-                        /* VERIFYING STATE */
-                        <div 
-                            className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-500/10 border border-blue-500/30 animate-pulse cursor-wait"
-                            title="Verifying Sovereign Clearance..."
-                        >
-                            <span className="text-xs text-blue-400">🛡️</span>
-                        </div>
-                    ) : isAdminVerified ? (
-                        /* VERIFIED ADMIN STATE */
-                        <button 
-                            onClick={() => setIsMasterToolsOpen(true)}
-                            className="flex items-center justify-center w-9 h-9 rounded-full bg-skin-base/50 border border-amber-500/50 text-skin-accent hover:border-skin-accent hover:bg-skin-accent/10 transition-all transform hover:scale-105 group shadow-lg shadow-amber-500/20"
-                            title="Master Tools (Sovereign Verified)"
-                        >
-                            <span className="text-lg group-hover:rotate-90 transition-transform duration-500">⚙️</span>
-                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full border border-black shadow-[0_0_5px_rgba(34,197,94,0.8)]"></span>
-                        </button>
-                    ) : (
-                        /* FAILED VERIFICATION STATE */
-                        <button 
-                            onClick={() => refreshUser()}
-                            className="flex items-center justify-center w-9 h-9 rounded-full bg-red-900/20 border border-red-500/50 text-red-500 hover:bg-red-500/10 transition-all"
-                            title="Clearance Denied. Click to retry."
-                        >
-                            <span className="text-xs">⚠️</span>
-                        </button>
-                    )}
-                </div>
-            )}
+            {/* 🛡️ MASTER TOOLS GEAR - SMART VISIBILITY */}
+            <div className="relative">
+                {isAdminLoading ? (
+                    <div className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-500/10 border border-blue-500/30 animate-pulse" title="Verifying Clearance...">
+                        <span className="text-[10px] text-blue-400">🛡️</span>
+                    </div>
+                ) : securityError ? (
+                    <button 
+                        onClick={handleFixSecurity}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-red-900/40 border border-red-500 text-red-500 animate-bounce shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+                        title="Permission Error (403): Click to get fix script"
+                    >
+                        <span className="text-xs font-bold">!</span>
+                    </button>
+                ) : isAdminVerified ? (
+                    <button 
+                        onClick={() => setIsMasterToolsOpen(true)}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-skin-base/50 border border-amber-500/50 text-skin-accent hover:border-skin-accent hover:bg-skin-accent/10 transition-all transform hover:scale-105 group shadow-lg shadow-amber-500/20"
+                        title="Master Tools"
+                    >
+                        <span className="text-lg group-hover:rotate-90 transition-transform duration-500">⚙️</span>
+                    </button>
+                ) : null}
+            </div>
 
             <ThemeSwitcher />
             <div className="hidden sm:block"><LanguageSwitcher /></div>
-            <button onClick={onLogout} className={`bg-skin-accent hover:opacity-90 border border-white/10 text-skin-button-text font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap shadow-xl uppercase font-cinzel tracking-wider ${isMobile ? 'py-1.5 px-4 text-[10px]' : 'py-2 px-6 text-xs'}`}>{t('logout')}</button>
+            <button onClick={onLogout} className="bg-skin-accent hover:opacity-90 border border-white/10 text-skin-button-text font-bold rounded-full transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap shadow-xl uppercase font-cinzel tracking-wider py-2 px-6 text-xs">{t('logout')}</button>
             
             {isAdminVerified && <MasterToolsModal isVisible={isMasterToolsOpen} onClose={() => setIsMasterToolsOpen(false)} />}
         </div>

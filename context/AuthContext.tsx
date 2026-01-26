@@ -74,7 +74,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        // 🚀 STEP A: Immediate Authentication (Non-blocking)
         const jwtRole = (session.user.app_metadata?.role as any) || 'seeker';
         
         const initialUser: User = { 
@@ -90,20 +89,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUser(initialUser);
-        setIsLoading(false); // UI is now "authenticated"
+        setIsLoading(false);
 
-        // 🚀 STEP B: Sovereign Verification (Background)
         setIsAdminLoading(true);
         const verifiedAdmin = await dbService.checkIsAdmin();
         setIsAdminVerified(verifiedAdmin);
         setIsAdminLoading(false);
 
-        // If server confirms admin, upgrade the role in state
         if (verifiedAdmin) {
             setUser(prev => prev ? { ...prev, role: 'admin' } : null);
         }
 
-        // 🚀 STEP C: Profile Enrichment
         if (!dbHanging.current) {
             try {
                 const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
@@ -122,7 +118,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(false);
       }
     } catch (e) {
-      console.error("Auth System Error:", e);
       setIsLoading(false);
     }
   }, []);
@@ -146,7 +141,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAdminVerified(false);
         dbService.clearSecurityCache();
         dbHanging.current = false;
+        // 🧹 CRITICAL: Clear all markers on exit
         localStorage.removeItem('glyph_admin_session');
+        // Ensure we land on standard login
+        if (window.location.hash !== '#/login') {
+            window.location.hash = '/login';
+        }
       }
     });
     return () => subscription.unsubscribe();
@@ -165,6 +165,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
+    // 🛡️ Purest cleanup before signout
     localStorage.removeItem('glyph_admin_session');
     dbService.clearSecurityCache();
     setUser(null);

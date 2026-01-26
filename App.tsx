@@ -131,7 +131,7 @@ function App() {
               {location.pathname === '/home' && isAuthenticated && <PanchangBar />}
 
               <Routes>
-                <Route path="/" element={isAuthenticated ? <Home /> : <Login />} />
+                <Route path="/" element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />} />
                 <Route path="/login" element={isAuthenticated ? <Navigate to="/home" /> : <Login />} />
                 <Route path="/register" element={isAuthenticated ? <Navigate to="/home" /> : <Register />} />
                 <Route path="/master-login" element={<MasterLogin />} />

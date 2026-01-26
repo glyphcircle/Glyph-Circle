@@ -74,15 +74,15 @@ root.render(
   <React.StrictMode>
     <Router>
       <LanguageProvider>
-        <DbProvider>
-          <ThemeProvider>
-            <AuthProvider>
+        <AuthProvider>
+          <DbProvider>
+            <ThemeProvider>
               <PaymentProvider>
                 <App />
               </PaymentProvider>
-            </AuthProvider>
-          </ThemeProvider>
-        </DbProvider>
+            </ThemeProvider>
+          </DbProvider>
+        </AuthProvider>
       </LanguageProvider>
     </Router>
   </React.StrictMode>

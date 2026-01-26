@@ -53,3 +53,4 @@ lerna-debug.log*
 .stylelintcache
 .vite/
 .turbo/
+supabase_master_seed.sql

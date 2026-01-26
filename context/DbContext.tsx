@@ -2,6 +2,7 @@
 import React, { createContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { dbService } from '../services/db';
 import { v4 as uuidv4 } from 'uuid';
+import { useAuth } from './AuthContext';
 
 interface DbContextType {
   db: any;
@@ -18,7 +19,7 @@ interface DbContextType {
 
 export const DbContext = createContext<DbContextType | undefined>(undefined);
 
-const CACHE_KEY = 'glyph_eternal_cache_v43';
+const CACHE_KEY = 'glyph_eternal_cache_v46';
 
 export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [dbState, setDbState] = useState<any>(() => {
@@ -28,12 +29,12 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'error'>('connected');
   const [errMsg, setErrMsg] = useState<string | null>(null);
   
-  const tableBlacklist = useRef<Set<string>>(new Set());
+  const isRefreshing = useRef(false);
 
   const CORE_TABLES = [
     'config', 'services', 'store_items', 'featured_content', 'cloud_providers', 
     'payment_providers', 'payment_config', 'payment_methods', 'image_assets',
-    'ui_themes', 'report_formats', 'gemstones', 'users'
+    'ui_themes', 'report_formats', 'gemstones', 'users', 'readings', 'transactions', 'feedback'
   ];
 
   const refreshTable = useCallback(async (tableName: string) => {
@@ -45,50 +46,52 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
                   localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
                   return newState;
               });
-              tableBlacklist.current.delete(tableName);
           }
       } catch (e: any) {
-          console.error(`Sync error on ${tableName}:`, e.message);
-          if (e.message?.includes('Timeout')) tableBlacklist.current.add(tableName);
+          console.warn(`Background sync skipped for ${tableName}:`, e.message);
       }
   }, []);
 
-  // Listen for security rollback triggers
-  useEffect(() => {
-    const handleSyncRequest = (e: any) => {
-        if (e.detail?.table) refreshTable(e.detail.table);
-    };
-    window.addEventListener('glyph_db_sync_required', handleSyncRequest);
-    return () => window.removeEventListener('glyph_db_sync_required', handleSyncRequest);
-  }, [refreshTable]);
-
   const refresh = useCallback(async (): Promise<boolean> => {
+    if (isRefreshing.current) return false;
+    isRefreshing.current = true;
     setConnStatus('connecting');
-    setErrMsg(null);
+    
     let successCount = 0;
-    const workingState = { ...dbState };
+    const workingResults: Record<string, any[]> = {};
 
     const syncPromises = CORE_TABLES.map(async (table) => {
-        if (tableBlacklist.current.has(table)) return;
         try {
-            const data = await dbService.getAll(table);
+            const data = await Promise.race([
+                dbService.getAll(table),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+            ]) as any[];
+
             if (data && Array.isArray(data)) {
-                workingState[table] = data;
+                workingResults[table] = data;
                 successCount++;
             }
         } catch (e: any) {
-            console.warn(`Initial sync skip on ${table}:`, e.message);
+            console.warn(`Fetch failed for ${table}:`, e.message);
         }
     });
 
     await Promise.allSettled(syncPromises);
-    setDbState(workingState);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(workingState));
-    setConnStatus(successCount > 0 ? 'connected' : 'error');
-    return successCount > 0;
-  }, [dbState]);
 
-  useEffect(() => { refresh(); }, []);
+    setDbState((prev: any) => {
+        const newState = { ...prev, ...workingResults };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+        return newState;
+    });
+
+    setConnStatus(successCount > 0 ? 'connected' : 'error');
+    isRefreshing.current = false;
+    return successCount > 0;
+  }, []);
+
+  useEffect(() => { 
+      refresh(); 
+  }, [refresh]);
 
   const toggleStatus = useCallback(async (tableName: string, recordId: number | string) => {
     const list = dbState[tableName] || [];
@@ -97,9 +100,10 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     const newStatus = record.status === 'active' ? 'inactive' : 'active';
     
-    // Optimistic UI Update
-    const updatedList = list.map((r: any) => r.id == recordId ? { ...r, status: newStatus } : r);
-    setDbState((prev: any) => ({ ...prev, [tableName]: updatedList }));
+    setDbState((prev: any) => ({ 
+        ...prev, 
+        [tableName]: prev[tableName].map((r: any) => r.id == recordId ? { ...r, status: newStatus } : r) 
+    }));
 
     try {
         await dbService.updateEntry(tableName, recordId, { status: newStatus });
@@ -110,7 +114,11 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const updateEntry = useCallback(async (tableName: string, id: number | string, data: Record<string, any>) => {
       try {
-          const result = await dbService.updateEntry(tableName, id, data);
+          // Safety Race to prevent "Updating..." hang
+          const result = await Promise.race([
+              dbService.updateEntry(tableName, id, data),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Database unresponsive. Potential security loop detected.')), 10000))
+          ]);
           await refreshTable(tableName);
           return result;
       } catch (e) {
@@ -122,7 +130,10 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const createEntry = useCallback(async (tableName: string, data: Record<string, any>) => {
     try {
         const payload = { ...data, id: data.id || uuidv4() };
-        const result = await dbService.createEntry(tableName, payload);
+        const result = await Promise.race([
+            dbService.createEntry(tableName, payload),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Genesis failed. Link timed out.')), 10000))
+        ]);
         await refreshTable(tableName);
         return result;
     } catch (e: any) { 
@@ -171,6 +182,24 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         errorMessage: errMsg 
     }}>
       {children}
+      <SyncTrigger refresh={refresh} />
     </DbContext.Provider>
   );
+};
+
+const SyncTrigger: React.FC<{ refresh: () => void }> = ({ refresh }) => {
+    const { isAdminVerified, isAuthenticated } = useAuth();
+    const lastSyncId = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            const currentSyncId = `${isAuthenticated}-${isAdminVerified}`;
+            if (lastSyncId.current !== currentSyncId) {
+                refresh();
+                lastSyncId.current = currentSyncId;
+            }
+        }
+    }, [isAuthenticated, isAdminVerified, refresh]);
+
+    return null;
 };
