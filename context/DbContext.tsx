@@ -18,107 +18,98 @@ interface DbContextType {
 
 export const DbContext = createContext<DbContextType | undefined>(undefined);
 
+const CACHE_KEY = 'glyph_eternal_cache_v41';
+
 export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [dbState, setDbState] = useState<any>({});
-  const [isReady, setIsReady] = useState(false);
-  const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [dbState, setDbState] = useState<any>(() => {
+      const cached = localStorage.getItem(CACHE_KEY);
+      return cached ? JSON.parse(cached) : {};
+  });
+  const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'error'>('connected');
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const CORE_TABLES = [
     'config', 'services', 'store_items', 'featured_content', 'cloud_providers', 
     'payment_providers', 'payment_config', 'payment_methods', 'image_assets',
-    'ui_themes', 'report_formats'
+    'ui_themes', 'report_formats', 'gemstones'
   ];
 
   const refreshTable = useCallback(async (tableName: string) => {
       try {
           const tableData = await dbService.getAll(tableName);
-          setDbState((prev: any) => ({ ...prev, [tableName]: tableData }));
+          if (Array.isArray(tableData)) {
+              setDbState((prev: any) => {
+                  const newState = { ...prev, [tableName]: tableData };
+                  localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+                  return newState;
+              });
+          }
       } catch (e) {
-          console.error(`Failed to refresh table: ${tableName}`);
+          console.error(`Background refresh failed for ${tableName}`);
       }
   }, []);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     setConnStatus('connecting');
-    const newState: any = { ...dbState };
-    let fatalErrorCount = 0;
-    let loopDetected = false;
-    
-    try {
-        // Parallelized loading with failure isolation
-        const results = await Promise.allSettled(
-          CORE_TABLES.map(table => dbService.getAll(table))
-        );
+    let successCount = 0;
+    const workingState = { ...dbState };
 
-        results.forEach((res, index) => {
-          const tableName = CORE_TABLES[index];
-          if (res.status === 'fulfilled') {
-            newState[tableName] = res.value;
-          } else {
-            console.warn(`Sync Warn [${tableName}]:`, res.reason.message);
-            // Don't wipe existing state if it just times out, keep what we have
-            if (!newState[tableName]) newState[tableName] = [];
-            fatalErrorCount++;
-            if (res.reason.message.includes('Latency Timeout')) loopDetected = true;
-          }
-        });
-        
-        setDbState(newState);
-
-        if (fatalErrorCount === CORE_TABLES.length) {
-            setConnStatus('error');
-            setErrMsg(loopDetected ? "CRITICAL: Database Loop Detected. Visit Config > SQL Tools." : "The database is unresponsive.");
-            return false;
+    const syncPromises = CORE_TABLES.map(async (table) => {
+        try {
+            const data = await dbService.getAll(table);
+            if (data && Array.isArray(data)) {
+                workingState[table] = data;
+                successCount++;
+            }
+        } catch (e) {
+            console.warn(`Sync failed for table: ${table}`, e);
         }
+    });
 
-        setConnStatus('connected');
-        setErrMsg(null);
-        return true;
-    } catch (e: any) {
-        setErrMsg(e.message);
-        setConnStatus('error');
-        return false;
-    } finally {
-        setIsReady(true);
-    }
+    await Promise.allSettled(syncPromises);
+    
+    setDbState(workingState);
+    localStorage.setItem(CACHE_KEY, JSON.stringify(workingState));
+    setConnStatus(successCount > 0 ? 'connected' : 'error');
+    return successCount > 0;
   }, [dbState]);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { 
+      refresh(); 
+  }, []);
 
   const toggleStatus = useCallback(async (tableName: string, recordId: number | string) => {
-    const list = dbState[tableName];
-    const record = list?.find((r: any) => r.id == recordId);
+    const list = dbState[tableName] || [];
+    const record = list.find((r: any) => r.id == recordId);
     if (!record) return;
 
     const newStatus = record.status === 'active' ? 'inactive' : 'active';
-    setDbState((prev: any) => ({
-        ...prev,
-        [tableName]: prev[tableName].map((r: any) => r.id == recordId ? { ...r, status: newStatus } : r)
-    }));
+    const updatedList = list.map((r: any) => r.id == recordId ? { ...r, status: newStatus } : r);
+    
+    setDbState((prev: any) => {
+        const newState = { ...prev, [tableName]: updatedList };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+        return newState;
+    });
 
     try {
         await dbService.updateEntry(tableName, recordId, { status: newStatus });
-    } catch (e: any) {
+    } catch { 
         refreshTable(tableName); 
-        alert(`Action Failed: ${e.message}. Run the V25 SQL Repair script.`);
     }
   }, [dbState, refreshTable]);
 
   const updateEntry = useCallback(async (tableName: string, id: number | string, data: Record<string, any>) => {
-      setDbState((prev: any) => ({
-          ...prev,
-          [tableName]: prev[tableName].map((r: any) => r.id == id ? { ...r, ...data } : r)
-      }));
-
+      const updatedList = (dbState[tableName] || []).map((r: any) => r.id == id ? { ...r, ...data } : r);
+      setDbState((prev: any) => {
+          const newState = { ...prev, [tableName]: updatedList };
+          localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+          return newState;
+      });
       try {
           await dbService.updateEntry(tableName, id, data);
-          await refreshTable(tableName);
-      } catch (e: any) {
-          refreshTable(tableName);
-          throw e;
-      }
-  }, [refreshTable]);
+      } catch { refreshTable(tableName); }
+  }, [dbState, refreshTable]);
 
   const createEntry = useCallback(async (tableName: string, data: Record<string, any>) => {
     try {
@@ -134,7 +125,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           ui_themes: (prev.ui_themes || []).map((t: any) => ({ ...t, status: t.id === themeId ? 'active' : 'inactive' }))
       }));
       try {
-          await supabase.from('ui_themes').update({ status: 'inactive' }).neq('id', 'placeholder');
+          await supabase.from('ui_themes').update({ status: 'inactive' }).neq('id', 'theme_placeholder');
           await dbService.updateEntry('ui_themes', themeId, { status: 'active' });
       } catch { refreshTable('ui_themes'); }
   }, [refreshTable]);

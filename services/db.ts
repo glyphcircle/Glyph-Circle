@@ -26,23 +26,24 @@ export interface Reading {
   created_at: string;
 }
 
-/**
- * ⚡ ATOMIC TIMEOUT WRAPPER
- * If a request takes > 12s, we assume it's an RLS loop and return a fallback.
- */
-async function withTimeout<T>(promise: Promise<T>, tableName: string, timeoutMs: number = 12000): Promise<T> {
+// --- 🔱 V37: STABLE CONNECTION WRAPPER 🔱 ---
+
+async function withTimeout<T>(promise: Promise<T>, tableName: string, timeoutMs: number = 5000): Promise<T> {
   let timeoutId: any;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(() => {
-        const error = new Error(`Latency Timeout (12s) on [${tableName}]. Check RLS recursion.`);
-        // @ts-ignore
-        error.isTimeout = true;
-        reject(error);
+        reject(new Error(`Timeout on [${tableName}]`));
     }, timeoutMs);
   });
-  const result = await Promise.race([promise, timeoutPromise]);
-  clearTimeout(timeoutId);
-  return result;
+  
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId);
+    return result;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
 }
 
 class SupabaseDatabase {
@@ -53,7 +54,7 @@ class SupabaseDatabase {
       .eq('id', userId)
       .maybeSingle()
       .then(res => { if (res.error) throw res.error; return res.data; });
-    return withTimeout(promise, 'users');
+    return withTimeout(promise, 'users', 6000);
   }
 
   async createUserProfile(user: Partial<User>): Promise<User | null> {
@@ -63,7 +64,7 @@ class SupabaseDatabase {
       .select()
       .single()
       .then(res => { if (res.error) throw res.error; return res.data; });
-    return withTimeout(promise, 'users-create');
+    return withTimeout(promise, 'users-create', 8000);
   }
 
   async getReadings(userId: string): Promise<Reading[]> {
@@ -73,7 +74,7 @@ class SupabaseDatabase {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .then(res => { if (res.error) throw res.error; return res.data || []; });
-    return withTimeout(promise, 'readings');
+    return withTimeout(promise, 'readings', 8000);
   }
 
   async saveReading(reading: any): Promise<Reading> {
@@ -96,43 +97,16 @@ class SupabaseDatabase {
     return withTimeout(promise, 'readings-fav');
   }
 
-  async addCredits(userId: string, amount: number) {
-    const { data: user } = await supabase.from('users').select('credits').eq('id', userId).single();
-    const newCredits = (user?.credits || 0) + amount;
-    const promise = supabase
-      .from('users')
-      .update({ credits: newCredits })
-      .eq('id', userId)
-      .select()
-      .single()
-      .then(res => { if (res.error) throw res.error; return res.data; });
-    return withTimeout(promise, 'users-credits');
-  }
-
   async getAll(table: string) {
     const promise = supabase
       .from(table)
       .select('*')
       .then(res => { 
-          if (res.error) {
-              console.error(`Supabase Error [${table}]:`, res.error);
-              if (res.error.code === 'PGRST116' || res.error.message.includes('not found')) {
-                  return [];
-              }
-              throw res.error;
-          }
+          if (res.error) throw res.error;
           return res.data || []; 
       });
     
-    try {
-        return await withTimeout(promise, table);
-    } catch (e: any) {
-        if (e.isTimeout) {
-            console.warn(`⚠️ Table [${table}] is looping. UI will show cached or empty data.`);
-            return []; // Fail silent for non-critical UI data
-        }
-        throw e;
-    }
+    return await withTimeout(promise, table);
   }
 
   async updateEntry(table: string, id: string | number, updates: any) {
