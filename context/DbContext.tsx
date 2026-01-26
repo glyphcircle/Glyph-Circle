@@ -53,6 +53,15 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       }
   }, []);
 
+  // Listen for security rollback triggers
+  useEffect(() => {
+    const handleSyncRequest = (e: any) => {
+        if (e.detail?.table) refreshTable(e.detail.table);
+    };
+    window.addEventListener('glyph_db_sync_required', handleSyncRequest);
+    return () => window.removeEventListener('glyph_db_sync_required', handleSyncRequest);
+  }, [refreshTable]);
+
   const refresh = useCallback(async (): Promise<boolean> => {
     setConnStatus('connecting');
     setErrMsg(null);
@@ -112,7 +121,6 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const createEntry = useCallback(async (tableName: string, data: Record<string, any>) => {
     try {
-        // Ensure ID is present if it's a new client-side creation
         const payload = { ...data, id: data.id || uuidv4() };
         const result = await dbService.createEntry(tableName, payload);
         await refreshTable(tableName);
@@ -136,14 +144,12 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const activateTheme = useCallback(async (themeId: string) => {
       try {
-          // Deactivate all themes first
           const themes = dbState.ui_themes || [];
           for (const theme of themes) {
               if (theme.id !== themeId) {
                   await dbService.updateEntry('ui_themes', theme.id, { status: 'inactive' });
               }
           }
-          // Activate the selected one
           await dbService.updateEntry('ui_themes', themeId, { status: 'active' });
           await refreshTable('ui_themes');
       } catch { 

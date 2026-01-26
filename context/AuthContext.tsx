@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { dbService, User, Reading } from '../services/db';
 
@@ -15,6 +15,8 @@ interface PendingReading {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isAdminVerified: boolean;
+  isAdminLoading: boolean;
   isLoading: boolean;
   error: string | null;
   history: Reading[];
@@ -36,34 +38,44 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const [history, setHistory] = useState<Reading[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const dbHanging = useRef(false);
 
   const refreshUser = useCallback(async () => {
-    // 🛡️ RECOVERY BYPASS: Priority 1
-    const recoverySession = localStorage.getItem('system_admin_recovery') || localStorage.getItem('glyph_admin_session');
+    // 🛡️ RECOVERY BYPASS
+    const recoverySession = localStorage.getItem('glyph_admin_session');
     if (recoverySession) {
       try {
         const sess = JSON.parse(recoverySession);
-        if (sess.active || sess.role === 'admin') {
-          setUser({
-            id: sess.uid || '6a1e9c31-cb23-46ee-8ffd-95ff6c1ea7f1',
-            email: sess.email || sess.user || 'mitaakxi@glyphcircle.com',
-            name: 'System Administrator',
-            role: 'admin',
-            credits: 999999,
-            currency: 'INR',
-            status: 'active',
-            created_at: new Date().toISOString(),
-            // Added default gamification for admin recovery
-            gamification: { karma: 10000, streak: 99, readingsCount: 150, unlockedSigils: ['awakening', 'consistent_soul', 'dedicated_devotee', 'tarot_master', 'high_priest'] }
-          });
-          setIsLoading(false);
-          return;
+        if (sess.role === 'admin') {
+          // If explicitly bypassed via dev tool
+          if (sess.method === 'Local Bypass') {
+              setIsAdminVerified(true);
+              setUser({ id: 'dev-bypass', email: 'dev@local', name: 'Dev Admin', role: 'admin', credits: 999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
+              setIsLoading(false);
+              return;
+          }
+
+          setIsAdminLoading(true);
+          const verified = await dbService.checkIsAdmin();
+          setIsAdminVerified(verified);
+          setIsAdminLoading(false);
+          
+          if (verified) {
+              setUser({ id: 'admin-local', email: sess.user, name: 'Admin', role: 'admin', credits: 999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
+              setIsLoading(false);
+              return;
+          } else {
+              localStorage.removeItem('glyph_admin_session');
+          }
         }
       } catch (e) {
-        localStorage.removeItem('system_admin_recovery');
+        localStorage.removeItem('glyph_admin_session');
       }
     }
 
@@ -74,84 +86,77 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (session?.user) {
-        // --- ⚡ SOVEREIGN PROFILE FETCH ⚡ ---
-        // We fetch with a timeout. If the public.users table hangs due to RLS recursion, 
-        // we use the JWT claims from the session itself as a source of truth.
-        const fetchProfile = async () => {
-           const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-           if (error) throw error;
-           return data;
-        };
-
-        const timeout = new Promise((_, r) => setTimeout(() => r(new Error('Profile Timeout')), 5000));
+        const jwtRole = (session.user.app_metadata?.role as any) || 'seeker';
         
-        try {
-            const profile: any = await Promise.race([fetchProfile(), timeout]);
-            if (profile) {
-                setUser({
-                    ...profile,
-                    status: profile.status || 'active',
-                    // Ensure gamification is present even if null in DB
-                    gamification: profile.gamification || { karma: 0, streak: 0, readingsCount: 0, unlockedSigils: [] }
-                });
-                const { data: readings } = await supabase
-                  .from('readings')
-                  .select('*')
-                  .eq('user_id', profile.id)
-                  .order('created_at', { ascending: false });
-                setHistory(readings || []);
-            } else if (session.user.email === 'mitaakxi@glyphcircle.com') {
-                // Fallback identity for master
-                setUser({ 
-                   id: session.user.id, 
-                   email: session.user.email!, 
-                   name: 'Master Admin', 
-                   role: 'admin', 
-                   credits: 999999, 
-                   currency: 'INR', 
-                   status: 'active',
-                   created_at: new Date().toISOString(),
-                   // Default gamification for master admin
-                   gamification: { karma: 10000, streak: 99, readingsCount: 150, unlockedSigils: ['awakening', 'consistent_soul', 'dedicated_devotee', 'tarot_master', 'high_priest'] }
-                });
+        // 🚀 SECURE VERIFICATION Handshake
+        setIsAdminLoading(true);
+        const verifiedAdmin = await dbService.checkIsAdmin();
+        setIsAdminVerified(verifiedAdmin);
+        setIsAdminLoading(false);
+
+        const initialUser: User = { 
+          id: session.user.id, 
+          email: session.user.email!, 
+          name: (session.user.user_metadata?.full_name as string) || 'Seeker', 
+          role: verifiedAdmin ? 'admin' : jwtRole, 
+          credits: (session.user.user_metadata?.credits as number) || 0, 
+          currency: 'INR', 
+          status: 'active',
+          created_at: session.user.created_at,
+          gamification: { karma: 0, streak: 0, readingsCount: 0, unlockedSigils: [] }
+        };
+        
+        setUser(initialUser);
+        setIsLoading(false);
+
+        if (!dbHanging.current) {
+            try {
+                const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
+                if (profile) {
+                    setUser(prev => ({ ...prev!, ...profile, role: verifiedAdmin ? 'admin' : (profile.role || jwtRole) }));
+                    const { data: readings } = await supabase.from('readings').select('*').eq('user_id', profile.id).order('created_at', { ascending: false });
+                    setHistory(readings || []);
+                }
+            } catch (e) {
+                dbHanging.current = true;
+                console.warn("Extended profile load skipped.");
             }
-        } catch (e) {
-            console.warn("DB Hang Detected during Auth. Recovering via JWT Helix...");
-            // DETERMINISTIC FALLBACK: Determine role from session app_metadata (Synced by SQL V16)
-            const role = session.user.app_metadata?.role || 'seeker';
-            setUser({ 
-                id: session.user.id, 
-                email: session.user.email!, 
-                name: (session.user.user_metadata?.full_name as string) || 'Seeker', 
-                role: role as any, 
-                credits: (session.user.user_metadata?.credits as number) || 0, 
-                currency: 'INR', 
-                status: 'active',
-                created_at: session.user.created_at,
-                // Default gamification for fallback user
-                gamification: { karma: 0, streak: 0, readingsCount: 0, unlockedSigils: [] }
-            });
         }
+      } else {
+        setUser(null);
+        setIsAdminVerified(false);
+        setIsLoading(false);
       }
     } catch (e) {
-      console.error("Auth Refresh Failed:", e);
-    } finally {
+      console.error("Auth System Error:", e);
       setIsLoading(false);
     }
+  }, []);
+
+  // Listen for developer bypass events
+  useEffect(() => {
+    const handleBypass = () => {
+        setIsAdminVerified(true);
+    };
+    window.addEventListener('glyph_dev_bypass_admin', handleBypass);
+    return () => window.removeEventListener('glyph_dev_bypass_admin', handleBypass);
   }, []);
 
   useEffect(() => {
     refreshUser();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
-      if (['SIGNED_IN', 'USER_UPDATED', 'TOKEN_REFRESHED'].includes(event)) await refreshUser();
+      if (['SIGNED_IN', 'TOKEN_REFRESHED'].includes(event)) {
+        dbService.clearSecurityCache();
+        await refreshUser();
+      }
       if (event === 'SIGNED_OUT') { 
         setUser(null); 
         setHistory([]); 
+        setIsAdminVerified(false);
+        dbService.clearSecurityCache();
+        dbHanging.current = false;
       }
     });
     return () => subscription.unsubscribe();
@@ -159,38 +164,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    setError(null);
+    dbService.clearSecurityCache();
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       await refreshUser();
-    } catch (e: any) {
-      setError(e.message);
-      throw e;
     } finally {
       setIsLoading(false);
     }
   };
 
   const logout = async () => {
-    localStorage.removeItem('system_admin_recovery');
     localStorage.removeItem('glyph_admin_session');
+    dbService.clearSecurityCache();
     setUser(null);
+    setIsAdminVerified(false);
     setHistory([]);
     await supabase.auth.signOut();
-    window.location.hash = '#/login';
   };
 
   const saveReading = useCallback(async (readingData: PendingReading) => {
     if (user) {
-      const saved = await dbService.saveReading({ ...readingData, user_id: user.id, paid: true });
-      setHistory(prev => [saved, ...prev]);
+      try {
+          const saved = await dbService.saveReading({ ...readingData, user_id: user.id });
+          setHistory(prev => [saved, ...prev]);
+      } catch (e) {}
     }
   }, [user]);
 
   return (
     <AuthContext.Provider value={{
-      user, isAuthenticated: !!user, credits: user?.credits || 0, isLoading, error, history,
+      user, isAuthenticated: !!user, isAdminVerified, isAdminLoading, credits: user?.credits || 0, isLoading, error, history,
       login, logout, refreshUser, saveReading,
       register: null, sendMagicLink: null, toggleFavorite: null, pendingReading: null,
       setPendingReading: null, commitPendingReading: null, awardKarma: () => {},

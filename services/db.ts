@@ -29,118 +29,138 @@ export interface Reading {
 }
 
 /**
- * 🔱 SUPABASE DATABASE SERVICE (METHOD A)
- * Optimized to work with private schema isolation and JWT metadata.
+ * 🔱 SECURE DATABASE SERVICE
+ * Implements Sovereign Admin Verification with Promise Deduplication and Caching.
  */
 class SupabaseDatabase {
-  
-  // --- 🪄 CLEARANCE HANDLERS ---
-  
+  private adminCheckCache: { value: boolean; timestamp: number } | null = null;
+  private pendingAdminCheck: Promise<boolean> | null = null;
+  private readonly CACHE_TTL = 120000; // 2 minutes in-memory cache
+
   /**
-   * Checks admin status without causing RLS recursion.
-   * 1. First checks the JWT metadata (Fastest/Safe)
-   * 2. Fallback to a public RPC wrapper if needed.
+   * SOVEREIGN ADMIN VERIFICATION
+   * - Deduplicates concurrent calls
+   * - Short-lived memory cache
+   * - Distinguishes 401 vs False
    */
   async checkIsAdmin(): Promise<boolean> {
-    try {
-      // Step A: Check JWT Claims (Loop-Proof)
-      const { data: { session } } = await supabase.auth.getSession();
-      const jwtRole = session?.user?.app_metadata?.role;
-      if (jwtRole === 'admin') return true;
-
-      // Step B: Call Public Wrapper (If metadata hasn't synced yet)
-      const { data, error } = await supabase.rpc('check_is_admin');
-      if (error) {
-        // If "function not found", it means we only have the private logic.
-        // We trust the JWT in that case.
-        return false;
-      }
-      return Boolean(data);
-    } catch (e) {
-      return false;
+    // 1. Check in-memory cache first
+    if (this.adminCheckCache && (Date.now() - this.adminCheckCache.timestamp < this.CACHE_TTL)) {
+      return this.adminCheckCache.value;
     }
+
+    // 2. Deduplicate ongoing requests
+    if (this.pendingAdminCheck) return this.pendingAdminCheck;
+
+    this.pendingAdminCheck = (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return false;
+
+        // Call secure RPC
+        const { data, error, status } = await supabase.rpc('check_is_admin');
+        
+        if (error) {
+          // Handle 401 Unauthorized (Expired Session)
+          if (status === 401) {
+            console.warn("🔐 Session expired during admin check. Refreshing...");
+            const { data: refreshData } = await supabase.auth.refreshSession();
+            if (refreshData.session) return this.checkIsAdmin(); // Retry once
+          }
+          
+          this.logSecurityEvent('verification_error', { error: error.message, status });
+          return false;
+        }
+
+        const is_admin = Boolean(data);
+        
+        // Update cache
+        this.adminCheckCache = { value: is_admin, timestamp: Date.now() };
+        
+        if (!is_admin) {
+            this.logSecurityEvent('access_denied', { userId: session.user.id });
+        }
+
+        return is_admin;
+      } catch (e) {
+        return false;
+      } finally {
+        this.pendingAdminCheck = null;
+      }
+    })();
+
+    return this.pendingAdminCheck;
   }
 
-  async createMoodEntry(mood: string, notes: string) {
-    const { data, error } = await supabase.rpc('create_mood_entry', { 
-      _mood: mood, 
-      _notes: notes 
-    });
-    if (error) throw error;
-    return data;
+  /**
+   * Clear security cache (call on Logout or Login)
+   */
+  clearSecurityCache() {
+    this.adminCheckCache = null;
+    this.pendingAdminCheck = null;
   }
 
-  // --- 📦 DIRECT CRUD (Method A: Recommended for JS Client) ---
+  private logSecurityEvent(event: string, details: any) {
+      console.info(`[Security Metrics] ${new Date().toISOString()} | EVENT: ${event}`, details);
+      // In production, send to Axiom/Datadog/Sentry
+  }
+
+  private async handleDbError(error: any, operation: string, table: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (error.code === '42501' || error.status === 403) {
+      this.logSecurityEvent('unauthorized_write_attempt', { 
+          userId: user?.id, 
+          operation, 
+          table,
+          errorCode: error.code 
+      });
+      alert("Admin permission required. Operation blocked by server-side RLS.");
+      // Force UI re-sync to rollback any optimistic local state
+      window.dispatchEvent(new CustomEvent('glyph_db_sync_required', { detail: { table } }));
+    } else {
+      console.error(`❌ DB Error [${operation}]:`, error.message);
+    }
+    throw error;
+  }
+
+  // --- 📦 DIRECT CRUD ---
 
   async getAll(table: string) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*');
-    
+    const { data, error }: any = await supabase.from(table).select('*');
     if (error) {
-      // Graceful handling of locked tables
-      if (error.message.includes('permission denied')) {
-          console.warn(`🔒 Access Restricted on ${table}. Ensure RLS policies use 'private._is_admin_direct'.`);
-          return [];
-      }
-      throw error;
+        if (error.code === '42501') return [];
+        return [];
     }
     return data || [];
   }
 
   async createEntry(table: string, entry: any) {
-    const { data, error } = await supabase
-      .from(table)
-      .insert([entry])
-      .select();
-    if (error) throw error;
+    const { data, error } = await supabase.from(table).insert([entry]).select();
+    if (error) return this.handleDbError(error, 'CREATE', table);
     return data;
   }
 
   async updateEntry(table: string, id: string | number, updates: any) {
-    const { data, error } = await supabase
-      .from(table)
-      .update(updates)
-      .eq('id', id)
-      .select();
-    if (error) throw error;
+    const { data, error } = await supabase.from(table).update(updates).eq('id', id).select();
+    if (error) return this.handleDbError(error, 'UPDATE', table);
     return data;
   }
 
   async deleteEntry(table: string, id: string | number) {
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) return this.handleDbError(error, 'DELETE', table);
   }
 
   async saveReading(reading: any): Promise<Reading> {
-    const { data, error } = await supabase
-      .from('readings')
-      .insert([reading])
-      .select()
-      .single();
+    const { data, error } = await supabase.from('readings').insert([reading]).select().single();
     if (error) throw error;
     return data;
   }
 
   async recordTransaction(transaction: any) {
-    const { error } = await supabase
-      .from('transactions')
-      .insert([transaction]);
+    const { error } = await supabase.from('transactions').insert([transaction]);
     if (error) throw error;
-  }
-
-  /**
-   * Triggers the admin data extraction edge function.
-   */
-  async exportUserData(userId: string) {
-    const { data, error } = await supabase.functions.invoke('admin-export-user-data', {
-      body: { user_id: userId }
-    });
-    if (error) throw error;
-    return data as { fileKey: string; signedUrl: string; expiresIn: number };
   }
 }
 

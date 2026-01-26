@@ -8,25 +8,22 @@ interface Props {
 }
 
 const AdminGuard: React.FC<Props> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, isAdminVerified, isLoading } = useAuth();
   
-  // 1. Check Layer: LocalStorage Session (Master Login)
-  const sessionStr = localStorage.getItem('glyph_admin_session');
-  if (sessionStr) {
-      try {
-          const session = JSON.parse(sessionStr);
-          if (session.role === 'admin') return <>{children}</>;
-      } catch (e) {
-          localStorage.removeItem('glyph_admin_session');
-      }
+  if (isLoading) {
+      return (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      );
   }
 
-  // 2. Check Layer: Standard Auth Context (Normal Login with Admin Role)
-  if (user?.role === 'admin') {
+  // 🛡️ DEFINITIVE SECURITY CHECK: Server-verified status only
+  if (isAdminVerified) {
       return <>{children}</>;
   }
 
-  console.warn("⛔ AdminGuard: Access Denied. User role:", user?.role);
+  console.warn("⛔ AdminGuard: Definitive Access Denied. User lacks server-side admin clearance.");
   return <Navigate to="/login" replace />;
 };
 

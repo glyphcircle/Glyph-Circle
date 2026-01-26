@@ -53,14 +53,9 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
 
-/**
- * 🕉️ IdleCursor Component
- * Changes cursor to Devanagari 'OM' when user is idle.
- */
 const IdleCursor: React.FC = () => {
   const [isIdle, setIsIdle] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  // Fix: Use any to avoid NodeJS.Timeout vs number namespace conflicts in browser
   const idleTimer = useRef<any>(null);
 
   useEffect(() => {
@@ -70,13 +65,10 @@ const IdleCursor: React.FC = () => {
       if (idleTimer.current) clearTimeout(idleTimer.current);
       idleTimer.current = setTimeout(() => setIsIdle(true), 3000);
     };
-
     const handleClick = () => setIsIdle(false);
-
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mousedown', handleClick);
     window.addEventListener('keydown', handleClick);
-
     return () => {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mousedown', handleClick);
@@ -85,55 +77,31 @@ const IdleCursor: React.FC = () => {
   }, []);
 
   if (!isIdle) return null;
-
   return (
     <div 
       className="fixed pointer-events-none z-[9999] select-none animate-pulse-glow"
-      style={{ 
-        left: pos.x, 
-        top: pos.y, 
-        transform: 'translate(-50%, -50%)',
-        cursor: 'none'
-      }}
+      style={{ left: pos.x, top: pos.y, transform: 'translate(-50%, -50%)', cursor: 'none' }}
     >
       <span className="text-5xl text-amber-400 font-bold drop-shadow-[0_0_20px_rgba(245,158,11,0.9)] select-none">ॐ</span>
-      <style>{`
-        body, button, a, input { cursor: none !important; }
-      `}</style>
+      <style>{`body, button, a, input { cursor: none !important; }`}</style>
     </div>
   );
 };
 
-/**
- * 🔒 ProtectedRoute Component
- * Redirects unauthenticated users to login or shows loading state during verification.
- */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
-  
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-12 h-12 border-4 border-skin-accent border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-  
+  if (isLoading) return <div className="flex items-center justify-center min-h-[400px]"><div className="w-12 h-12 border-4 border-skin-accent border-t-transparent rounded-full animate-spin"></div></div>;
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 function App() {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, isAdminVerified, logout } = useAuth();
   const location = useLocation();
   const { isMobile } = useDevice();
 
   const isAuthPage = ['/login', '/register', '/master-login'].includes(location.pathname);
   const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/master-login';
   const showLayout = isAuthenticated && !isAuthPage && !isAdminPage;
-
-  const isAdmin = useMemo(() => {
-    return user?.role === 'admin';
-  }, [user]);
 
   return (
     <AccessibilityProvider>
@@ -148,29 +116,24 @@ function App() {
                  <DailyReminder />
                  {!isMobile && <BadgeCounter />}
                  <LargeTextMode />
-                 {isAdmin && <ContextDbNavigator />}
-                 {isAdmin && <ABTestStatus />}
+                 {isAdminVerified && <ContextDbNavigator />}
+                 {isAdminVerified && <ABTestStatus />}
                  {!isAdminPage && <GamificationHUD />}
                  {!isAdminPage && !isMobile && (
                     <Link to="/referrals" className="fixed bottom-6 left-6 z-40 animate-pulse-glow group">
-                       <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-700 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center justify-center border-2 border-white/20 transform group-hover:scale-110 transition-transform">
-                          <span className="text-2xl">🎁</span>
-                       </div>
+                       <div className="w-14 h-14 bg-gradient-to-br from-green-500 to-green-700 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center justify-center border-2 border-white/20 transform group-hover:scale-110 transition-transform"><span className="text-2xl">🎁</span></div>
                     </Link>
                  )}
                </>
             )}
 
             <main className={`flex-grow ${showLayout ? `container mx-auto px-4 ${isMobile ? 'pb-24 pt-4' : 'py-8'}` : ''}`}>
-              {location.pathname === '/home' && isAuthenticated && (
-                  <PanchangBar />
-              )}
+              {location.pathname === '/home' && isAuthenticated && <PanchangBar />}
 
               <Routes>
                 <Route path="/" element={isAuthenticated ? <Home /> : <Login />} />
                 <Route path="/login" element={isAuthenticated ? <Navigate to="/home" /> : <Login />} />
                 <Route path="/register" element={isAuthenticated ? <Navigate to="/home" /> : <Register />} />
-                
                 <Route path="/master-login" element={<MasterLogin />} />
                 <Route path="/admin/dashboard" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
                 <Route path="/admin/config" element={<AdminGuard><AdminConfig /></AdminGuard>} />
@@ -180,7 +143,6 @@ function App() {
                 <Route path="/admin/db/:table" element={<AdminGuard><AdminDB /></AdminGuard>} />
                 <Route path="/admin/backup" element={<AdminGuard><BackupManager /></AdminGuard>} />
                 <Route path="/admin/report-designer" element={<AdminGuard><ReportDesigner /></AdminGuard>} />
-
                 <Route path="/home" element={<ProtectedRoute><ErrorBoundary><Home /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/history" element={<ProtectedRoute><ErrorBoundary><ReadingHistory /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/palmistry" element={<ProtectedRoute><ErrorBoundary><Palmistry /></ErrorBoundary></ProtectedRoute>} />
@@ -196,18 +158,15 @@ function App() {
                 <Route path="/referrals" element={<ProtectedRoute><ReferralProgram /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
                 <Route path="/achievements" element={<ProtectedRoute><ErrorBoundary><SigilGallery /></ErrorBoundary></ProtectedRoute>} />
-                
                 <Route path="/ayurveda" element={<ProtectedRoute><ErrorBoundary><Ayurveda /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/moon-journal" element={<ProtectedRoute><ErrorBoundary><MoonJournal /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/muhurat" element={<ProtectedRoute><ErrorBoundary><MuhuratPicker /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/cosmic-sync" element={<ProtectedRoute><ErrorBoundary><CosmicSync /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/voice-oracle" element={<ProtectedRoute><ErrorBoundary><VoiceOracle /></ErrorBoundary></ProtectedRoute>} />
                 <Route path="/calendar" element={<ProtectedRoute><ErrorBoundary><KalnirnayeCalendar /></ErrorBoundary></ProtectedRoute>} />
-
                 <Route path="*" element={<Navigate to="/login" />} />
               </Routes>
             </main>
-            
             {showLayout && isMobile && <MobileNavBar />}
             {showLayout && !isMobile && <Footer />}
           </div>
