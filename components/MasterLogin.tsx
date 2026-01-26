@@ -61,8 +61,6 @@ const MasterLogin: React.FC = () => {
                 cleanEmail.endsWith('@glyphcircle.com');
 
             // --- 🛡️ THE BYPASS PROTOCOL ---
-            // We race the DB query against a 5-second timeout.
-            // If the DB hangs, we trust the authorized email list.
             try {
                 const profilePromise = supabase
                     .from('users')
@@ -152,7 +150,7 @@ const MasterLogin: React.FC = () => {
   };
 
   const PROMOTION_SQL = `-- 🔱 PROTOCOL V26: SOVEREIGN OVERRIDE
--- Run this to kill the 15s hang and force promote mitaakxi.
+-- Fixed column name: raw_app_meta_data
 
 BEGIN;
 
