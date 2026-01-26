@@ -8,8 +8,9 @@ interface Props {
 }
 
 const AdminGuard: React.FC<Props> = ({ children }) => {
-  const { user, isAdminVerified, isLoading } = useAuth();
+  const { user, isAdminVerified, isAdminLoading, isLoading } = useAuth();
   
+  // 1. Initial Auth Load
   if (isLoading) {
       return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -18,12 +19,24 @@ const AdminGuard: React.FC<Props> = ({ children }) => {
       );
   }
 
-  // 🛡️ DEFINITIVE SECURITY CHECK: Server-verified status only
+  // 2. Sovereign Verification in Progress
+  if (isAdminLoading) {
+    return (
+        <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono">
+            <div className="w-20 h-20 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6 shadow-[0_0_30px_rgba(37,99,235,0.4)]"></div>
+            <h2 className="text-blue-500 text-sm tracking-[0.4em] uppercase animate-pulse">Verifying Sovereign Clearance</h2>
+            <p className="text-gray-600 text-[10px] mt-4 uppercase">Handshaking with Private Schema...</p>
+        </div>
+    );
+  }
+
+  // 3. 🛡️ DEFINITIVE SECURITY CHECK
   if (isAdminVerified) {
       return <>{children}</>;
   }
 
-  console.warn("⛔ AdminGuard: Definitive Access Denied. User lacks server-side admin clearance.");
+  // 4. Verification Failed
+  console.warn("⛔ AdminGuard: Definitive Access Denied. Server-side check failed.");
   return <Navigate to="/login" replace />;
 };
 

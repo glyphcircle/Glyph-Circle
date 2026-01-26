@@ -47,31 +47,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const dbHanging = useRef(false);
 
   const refreshUser = useCallback(async () => {
-    // 🛡️ RECOVERY BYPASS
+    // 🛡️ 1. RECOVERY/DEV BYPASS
     const recoverySession = localStorage.getItem('glyph_admin_session');
     if (recoverySession) {
       try {
         const sess = JSON.parse(recoverySession);
         if (sess.role === 'admin') {
-          // If explicitly bypassed via dev tool
           if (sess.method === 'Local Bypass') {
               setIsAdminVerified(true);
               setUser({ id: 'dev-bypass', email: 'dev@local', name: 'Dev Admin', role: 'admin', credits: 999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
               setIsLoading(false);
               return;
-          }
-
-          setIsAdminLoading(true);
-          const verified = await dbService.checkIsAdmin();
-          setIsAdminVerified(verified);
-          setIsAdminLoading(false);
-          
-          if (verified) {
-              setUser({ id: 'admin-local', email: sess.user, name: 'Admin', role: 'admin', credits: 999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
-              setIsLoading(false);
-              return;
-          } else {
-              localStorage.removeItem('glyph_admin_session');
           }
         }
       } catch (e) {
@@ -88,19 +74,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
+        // 🚀 STEP A: Immediate Authentication (Non-blocking)
         const jwtRole = (session.user.app_metadata?.role as any) || 'seeker';
         
-        // 🚀 SECURE VERIFICATION Handshake
-        setIsAdminLoading(true);
-        const verifiedAdmin = await dbService.checkIsAdmin();
-        setIsAdminVerified(verifiedAdmin);
-        setIsAdminLoading(false);
-
         const initialUser: User = { 
           id: session.user.id, 
           email: session.user.email!, 
           name: (session.user.user_metadata?.full_name as string) || 'Seeker', 
-          role: verifiedAdmin ? 'admin' : jwtRole, 
+          role: jwtRole, 
           credits: (session.user.user_metadata?.credits as number) || 0, 
           currency: 'INR', 
           status: 'active',
@@ -109,19 +90,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUser(initialUser);
-        setIsLoading(false);
+        setIsLoading(false); // UI is now "authenticated"
 
+        // 🚀 STEP B: Sovereign Verification (Background)
+        setIsAdminLoading(true);
+        const verifiedAdmin = await dbService.checkIsAdmin();
+        setIsAdminVerified(verifiedAdmin);
+        setIsAdminLoading(false);
+
+        // If server confirms admin, upgrade the role in state
+        if (verifiedAdmin) {
+            setUser(prev => prev ? { ...prev, role: 'admin' } : null);
+        }
+
+        // 🚀 STEP C: Profile Enrichment
         if (!dbHanging.current) {
             try {
                 const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
                 if (profile) {
-                    setUser(prev => ({ ...prev!, ...profile, role: verifiedAdmin ? 'admin' : (profile.role || jwtRole) }));
+                    setUser(prev => prev ? ({ ...prev, ...profile, role: verifiedAdmin ? 'admin' : (profile.role || jwtRole) }) : null);
                     const { data: readings } = await supabase.from('readings').select('*').eq('user_id', profile.id).order('created_at', { ascending: false });
                     setHistory(readings || []);
                 }
             } catch (e) {
                 dbHanging.current = true;
-                console.warn("Extended profile load skipped.");
             }
         }
       } else {
@@ -135,11 +127,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  // Listen for developer bypass events
   useEffect(() => {
-    const handleBypass = () => {
-        setIsAdminVerified(true);
-    };
+    const handleBypass = () => setIsAdminVerified(true);
     window.addEventListener('glyph_dev_bypass_admin', handleBypass);
     return () => window.removeEventListener('glyph_dev_bypass_admin', handleBypass);
   }, []);
@@ -157,6 +146,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAdminVerified(false);
         dbService.clearSecurityCache();
         dbHanging.current = false;
+        localStorage.removeItem('glyph_admin_session');
       }
     });
     return () => subscription.unsubscribe();

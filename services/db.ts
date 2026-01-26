@@ -35,7 +35,7 @@ export interface Reading {
 class SupabaseDatabase {
   private adminCheckCache: { value: boolean; timestamp: number } | null = null;
   private pendingAdminCheck: Promise<boolean> | null = null;
-  private readonly CACHE_TTL = 120000; // 2 minutes in-memory cache
+  private readonly CACHE_TTL = 120000; // 2 minutes
 
   /**
    * SOVEREIGN ADMIN VERIFICATION
@@ -63,24 +63,19 @@ class SupabaseDatabase {
         if (error) {
           // Handle 401 Unauthorized (Expired Session)
           if (status === 401) {
-            console.warn("🔐 Session expired during admin check. Refreshing...");
             const { data: refreshData } = await supabase.auth.refreshSession();
-            if (refreshData.session) return this.checkIsAdmin(); // Retry once
+            if (refreshData.session) {
+                // Retry once after refresh
+                const { data: retryData } = await supabase.rpc('check_is_admin');
+                return Boolean(retryData);
+            }
           }
-          
           this.logSecurityEvent('verification_error', { error: error.message, status });
           return false;
         }
 
         const is_admin = Boolean(data);
-        
-        // Update cache
         this.adminCheckCache = { value: is_admin, timestamp: Date.now() };
-        
-        if (!is_admin) {
-            this.logSecurityEvent('access_denied', { userId: session.user.id });
-        }
-
         return is_admin;
       } catch (e) {
         return false;
@@ -92,9 +87,6 @@ class SupabaseDatabase {
     return this.pendingAdminCheck;
   }
 
-  /**
-   * Clear security cache (call on Logout or Login)
-   */
   clearSecurityCache() {
     this.adminCheckCache = null;
     this.pendingAdminCheck = null;
@@ -102,36 +94,20 @@ class SupabaseDatabase {
 
   private logSecurityEvent(event: string, details: any) {
       console.info(`[Security Metrics] ${new Date().toISOString()} | EVENT: ${event}`, details);
-      // In production, send to Axiom/Datadog/Sentry
   }
 
   private async handleDbError(error: any, operation: string, table: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    
     if (error.code === '42501' || error.status === 403) {
-      this.logSecurityEvent('unauthorized_write_attempt', { 
-          userId: user?.id, 
-          operation, 
-          table,
-          errorCode: error.code 
-      });
-      alert("Admin permission required. Operation blocked by server-side RLS.");
-      // Force UI re-sync to rollback any optimistic local state
+      this.logSecurityEvent('unauthorized_write_attempt', { operation, table });
+      alert("Admin permission required. Access blocked by RLS.");
       window.dispatchEvent(new CustomEvent('glyph_db_sync_required', { detail: { table } }));
-    } else {
-      console.error(`❌ DB Error [${operation}]:`, error.message);
     }
     throw error;
   }
 
-  // --- 📦 DIRECT CRUD ---
-
   async getAll(table: string) {
     const { data, error }: any = await supabase.from(table).select('*');
-    if (error) {
-        if (error.code === '42501') return [];
-        return [];
-    }
+    if (error) return [];
     return data || [];
   }
 
