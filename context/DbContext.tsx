@@ -2,7 +2,16 @@
 import React, { createContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { dbService } from '../services/db';
 import { v4 as uuidv4 } from 'uuid';
-import { useAuth } from './AuthContext';
+
+interface NetworkEvent {
+    id: string;
+    method: string;
+    endpoint: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    source: 'network' | 'cache';
+    duration?: number;
+}
 
 interface DbContextType {
   db: any;
@@ -11,15 +20,16 @@ interface DbContextType {
   createEntry: (tableName: string, newRecordData: Record<string, any>) => Promise<any>;
   updateEntry: (tableName: string, id: number | string, updatedData: Record<string, any>) => Promise<any>;
   deleteEntry: (tableName: string, id: number | string) => Promise<void>;
-  refresh: () => Promise<boolean>;
+  refresh: (forceNetwork?: boolean) => Promise<boolean>;
   refreshTable: (tableName: string) => Promise<void>;
   connectionStatus: 'connecting' | 'connected' | 'error';
   errorMessage: string | null;
+  networkLedger: NetworkEvent[];
 }
 
 export const DbContext = createContext<DbContextType | undefined>(undefined);
 
-const CACHE_KEY = 'glyph_eternal_cache_v46';
+const CACHE_KEY = 'glyph_eternal_cache_v53';
 
 export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [dbState, setDbState] = useState<any>(() => {
@@ -28,18 +38,26 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   });
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'error'>('connected');
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [ledger, setLedger] = useState<NetworkEvent[]>([]);
   
   const isRefreshing = useRef(false);
 
-  const CORE_TABLES = [
-    'config', 'services', 'store_items', 'featured_content', 'cloud_providers', 
-    'payment_providers', 'payment_config', 'payment_methods', 'image_assets',
-    'ui_themes', 'report_formats', 'gemstones', 'users', 'readings', 'transactions', 'feedback'
+  const logActivity = useCallback((method: string, endpoint: string, status: 'pending' | 'success' | 'error', source: 'network' | 'cache', duration?: number) => {
+      const event: NetworkEvent = { id: uuidv4(), method, endpoint, timestamp: new Date().toLocaleTimeString(), status, source, duration };
+      setLedger(prev => [event, ...prev].slice(0, 30));
+  }, []);
+
+  const MASTER_TABLE_LIST = [
+      'config', 'ui_themes', 'featured_content', 'payment_providers', 
+      'payment_methods', 'report_formats', 'services', 'store_items', 
+      'image_assets', 'gemstones', 'users', 'readings', 'transactions', 'feedback'
   ];
 
   const refreshTable = useCallback(async (tableName: string) => {
+      const start = Date.now();
       try {
           const tableData = await dbService.getAll(tableName);
+          logActivity('GET', `tables/${tableName}`, 'success', 'network', Date.now() - start);
           if (Array.isArray(tableData)) {
               setDbState((prev: any) => {
                   const newState = { ...prev, [tableName]: tableData };
@@ -48,110 +66,133 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               });
           }
       } catch (e: any) {
-          console.warn(`Background sync skipped for ${tableName}:`, e.message);
+          logActivity('GET', `tables/${tableName}`, 'error', 'network', Date.now() - start);
       }
-  }, []);
+  }, [logActivity]);
 
-  const refresh = useCallback(async (): Promise<boolean> => {
+  const refresh = useCallback(async (forceNetwork: boolean = false): Promise<boolean> => {
     if (isRefreshing.current) return false;
     isRefreshing.current = true;
     setConnStatus('connecting');
+    const startTotal = Date.now();
     
-    let successCount = 0;
-    const workingResults: Record<string, any[]> = {};
-
-    const syncPromises = CORE_TABLES.map(async (table) => {
-        try {
-            const data = await Promise.race([
-                dbService.getAll(table),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
-            ]) as any[];
-
-            if (data && Array.isArray(data)) {
-                workingResults[table] = data;
-                successCount++;
+    try {
+        let bundle: Record<string, any> = {};
+        let bundleSuccess = false;
+        
+        // 1. ATOMIC BUNDLE FETCH (The "Imperial" Fast Path)
+        if (!forceNetwork) {
+            logActivity('POST', 'rpc/get_mystic_startup_bundle', 'pending', 'network');
+            try {
+                bundle = await dbService.getStartupBundle();
+                // Ensure bundle actually contains data arrays (Backend fix confirms empty arrays now)
+                if (bundle && Object.keys(bundle).length > 0) {
+                    logActivity('POST', 'rpc/get_mystic_startup_bundle', 'success', 'network', Date.now() - startTotal);
+                    bundleSuccess = true;
+                }
+            } catch (e) {
+                logActivity('POST', 'rpc/get_mystic_startup_bundle', 'error', 'network', Date.now() - startTotal);
+                console.warn("Fast Bundle failed. Falling back to individual table sync.");
             }
-        } catch (e: any) {
-            console.warn(`Fetch failed for ${table}:`, e.message);
         }
-    });
 
-    await Promise.allSettled(syncPromises);
+        // 2. RELIABILITY PATH: Individual Fetches if Bundle fails or if forced
+        const tablesToFetch = (!bundleSuccess || forceNetwork) 
+            ? MASTER_TABLE_LIST 
+            : MASTER_TABLE_LIST.filter(t => !bundle[t]);
 
-    setDbState((prev: any) => {
-        const newState = { ...prev, ...workingResults };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
-        return newState;
-    });
+        if (tablesToFetch.length > 0) {
+            const results: Record<string, any[]> = {};
+            const fetchPromises = tablesToFetch.map(async (table) => {
+                const tStart = Date.now();
+                try {
+                    const data = await dbService.getAll(table);
+                    logActivity('GET', `tables/${table}`, 'success', 'network', Date.now() - tStart);
+                    if (Array.isArray(data)) results[table] = data;
+                } catch (e) {
+                    logActivity('GET', `tables/${table}`, 'error', 'network', Date.now() - tStart);
+                }
+            });
 
-    setConnStatus(successCount > 0 ? 'connected' : 'error');
-    isRefreshing.current = false;
-    return successCount > 0;
-  }, []);
+            await Promise.allSettled(fetchPromises);
+
+            setDbState((prev: any) => {
+                const newState = { ...prev, ...bundle, ...results };
+                localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+                return newState;
+            });
+        } else {
+            setDbState((prev: any) => {
+                const newState = { ...prev, ...bundle };
+                localStorage.setItem(CACHE_KEY, JSON.stringify(newState));
+                return newState;
+            });
+        }
+
+        setConnStatus('connected');
+        isRefreshing.current = false;
+        return true;
+    } catch (e: any) {
+        setConnStatus('error');
+        isRefreshing.current = false;
+        return false;
+    }
+  }, [logActivity]);
 
   useEffect(() => { 
       refresh(); 
   }, [refresh]);
 
-  const toggleStatus = useCallback(async (tableName: string, recordId: number | string) => {
-    const list = dbState[tableName] || [];
-    const record = list.find((r: any) => r.id == recordId);
-    if (!record) return;
-
-    const newStatus = record.status === 'active' ? 'inactive' : 'active';
-    
-    setDbState((prev: any) => ({ 
-        ...prev, 
-        [tableName]: prev[tableName].map((r: any) => r.id == recordId ? { ...r, status: newStatus } : r) 
-    }));
-
-    try {
-        await dbService.updateEntry(tableName, recordId, { status: newStatus });
-    } catch { 
-        refreshTable(tableName); 
-    }
-  }, [dbState, refreshTable]);
-
   const updateEntry = useCallback(async (tableName: string, id: number | string, data: Record<string, any>) => {
+      const start = Date.now();
       try {
-          // Safety Race to prevent "Updating..." hang
-          const result = await Promise.race([
-              dbService.updateEntry(tableName, id, data),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Database unresponsive. Potential security loop detected.')), 10000))
-          ]);
-          await refreshTable(tableName);
+          // Use the admin proxy batch for single updates to ensure service-role clearance if needed
+          const result = await dbService.updateEntry(tableName, id, data);
+          logActivity('PATCH', `tables/${tableName}?id=${id}`, 'success', 'network', Date.now() - start);
+          refreshTable(tableName);
           return result;
       } catch (e) {
-          refreshTable(tableName);
+          logActivity('PATCH', `tables/${tableName}?id=${id}`, 'error', 'network', Date.now() - start);
           throw e;
       }
-  }, [refreshTable]);
+  }, [refreshTable, logActivity]);
 
   const createEntry = useCallback(async (tableName: string, data: Record<string, any>) => {
+    const start = Date.now();
     try {
         const payload = { ...data, id: data.id || uuidv4() };
-        const result = await Promise.race([
-            dbService.createEntry(tableName, payload),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Genesis failed. Link timed out.')), 10000))
-        ]);
-        await refreshTable(tableName);
+        const result = await dbService.createEntry(tableName, payload);
+        logActivity('POST', `tables/${tableName}`, 'success', 'network', Date.now() - start);
+        refreshTable(tableName);
         return result;
-    } catch (e: any) { 
+    } catch (e) { 
+        logActivity('POST', `tables/${tableName}`, 'error', 'network', Date.now() - start);
         throw e; 
     }
-  }, [refreshTable]);
+  }, [refreshTable, logActivity]);
 
   const deleteEntry = useCallback(async (tableName: string, id: number | string) => {
+    const start = Date.now();
     try {
         await dbService.deleteEntry(tableName, id);
+        logActivity('DELETE', `tables/${tableName}?id=${id}`, 'success', 'network', Date.now() - start);
         setDbState((prev: any) => ({
             ...prev,
             [tableName]: (prev[tableName] || []).filter((r: any) => r.id != id)
         }));
     } catch (e: any) { 
+        logActivity('DELETE', `tables/${tableName}?id=${id}`, 'error', 'network', Date.now() - start);
         throw e; 
     }
-  }, []);
+  }, [logActivity]);
+
+  const toggleStatus = useCallback(async (tableName: string, recordId: number | string) => {
+    const list = dbState[tableName] || [];
+    const record = list.find((r: any) => r.id == recordId);
+    if (!record) return;
+    const newStatus = record.status === 'active' ? 'inactive' : 'active';
+    updateEntry(tableName, recordId, { status: newStatus });
+  }, [dbState, updateEntry]);
 
   const activateTheme = useCallback(async (themeId: string) => {
       try {
@@ -179,27 +220,10 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         refresh, 
         refreshTable, 
         connectionStatus: connStatus, 
-        errorMessage: errMsg 
+        errorMessage: errMsg,
+        networkLedger: ledger
     }}>
       {children}
-      <SyncTrigger refresh={refresh} />
     </DbContext.Provider>
   );
-};
-
-const SyncTrigger: React.FC<{ refresh: () => void }> = ({ refresh }) => {
-    const { isAdminVerified, isAuthenticated } = useAuth();
-    const lastSyncId = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (isAuthenticated) {
-            const currentSyncId = `${isAuthenticated}-${isAdminVerified}`;
-            if (lastSyncId.current !== currentSyncId) {
-                refresh();
-                lastSyncId.current = currentSyncId;
-            }
-        }
-    }, [isAuthenticated, isAdminVerified, refresh]);
-
-    return null;
 };

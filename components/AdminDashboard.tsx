@@ -108,7 +108,6 @@ const AdminDashboard: React.FC = () => {
       navigate('/master-login');
   };
 
-  // FIXED: Show loading indicator instead of returning null (which renders black screen)
   if (!user) {
       return (
         <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center font-sans p-4">
@@ -150,11 +149,11 @@ const AdminDashboard: React.FC = () => {
             </button>
 
             <button 
-                onClick={() => navigate('/admin/cloud')}
-                className="group p-6 bg-orange-900/20 hover:bg-orange-600 border border-orange-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg"
+                onClick={() => navigate('/admin/batch-editor')}
+                className="group p-6 bg-amber-900/20 hover:bg-amber-600 border border-amber-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg"
             >
-                <span className="text-3xl group-hover:scale-110 transition-transform">☁️</span>
-                <span className="font-bold text-orange-100 uppercase tracking-widest text-xs">Cloud Storage</span>
+                <span className="text-3xl group-hover:scale-110 transition-transform">⚡</span>
+                <span className="font-bold text-amber-100 uppercase tracking-widest text-xs">Bulk Manifestation</span>
             </button>
 
             <button 
@@ -167,10 +166,10 @@ const AdminDashboard: React.FC = () => {
 
             <button 
                 onClick={() => navigate('/admin/revenue')}
-                className="group p-6 bg-amber-900/20 hover:bg-amber-600 border border-amber-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg col-span-1 sm:col-span-2"
+                className="group p-6 bg-indigo-900/20 hover:bg-indigo-600 border border-indigo-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg col-span-1 sm:col-span-2"
             >
                 <span className="text-3xl group-hover:scale-110 transition-transform">📈</span>
-                <span className="font-bold text-amber-100 uppercase tracking-widest text-xs">Financial Analytics</span>
+                <span className="font-bold text-indigo-100 uppercase tracking-widest text-xs">Financial Analytics</span>
             </button>
             
             <button 

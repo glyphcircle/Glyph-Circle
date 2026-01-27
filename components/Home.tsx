@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 // @ts-ignore
 import { Link, useNavigate } from 'react-router-dom';
@@ -30,17 +29,41 @@ const Home: React.FC = () => {
       return dbBackgrounds.length > 0 ? dbBackgrounds : BACKGROUND_IMAGES;
   }, [db.image_assets]);
 
-  // --- OPTIMIZATION: Dynamic Service List with Code Check ---
+  // --- OPTIMIZATION: Dynamic Service List with Deduplication & View Priority ---
   const displayServices = useMemo(() => {
-      const dbServices = (db.services || []).filter((s:any) => s.status === 'active');
-      return dbServices.map((service: any) => {
-          // Find standard icon if ID matches, otherwise default icon
+      const raw = db.services || [];
+      const uniqueMap = new Map<string, any>();
+
+      // vw_services_full might return multiple rows per service if there are multiple store items.
+      // We deduplicate here to show one card per service, picking the cheapest variant.
+      raw.forEach((s: any) => {
+          if (s.status !== 'active') return;
+
+          if (!uniqueMap.has(s.id)) {
+              uniqueMap.set(s.id, s);
+          } else {
+              const existing = uniqueMap.get(s.id);
+              // Pick lowest store_price if multiple variants exist
+              const currentPrice = s.store_price || s.price || 0;
+              const existingPrice = existing.store_price || existing.price || 0;
+              if (currentPrice < existingPrice) {
+                  uniqueMap.set(s.id, s);
+              }
+          }
+      });
+
+      return Array.from(uniqueMap.values()).map((service: any) => {
+          // Find standard icon if ID matches
           const standardOpt = SERVICE_OPTIONS.find(opt => opt.id === service.id);
-          const resolvedImg = service.image ? cloudManager.resolveImage(service.image) : null;
+          
+          // Image Resolution Priority: image_path (from joined view) > image (old id) > path
+          const imageSrc = service.image_path || service.image || service.path;
+          const resolvedImg = imageSrc ? cloudManager.resolveImage(imageSrc) : null;
           
           return {
               ...service,
-              image: resolvedImg || service.image,
+              displayPrice: service.store_price || service.price,
+              image: resolvedImg,
               icon: standardOpt ? standardOpt.icon : (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-7.714 2.143L11 21l-2.286-6.857L1 12l7.714-2.143L11 3z" />
@@ -58,8 +81,6 @@ const Home: React.FC = () => {
       const opacityConfig = db.config?.find((c: any) => c.key === 'card_hover_opacity');
       return opacityConfig ? parseFloat(opacityConfig.value) : 0.8;
   }, [db.config]);
-
-  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
 
   const logoUrl = useMemo(() => {
       const logoAsset = db.image_assets?.find((a: any) => a.tags?.includes('brand_logo'));
@@ -112,10 +133,10 @@ const Home: React.FC = () => {
                     />
                 </div>
             )}
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-cinzel font-black text-transparent bg-clip-text bg-gradient-to-r from-skin-accent via-skin-text to-skin-accent mb-6 drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)] tracking-wide">
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-cinzel font-black text-transparent bg-clip-text bg-gradient-to-r from-skin-accent via-skin-text to-skin-accent mb-6 drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)] tracking-wide text-white">
                 {t('welcomeToPath')}
             </h1>
-            <p className="text-xl md:text-2xl text-skin-text/90 font-lora italic max-w-3xl mx-auto leading-relaxed drop-shadow-lg">
+            <p className="text-xl md:text-2xl text-skin-text/90 font-lora italic max-w-3xl mx-auto leading-relaxed drop-shadow-lg text-white">
                 {t('chooseService')}
             </p>
         </div>
@@ -142,7 +163,6 @@ const Home: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 xl:gap-10 max-w-[90rem] mx-auto w-full px-2">
           {displayServices.map((service: any, idx: number) => {
-            // ROUTE VALIDATION: Check if service ID has corresponding code
             const codedIds = ['calendar', 'numerology', 'astrology', 'ayurveda', 'muhurat', 'moon-journal', 'cosmic-sync', 'voice-oracle', 'gemstones', 'matchmaking', 'tarot', 'palmistry', 'face-reading', 'dream-analysis', 'remedy', 'store'];
             const isCoded = codedIds.includes(service.id);
             const targetPath = isCoded ? service.path : `/coming-soon?id=${service.id}`;

@@ -17,6 +17,7 @@ import AdminConfig from './components/AdminConfig';
 import AdminCloudConfig from './components/AdminCloudConfig';
 import AdminPaymentConfig from './components/AdminPaymentConfig';
 import AdminDB from './components/AdminDB';
+import AdminBatchEditor from './components/AdminBatchEditor';
 import MasterLogin from './components/MasterLogin';
 import RevenueDashboard from './components/RevenueDashboard';
 import NumerologyAstrology from './components/NumerologyAstrology';
@@ -141,6 +142,7 @@ function App() {
                 <Route path="/admin/payments" element={<AdminGuard><AdminPaymentConfig /></AdminGuard>} />
                 <Route path="/admin/revenue" element={<AdminGuard><RevenueDashboard /></AdminGuard>} />
                 <Route path="/admin/db/:table" element={<AdminGuard><AdminDB /></AdminGuard>} />
+                <Route path="/admin/batch-editor" element={<AdminGuard><AdminBatchEditor /></AdminGuard>} />
                 <Route path="/admin/backup" element={<AdminGuard><BackupManager /></AdminGuard>} />
                 <Route path="/admin/report-designer" element={<AdminGuard><ReportDesigner /></AdminGuard>} />
                 <Route path="/home" element={<ProtectedRoute><ErrorBoundary><Home /></ErrorBoundary></ProtectedRoute>} />
