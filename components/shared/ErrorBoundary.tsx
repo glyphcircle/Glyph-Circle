@@ -12,43 +12,43 @@ interface State {
 }
 
 /**
- * 🌌 ErrorBoundary Component
- * Catches runtime errors in the mystical fabric and provides a recovery path.
+ * Standard React Error Boundary component.
  */
-// Fix: Explicitly import and extend Component from 'react' to ensure correct type inheritance
+// Fixed: Using direct Component import and proper generic parameters to ensure inheritance is recognized by TypeScript
 class ErrorBoundary extends Component<Props, State> {
-  // Explicitly declare state property at the class level
   public state: State = {
     hasError: false,
     error: null,
   };
 
-  constructor(props: Props) {
-    super(props);
-  }
-
-  // The return type should be the full State object.
   public static getDerivedStateFromError(error: Error): State {
-    // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log the error to the console
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
-  // Fix: handleRetry now uses @ts-ignore to satisfy the compiler regarding setState inheritance
+  // Use arrow function for class property to correctly bind 'this'
   public handleRetry = () => {
-    // @ts-ignore - Property 'setState' does not exist on type 'ErrorBoundary'
+    // Fixed: Accessing setState from the inherited Component class
     this.setState({ hasError: false, error: null });
-    // Reloading realigns the state with the server after a potential recursion hang
     window.location.reload(); 
   }
 
+  public handleForceReset = () => {
+      localStorage.removeItem('supabase.auth.token');
+      localStorage.removeItem('glyph_admin_session');
+      sessionStorage.clear();
+      window.location.href = '/';
+  }
+
   public render(): ReactNode {
-    // Access state and props inherited from React Component
-    if (this.state.hasError) {
+    const { hasError, error } = this.state;
+    // Fixed: Accessing props from the inherited Component class
+    const { children } = this.props;
+
+    if (hasError) {
       return (
         <div className="min-h-[400px] w-full flex items-center justify-center p-6 animate-fade-in-up">
           <Card className="max-w-md w-full border-red-500/30 shadow-[0_0_50px_rgba(220,38,38,0.2)] bg-[#0A0A1A]">
@@ -61,34 +61,34 @@ class ErrorBoundary extends Component<Props, State> {
               </div>
               
               <h2 className="text-2xl font-cinzel font-bold text-amber-100 mb-2 uppercase tracking-widest">
-                Cosmic interference detected
+                Cosmic anomaly detected
               </h2>
               
-              <p className="text-amber-200/60 font-lora mb-6 italic">
-                "The stars are momentarily misaligned. A flux in the mystical fabric has been detected."
+              <p className="text-amber-200/60 font-lora mb-6 italic text-xs">
+                "A signal was aborted or the database loop timed out. The stars require a realignment."
               </p>
 
-              {this.state.error && (
+              {error && (
                 <div className="bg-black/60 p-3 rounded mb-6 text-[10px] text-red-300 font-mono text-left overflow-auto max-h-24 border border-red-900/30 custom-scrollbar">
-                  {this.state.error.message || "Unknown anomaly"}
+                  {error.message || "Unknown anomaly"}
                 </div>
               )}
 
-              <Button 
-                onClick={this.handleRetry} 
-                className="w-full bg-gradient-to-r from-red-900 to-maroon-800 border-red-500/50 shadow-lg hover:shadow-red-500/20"
-              >
-                Realign & Retry ✦
-              </Button>
+              <div className="flex flex-col gap-3">
+                <Button onClick={this.handleRetry} className="w-full bg-gradient-to-r from-red-900 to-maroon-800 border-red-500/50 shadow-lg">
+                    Realign & Retry ✦
+                </Button>
+                <button onClick={this.handleForceReset} className="text-[9px] text-gray-600 hover:text-white uppercase tracking-widest font-bold underline">
+                    Clear Session Locks & Reset
+                </button>
+              </div>
             </div>
           </Card>
         </div>
       );
     }
 
-    // Fix: Access children from inherited props property of Component using @ts-ignore to bypass resolution errors
-    // @ts-ignore - Property 'props' does not exist on type 'ErrorBoundary'
-    return this.props.children;
+    return children;
   }
 }
 

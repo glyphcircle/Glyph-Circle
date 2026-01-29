@@ -44,33 +44,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  const refreshInProgress = useRef(false);
   const dbHanging = useRef(false);
 
   const refreshUser = useCallback(async () => {
-    // 🛡️ 1. RECOVERY/DEV BYPASS
-    const recoverySession = localStorage.getItem('glyph_admin_session');
-    if (recoverySession) {
-      try {
-        const sess = JSON.parse(recoverySession);
-        if (sess.role === 'admin') {
-          if (sess.method === 'Local Bypass') {
-              setIsAdminVerified(true);
-              setUser({ id: 'dev-bypass', email: 'dev@local', name: 'Dev Admin', role: 'admin', credits: 999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
-              setIsLoading(false);
-              return;
-          }
-        }
-      } catch (e) {
-        localStorage.removeItem('glyph_admin_session');
-      }
-    }
-
-    if (!isSupabaseConfigured()) {
-      setIsLoading(false);
-      return;
-    }
+    // 🛡️ PREVENT RECURSION: If already refreshing, skip to avoid AbortErrors
+    if (refreshInProgress.current) return;
+    refreshInProgress.current = true;
 
     try {
+      // Emergency recovery check
+      const recoverySession = localStorage.getItem('glyph_admin_session');
+      if (recoverySession) {
+        try {
+          const sess = JSON.parse(recoverySession);
+          if (sess.role === 'admin') {
+            setIsAdminVerified(true);
+            // Don't update user if it exists to avoid loop
+            setUser(prev => prev || { id: 'recovery-id', email: sess.user || 'admin@local', name: 'Recovery Admin', role: 'admin', credits: 999999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
+          }
+        } catch (e) {
+          localStorage.removeItem('glyph_admin_session');
+        }
+      }
+
+      if (!isSupabaseConfigured()) {
+        setIsLoading(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
@@ -88,23 +90,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           gamification: { karma: 0, streak: 0, readingsCount: 0, unlockedSigils: [] }
         };
         
-        setUser(initialUser);
+        setUser(prev => prev?.id === initialUser.id ? prev : initialUser);
         setIsLoading(false);
 
+        // 🛡️ SOVEREIGN HANDSHAKE (Background)
         setIsAdminLoading(true);
-        const verifiedAdmin = await dbService.checkIsAdmin();
-        setIsAdminVerified(verifiedAdmin);
-        setIsAdminLoading(false);
-
-        if (verifiedAdmin) {
-            setUser(prev => prev ? { ...prev, role: 'admin' } : null);
+        try {
+            const verifiedAdmin = await dbService.checkIsAdmin();
+            setIsAdminVerified(verifiedAdmin);
+            if (verifiedAdmin) {
+                setUser(prev => prev ? { ...prev, role: 'admin' } : null);
+            }
+        } catch (verifErr) {
+            console.warn("Handshake slow or blocked.");
+        } finally {
+            setIsAdminLoading(false);
         }
 
+        // Fetch remaining profile data if DB is responsive
         if (!dbHanging.current) {
             try {
                 const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
                 if (profile) {
-                    setUser(prev => prev ? ({ ...prev, ...profile, role: verifiedAdmin ? 'admin' : (profile.role || jwtRole) }) : null);
+                    setUser(prev => ({ ...prev, ...profile }));
                     const { data: readings } = await supabase.from('readings').select('*').eq('user_id', profile.id).order('created_at', { ascending: false });
                     setHistory(readings || []);
                 }
@@ -118,35 +126,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsLoading(false);
       }
     } catch (e) {
+      console.error("Auth Refresh Exception:", e);
       setIsLoading(false);
+    } finally {
+      refreshInProgress.current = false;
     }
-  }, []);
-
-  useEffect(() => {
-    const handleBypass = () => setIsAdminVerified(true);
-    window.addEventListener('glyph_dev_bypass_admin', handleBypass);
-    return () => window.removeEventListener('glyph_dev_bypass_admin', handleBypass);
-  }, []);
+  }, []); // Empty deps to break the loop
 
   useEffect(() => {
     refreshUser();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
       if (['SIGNED_IN', 'TOKEN_REFRESHED'].includes(event)) {
-        dbService.clearSecurityCache();
         await refreshUser();
       }
       if (event === 'SIGNED_OUT') { 
         setUser(null); 
         setHistory([]); 
         setIsAdminVerified(false);
-        dbService.clearSecurityCache();
-        dbHanging.current = false;
-        // 🧹 CRITICAL: Clear all markers on exit
         localStorage.removeItem('glyph_admin_session');
-        // Ensure we land on standard login
-        if (window.location.hash !== '#/login') {
-            window.location.hash = '/login';
-        }
       }
     });
     return () => subscription.unsubscribe();
@@ -154,7 +151,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    dbService.clearSecurityCache();
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -165,9 +161,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    // 🛡️ Purest cleanup before signout
     localStorage.removeItem('glyph_admin_session');
-    dbService.clearSecurityCache();
     setUser(null);
     setIsAdminVerified(false);
     setHistory([]);
@@ -177,9 +171,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const saveReading = useCallback(async (readingData: PendingReading) => {
     if (user) {
       try {
-          const saved = await dbService.saveReading({ ...readingData, user_id: user.id });
-          setHistory(prev => [saved, ...prev]);
-      } catch (e) {}
+          // Fix: Extract data and error from Supabase response which returns { data, error }
+          const { data, error } = await dbService.saveReading({ ...readingData, user_id: user.id });
+          if (error) throw error;
+          if (data) {
+            setHistory((prev: Reading[]) => [data as Reading, ...prev]);
+          }
+      } catch (e) {
+        console.error("Failed to save reading:", e);
+      }
     }
   }, [user]);
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { dbService } from '../services/db';
@@ -41,11 +40,10 @@ const AdminBatchEditor: React.FC = () => {
         setResults([]);
 
         try {
-            // We use the robust batch method which handles chunking and errors
+            // Fix: Remove the third argument (progress callback) as invokeBatchUpdate only accepts two arguments (table, updates)
             const finalResults = await dbService.invokeBatchUpdate(
                 targetTable, 
-                parsedUpdates, 
-                (p) => setProgress(p)
+                parsedUpdates
             );
 
             if (!finalResults || finalResults.length === 0) {

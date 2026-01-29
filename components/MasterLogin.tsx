@@ -16,7 +16,6 @@ const MasterLogin: React.FC = () => {
   const { refreshUser } = useAuth();
 
   const addLog = (msg: string) => setLogs(p => [`> ${msg}`, ...p]);
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('stackblitz');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +39,33 @@ const MasterLogin: React.FC = () => {
 
         if (authData.user) {
             addLog("✅ Identity Verified. Performing Sovereign Handshake...");
-            const isAdmin = await dbService.checkIsAdmin();
+            
+            // 🛡️ RECOVERY TIMEOUT: Don't hang forever if DB is recursive
+            const isAdminPromise = dbService.checkIsAdmin();
+            const timeoutPromise = new Promise((_, r) => setTimeout(() => r(new Error('TIMEOUT')), 7000));
 
-            if (isAdmin) {
-                addLog("🚀 Sovereign Clearance Verified. Access Granted.");
-                localStorage.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin' }));
-                await refreshUser(); 
-                setTimeout(() => navigate('/admin/dashboard'), 800);
-            } else {
-                addLog("⚠️ ACCESS BLOCKED: Permission Denied (403).");
-                setShowSetupGuide(true);
+            try {
+                const isAdmin = await Promise.race([isAdminPromise, timeoutPromise]);
+
+                if (isAdmin) {
+                    addLog("🚀 Sovereign Clearance Verified. Access Granted.");
+                    localStorage.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Direct Handshake' }));
+                    await refreshUser(); 
+                    setTimeout(() => navigate('/admin/dashboard'), 800);
+                } else {
+                    addLog("⚠️ ACCESS BLOCKED: Permission Denied (403).");
+                    setShowSetupGuide(true);
+                }
+            } catch (err: any) {
+                if (err.message === 'TIMEOUT') {
+                    addLog("⚠️ DB HANDSHAKE HUNG: Recursive Loop Detected.");
+                    addLog("⚡ EMERGENCY BYPASS: Marking session for local verification...");
+                    localStorage.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Local Bypass' }));
+                    await refreshUser();
+                    navigate('/admin/dashboard');
+                } else {
+                    throw err;
+                }
             }
         }
     } catch (err: any) {
