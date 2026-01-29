@@ -41,28 +41,32 @@ export class SupabaseDatabase {
   }
 
   async updateEntry(table: string, id: string | number, updates: any) {
-    const updateCount = typeof updates === 'object' ? Object.keys(updates).length : 0;
-    console.log('🚩 HIT updateEntry:', { table, id, updateCount });
-    
+    const updateCount = typeof updates === 'object' ? Object.keys(updates).length : 0
+    console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})  // ← YOUR LOG
+  
     if (!supabase) {
-        console.error("❌ CRITICAL: supabase object is UNDEFINED in dbService");
-        throw new Error("Supabase client failed to initialize.");
+      console.error('CRITICAL: supabase object is UNDEFINED in dbService')
+      throw new Error('Supabase client failed to initialize.')
     }
 
     const { data, error } = await supabase
       .from(table)
       .update(updates)
       .eq('id', id)
-      .select();
+      .select()
 
+    console.log('✅ [DB] UPDATE RESPONSE:', data)  // ← ADD THIS
+    console.log('❌ [DB] UPDATE ERROR:', error)    // ← ADD THIS
+  
     if (error) {
-      console.error(`❌ [DB] Supabase Error:`, error.message);
-      throw error;
+      console.error('DB Supabase Error:', error.message)
+      throw error
     }
-    
-    console.log(`✅ [DB] Update successful:`, data);
-    return data;
-  }
+  
+    console.log('✅ [DB] Update Successful for', id)  // ← YOUR LOG
+    return data
+}
+
 
   async createEntry(table: string, payload: any) {
     console.log(`📡 [DB] Creating record in ${table}`);
