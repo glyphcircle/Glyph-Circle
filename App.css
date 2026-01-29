@@ -49,6 +49,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 🔱 SACRED APPLICATION BOUNDARY */
+#root > div {
+  position: relative;
+  border: 12px double rgba(245, 158, 11, 0.1);
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 📜 SACRED REPORT BOUNDARY */
+.sacred-report-frame {
+  border: 2px solid #d4af37;
+  outline: 6px double #d4af37;
+  outline-offset: -12px;
+  box-shadow: inset 0 0 50px rgba(212, 175, 55, 0.1);
+}
+
 /* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;

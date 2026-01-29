@@ -2,10 +2,11 @@ import React from 'react';
 import type { ServiceOption } from './types';
 
 export const ADMIN_EMAILS = [
+  'mitaakxi@glyphcircle.com',
   'master@glyphcircle.com', 
   'admin@glyphcircle.com', 
   'admin@glyph.circle',
-  'master@gylphcircle.com', // Included common typos found in previous versions
+  'master@gylphcircle.com',
   'admin@gylphcircle.com'
 ];
 

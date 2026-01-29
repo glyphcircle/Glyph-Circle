@@ -40,110 +40,113 @@ export class SupabaseDatabase {
     return data || [];
   }
 
-  async updateEntry(table: string, id: string | number, updates: any, signal?: AbortSignal) {
-  console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})
-  
-  if (!supabase) throw new Error('Supabase client failed to initialize.')
-
-  // FIX: Create dedicated internal controller to avoid type confusion between signal and controller.
-  // This ensures .abort() and .signal properties are correctly accessed on an AbortController instance.
-  const controller = new AbortController();
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', () => controller.abort(), { once: true });
-  }
-  const timeout = setTimeout(() => controller.abort(), 8000)  // 8s timeout
-
-  try {
-    const { data, error } = await supabase
-      .from(table)
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .abortSignal(controller.signal)
-
-    clearTimeout(timeout)
-    console.log('✅ [DB] UPDATE RESPONSE:', data)
+  async updateEntry(table: string, id: string | number, updates: any) {
+    console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})
     
-    if (error) throw error
-    console.log('✅ [DB] Update Successful for', id)
-    return data
-  } catch (error: any) {
-    clearTimeout(timeout)
-    console.log('❌ [DB] UPDATE ERROR:', error.message)
-    if (error.name === 'AbortError') {
-      console.log('⏰ [DB] Update TIMEOUT - too many rapid updates')
+    if (!supabase) {
+      console.error('❌ CRITICAL: supabase UNDEFINED')
+      throw new Error('Supabase missing')
     }
-    throw error
-  }
-}
 
-  // 🔥 FIXED CREATE
-  async createEntry(table: string, payload: any) {
-    console.log('📡 [DB] CREATE START', {tableName: table, payloadKeys: Object.keys(payload)})
-  
-    if (!supabase) throw new Error('Supabase client failed to initialize.')
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)  // 10s timeout
+    // 🔧 SHORTEN IMAGE URL
+    if (updates.image && updates.image.length > 200) {
+      console.log('🔧 Shortening image URL:', updates.image.length)
+      const idMatch = updates.image.match(/\/d\/([a-zA-Z0-9-_]+)/)
+      if (idMatch) {
+        updates.image = `https://drive.google.com/uc?id=${idMatch[1]}`
+        console.log('✅ Shortened:', updates.image)
+      } else {
+        updates.image = updates.image.slice(0, 200)
+      }
+    }
 
     try {
-      const { data, error } = await supabase
+      // NOTE: Using specific type casting to support environment-specific Supabase extensions if present
+      const { data, error } = await (supabase
         .from(table)
-        .insert([payload])
-        .select()
-        .abortSignal(controller.signal)
+        .update(updates)
+        .eq('id', id)
+        .select() as any)
+        .timeout(5000)
+        .throwOnError(true)
 
-      clearTimeout(timeoutId)
-      console.log('✅ [DB] CREATE RESPONSE:', data)
-    
-      if (error) throw error
-      console.log('✅ [DB] Create Successful:', data[0]?.id)
+      if (error) {
+        console.error('🚨 [DB] RLS ERROR:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        })
+        throw error
+      }
+      
+      console.log('✅ [DB] PATCH SUCCESS:', data?.[0]?.id)
       return data
     } catch (error: any) {
-      clearTimeout(timeoutId)
-      console.log('❌ [DB] CREATE ERROR:', error.message || error)
-      if (error.name === 'AbortError') {
-        console.log('⏰ CREATE TIMEOUT - retry in 2s')
-      // Auto-retry once
-        await new Promise(r => setTimeout(r, 2000))
-        return this.createEntry(table, payload)  // Retry
-      }
+      console.error('💥 [DB] PATCH FAILED:', error.message || error)
       throw error
     }
   }
 
-  // 🔥 FIXED DELETE
-  async deleteEntry(table: string, id: any) { 
-   console.log(`🗑️ [DB] DELETE START`, {tableName: table, id})
-  
-   if (!supabase) {
-     console.error('CRITICAL: supabase object is UNDEFINED')
-     throw new Error('Supabase missing')
+  async createEntry(table: string, payload: any) {
+    console.log('📡 [DB] CREATE START', {tableName: table, payloadKeys: Object.keys(payload)})
+    
+    if (!supabase) {
+      console.error('CRITICAL: supabase object is UNDEFINED')
+      throw new Error('Supabase client failed to initialize.')
     }
 
-    const { data, error } = await supabase  // ← ADD { data, error }
+    const { data, error } = await supabase
+      .from(table)
+      .insert([payload])
+      .select()
+
+    console.log('✅ [DB] CREATE RESPONSE:', data)
+    
+    if (error) {
+      console.error('DB Create Error:', error.message)
+      throw error
+    }
+    
+    console.log('✅ [DB] Create Successful:', data)
+    return data
+  }
+
+  async deleteEntry(table: string, id: any) { 
+    console.log('🗑️ [DB] DELETE START', {tableName: table, id})
+    
+    if (!supabase) {
+      console.error('Supabase missing')
+      throw new Error('Supabase missing')
+    }
+
+    const { data, error } = await supabase
       .from(table)
       .delete()
       .eq('id', id)
+      .select() 
 
     console.log('✅ [DB] DELETE RESPONSE:', data)
-    console.log('❌ [DB] DELETE ERROR:', error)
-  
+    
     if (error) {
       console.error('DB Delete Error:', error.message)
       throw error
     }
-  
+    
     console.log('✅ [DB] Delete Successful for', id)
-    return { success: true }
+    return { success: true, deleted: data }
   }
 
   async checkIsAdmin(): Promise<boolean> {
     if (!supabase) return false;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    if (session.user.email?.includes('admin@')) return true;
+    
+    const email = session.user.email?.toLowerCase();
+    // 🛡️ REFINED ADMIN CHECK: Include specific IDs and standard patterns
+    const ADMIN_ENTITIES = ['mitaakxi@glyphcircle.com', 'master@glyphcircle.com', 'admin@glyphcircle.com'];
+    if (email && (ADMIN_ENTITIES.includes(email) || email.includes('admin@'))) return true;
+    
     const { data } = await supabase.rpc('check_is_admin');
     return data === true;
   }

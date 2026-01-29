@@ -88,7 +88,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
           }
       };
       handleTranslation();
-  }, [language, reading]); 
+  }, [language, reading, translations]); 
 
   const renderFormattedText = (text: string) => {
     if (!text || text.trim() === '') return null;
@@ -183,7 +183,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
                         <div className="absolute inset-14 border-[1px] border-[#d4af37]/20 rounded-sm"></div>
                     </div>
                     
-                    {/* Golden Corner Flourishes (Ornate SVG) */}
+                    {/* Golden Corner Flourishes */}
                     {['top-8 left-8', 'top-8 right-8 rotate-90', 'bottom-8 left-8 -rotate-90', 'bottom-8 right-8 rotate-180'].map((pos, idx) => (
                         <div key={idx} className={`absolute w-40 h-40 md:w-64 md:h-64 text-[#b38728] ${pos} filter drop-shadow-xl`}>
                             <svg viewBox="0 0 100 100" fill="currentColor" className="opacity-100">
@@ -202,7 +202,6 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
                     <div className="relative w-64 h-64 mb-14 flex items-center justify-center">
                         {/* Layered Pulsating Auras */}
                         <div className="absolute inset-[-60px] bg-[radial-gradient(circle,rgba(212,175,55,0.3)_0%,transparent_70%)] animate-[pulse_4s_ease-in-out_infinite] rounded-full blur-3xl"></div>
-                        <div className="absolute inset-[-20px] border-[1px] border-amber-500/10 rounded-full"></div>
                         
                         {/* Rotating Orbital Compass */}
                         <div className="absolute inset-0 border-[4px] border-dashed border-[#d4af37]/40 rounded-full animate-[spin_240s_linear_infinite]"></div>
@@ -268,7 +267,7 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
 
                                     {chartData.luckyNumbers && (
                                         <div className="bg-[#d4af37]/5 p-12 rounded-[3rem] border-2 border-[#d4af37]/40 text-center flex flex-col justify-center shadow-inner relative overflow-hidden">
-                                            <h4 className="text-xs font-cinzel font-black text-[#4a0404] mb-12 uppercase tracking-[0.6em] text-center border-b-2 border-[#d4af37]/10 pb-6">Sacred Numbers</h4>
+                                            <h4 className="text-xs font-cinzel font-black text-[#4a0404] mb-12 uppercase tracking-[0.6em] text-center border-b-2 border-[#8b4513]/10 pb-6">Sacred Numbers</h4>
                                             <div className="flex flex-wrap justify-center gap-10">
                                                 {chartData.luckyNumbers.map((num: number, i: number) => (
                                                     <div key={i} className="w-24 h-24 rounded-full border-[6px] border-[#d4af37] bg-white flex items-center justify-center shadow-[0_20px_40px_rgba(0,0,0,0.15)] transform hover:scale-110 transition-all duration-700 cursor-help group">

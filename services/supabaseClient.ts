@@ -1,21 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-/**
- * 🛡️ ROBUST ENVIRONMENT RESOLUTION
- * Checks multiple possible locations for environment variables to ensure
- * the Supabase client is correctly instantiated.
- */
 const resolveEnv = (key: string, fallback: string): string => {
-  // 1. Check import.meta.env (Vite standard)
   if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
     return (import.meta as any).env[key];
   }
-
-  // 2. Check process.env (Node/AI Studio standard)
   if (typeof process !== 'undefined' && process.env && (process.env as any)[key]) {
     return (process.env as any)[key];
   }
-
   return fallback;
 };
 
@@ -31,15 +22,34 @@ export const isSupabaseConfigured = () => {
     }
 };
 
-const options = {
+// 🛡️ REFINED CLIENT CONFIGURATION
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
         flowType: 'implicit' as const, 
         storage: window.localStorage,
+    },
+    global: {
+        // Force Authorization header to prevent RLS 400 errors during session dimension shifts
+        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
     }
-};
+});
 
-console.log(`🔌 [Supabase] Initializing client... URL detected: ${SUPABASE_URL.substring(0, 20)}...`);
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
+// ⚡ SOVEREIGN SESSION RECOVERY: Automatically re-aligns admin context if tokens expire
+supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log(`🔌 [Auth] Dimension Shift Detected: ${event}`);
+    if (!session?.user || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') {
+        try {
+            console.log('🔄 [Auth] Re-establishing Sovereign Handshake...');
+            // Fallback to anonymous session to keep public RLS active
+            await supabase.auth.signInAnonymously();
+            console.log('✅ [Auth] Session Re-aligned Successfully');
+        } catch (e) {
+            console.warn('❌ [Auth] Alignment Failed. Dimension is unstable.', e);
+        }
+    }
+});
+
+export default supabase;

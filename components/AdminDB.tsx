@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useDb } from '../hooks/useDb';
 import Card from './shared/Card';
 import Modal from './shared/Modal';
 
 const AdminDB: React.FC = () => {
   const { table } = useParams<{ table: string }>();
-  const { db, refreshTable, updateEntry, createEntry, deleteEntry, toggleStatus } = useDb();
+  const { db, refreshTable, updateEntry, createEntry, deleteEntry } = useDb();
+  const navigate = useNavigate();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,20 +23,20 @@ const AdminDB: React.FC = () => {
   const SYSTEM_FIELDS = ['id', 'created_at', 'updated_at', 'timestamp', 'item_ids', 'user_id'];
 
   useEffect(() => {
-    console.log(`📂 [AdminDB] Syncing: ${tableName}`);
+    console.log(`📂 [AdminDB] Syncing Registry: ${tableName}`);
     refreshTable(tableName);
   }, [tableName, refreshTable]);
 
   const headers = useMemo(() => {
-    if (data.length > 0) return Object.keys(data[0]);
-    // Fallback schema for common tables
-    if (tableName === 'services') return ['id', 'name', 'price', 'description', 'status', 'path', 'image'];
-    if (tableName === 'store_items') return ['id', 'name', 'price', 'category', 'stock', 'status', 'description', 'image_url'];
-    return ['id', 'status'];
+    let rawHeaders = data.length > 0 ? Object.keys(data[0]) : ['id', 'status'];
+    if (tableName === 'services' && data.length === 0) {
+        rawHeaders = ['id', 'name', 'price', 'description', 'status', 'path', 'image'];
+    }
+    // Filter out user_id from the table display for a cleaner UI
+    return rawHeaders.filter(h => h !== 'user_id');
   }, [data, tableName]);
 
   const openCreateModal = () => {
-      // Initialize form with all non-system fields found in headers
       const initialForm: Record<string, any> = {};
       headers.forEach(header => {
           if (!SYSTEM_FIELDS.includes(header)) {
@@ -62,7 +63,6 @@ const AdminDB: React.FC = () => {
   };
 
   const handleDelete = async (id: string | number) => {
-      // Custom confirm - bypasses sandbox
       const confirmed = await new Promise<boolean>(resolve => {
           const modal = document.createElement('div');
           const cleanId = String(id).replace(/[^a-zA-Z0-9]/g, '_');
@@ -75,18 +75,18 @@ const AdminDB: React.FC = () => {
           };
 
           modal.innerHTML = `
-              <div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-blur:4px"> 
-                  <div style="background:#1a1a2e;padding:2.5rem;border-radius:1.5rem;border:2px solid #f59e0b;max-width:400px;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5)"> 
+              <div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)"> 
+                  <div style="background:#0a0a14;padding:2.5rem;border-radius:1.5rem;border:2px solid #f59e0b;max-width:400px;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5)"> 
                       <h3 style="color:white;margin-bottom:1rem;font-family:Cinzel,serif;font-size:1.5rem">⚠️ Purge Artifact?</h3> 
                       <p style="color:#f3f4f6;margin-bottom:2rem;font-family:Lora,serif;line-height:1.5">Are you sure you want to permanently delete artifact <strong style="color:#f59e0b">${id}</strong> from the Registry?</p> 
                       <div style="display:flex;gap:1.5rem;justify-content:center"> 
-                          <button onclick="window['${callbackKey}'](false)" style="padding:0.75rem 2rem;background:#4b5563;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif;transition:all 0.2s"> Cancel </button> 
-                          <button onclick="window['${callbackKey}'](true)" style="padding:0.75rem 2rem;background:#dc2626;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif;transition:all 0.2s"> PURGE </button> 
+                          <button onclick="window['${callbackKey}'](false)" style="padding:0.75rem 2rem;background:#4b5563;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif"> Cancel </button> 
+                          <button onclick="window['${callbackKey}'](true)" style="padding:0.75rem 2rem;background:#dc2626;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif"> PURGE </button> 
                       </div> 
                   </div> 
               </div>`;
           document.body.appendChild(modal);
-          setTimeout(() => { if((window as any)[callbackKey]) (window as any)[callbackKey](false); }, 15000); // Auto-cancel
+          setTimeout(() => { if((window as any)[callbackKey]) (window as any)[callbackKey](false); }, 15000);
       });
 
       if (!confirmed) return;
@@ -108,20 +108,33 @@ const AdminDB: React.FC = () => {
       setErrorMsg(null);
 
       const recordId = formData.id;
-      const payload = { ...formData };
       
-      // Remove system fields from payload
-      SYSTEM_FIELDS.forEach(field => delete payload[field]);
+      // 🔧 [FIX] IMAGE URL SHORTENING BEFORE COMMIT (Prevents payload hanging)
+      let workingFormData = { ...formData };
+      workingFormData.image = workingFormData.image || '';
+      if (workingFormData.image.length > 300) {
+        console.log('🔧 [UI] High payload detected. Shortening image URL before commit...');
+        if (workingFormData.image.includes('drive.google.com')) {
+          const idMatch = workingFormData.image.match(/\/d\/([a-zA-Z0-9_-]+)/) || workingFormData.image.match(/id=([a-zA-Z0-9_-]+)/);
+          if (idMatch) {
+            workingFormData.image = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+            console.log('✅ [UI] Google Drive → thumbnail mapping complete');
+          } else {
+            workingFormData.image = workingFormData.image.slice(0, 250);
+          }
+        } else {
+          workingFormData.image = workingFormData.image.slice(0, 250);
+        }
+      }
+
+      const payload = { ...workingFormData };
+      SYSTEM_FIELDS.forEach(field => delete (payload as any)[field]);
 
       try {
           if (isNewRecord) {
-              // Supabase generates UUID automatically
               await createEntry(tableName, payload);
           } else {
-              if (!recordId) {
-                  throw new Error("IDENTIFICATION_ERROR: Cannot modify artifact without valid 'id'.");
-              }
-              console.log(`📡 [UI] Commit payload for ID: ${recordId}`);
+              if (!recordId) throw new Error("IDENTIFICATION_ERROR: Missing ID.");
               await updateEntry(tableName, recordId, payload);
           }
           
@@ -133,54 +146,91 @@ const AdminDB: React.FC = () => {
       } catch (err: any) {
           console.error("💥 [UI] Commit Failed:", err);
           setStatus('error');
-          setErrorMsg(err.message || "Celestial Link Failed: Database rejected the payload.");
+          setErrorMsg(err.message || "Database rejected the payload. Possible session timeout.");
       }
   };
 
   return (
-    <div className="min-h-screen bg-[#020205] p-4 md:p-8 font-mono text-gray-300">
+    <div className="min-h-screen bg-[#020205] pt-32 p-4 md:p-8 md:pt-40 font-mono text-gray-300">
         <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+            {/* STICKY TOOLBAR HEADER */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6 border-b border-white/5 pb-8">
                 <div className="flex items-center gap-6">
-                    <Link to="/admin/dashboard" className="bg-gray-900 px-4 py-2 rounded-xl border border-white/10 hover:bg-white/20 transition-all text-[10px] font-bold tracking-widest text-amber-500">← DASHBOARD</Link>
-                    <h1 className="text-3xl font-cinzel font-black text-white uppercase tracking-widest">{tableName}</h1>
+                    <Link to="/admin/dashboard" className="bg-gray-900 px-5 py-3 rounded-2xl border border-white/10 hover:bg-white/20 transition-all text-[11px] font-bold tracking-widest text-amber-500 shadow-xl flex items-center gap-2">
+                        <span>←</span> DASHBOARD
+                    </Link>
+                    <div>
+                        <h1 className="text-4xl font-cinzel font-black text-white uppercase tracking-widest drop-shadow-lg">{tableName}</h1>
+                        <p className="text-[9px] text-gray-500 uppercase tracking-[0.5em] font-bold">Active Registry Entries</p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                    <input 
-                        type="text" 
-                        placeholder="Search..." 
-                        className="w-full md:w-64 bg-black border border-white/10 rounded-full px-6 py-2 text-xs outline-none focus:border-amber-500 shadow-inner" 
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                    />
-                    <button onClick={openCreateModal} className="bg-amber-600 hover:bg-amber-500 text-black font-black px-6 py-2 rounded-full text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95">+ NEW ENTRY</button>
+                
+                <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+                    <div className="relative flex-grow lg:w-80">
+                        <input 
+                            type="text" 
+                            placeholder="Search records..." 
+                            className="w-full bg-black/60 border border-white/10 rounded-full px-6 py-3 text-sm text-white outline-none focus:border-amber-500 shadow-inner focus:ring-1 focus:ring-amber-500/20" 
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <button 
+                        onClick={() => navigate('/admin/config')}
+                        className="bg-gray-900 hover:bg-gray-800 text-amber-400 font-black px-8 py-3 rounded-full text-[11px] uppercase tracking-widest transition-all shadow-xl border border-amber-500/30 flex items-center gap-2 active:scale-95"
+                    >
+                        ⚙️ CONFIG
+                    </button>
+                    <button 
+                        onClick={openCreateModal} 
+                        className="bg-amber-600 hover:bg-amber-500 text-black font-black px-8 py-3 rounded-full text-[11px] uppercase tracking-widest transition-all shadow-2xl shadow-amber-500/20 flex items-center gap-2 active:scale-95"
+                    >
+                        <span>+</span> NEW ENTRY
+                    </button>
                 </div>
             </div>
 
-            <Card className="bg-black/40 border-white/5 overflow-hidden rounded-2xl shadow-2xl">
+            <Card className="bg-black/40 border-white/5 overflow-hidden rounded-[2rem] shadow-2xl">
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left">
-                        <thead className="bg-white/5 text-[9px] text-gray-500 uppercase tracking-widest font-black">
+                        <thead className="bg-white/5 text-[10px] text-gray-500 uppercase tracking-widest font-black border-b border-white/5">
                             <tr>
-                                {headers.map(h => <th key={h} className="p-5 border-b border-white/5">{h}</th>)}
-                                <th className="p-5 border-b border-white/5 text-right">Actions</th>
+                                {headers.map(h => <th key={h} className="p-6">{h}</th>)}
+                                <th className="p-6 text-right">Registry Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {data.filter((r:any) => JSON.stringify(r).toLowerCase().includes(searchTerm.toLowerCase())).map((row: any) => (
-                                <tr key={row.id} className="hover:bg-amber-500/[0.02] transition-colors group">
+                                <tr key={row.id} className="hover:bg-amber-500/[0.03] transition-colors group">
                                     {headers.map(h => (
-                                        <td key={h} className="p-5 text-[11px] truncate max-w-[200px] font-mono">{String(row[h] ?? '-')}</td>
+                                        <td key={h} className="p-6 text-[12px] truncate max-w-[200px] font-mono font-medium text-gray-400 group-hover:text-amber-100/80 transition-colors">
+                                            {String(row[h] ?? '-')}
+                                        </td>
                                     ))}
-                                    <td className="p-5 text-right whitespace-nowrap space-x-4">
-                                        <button onClick={() => openEditModal(row)} className="text-amber-500/50 hover:text-amber-400 font-black text-[10px] tracking-widest transition-all uppercase">Modify</button>
-                                        <button onClick={() => handleDelete(row.id)} className="text-red-500/30 hover:text-red-500 font-black text-[10px] tracking-widest transition-all uppercase">Purge</button>
+                                    <td className="p-6 text-right whitespace-nowrap">
+                                        <div className="flex justify-end gap-3">
+                                            <button 
+                                                onClick={() => openEditModal(row)} 
+                                                className="bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-black border border-amber-500/30 px-5 py-1.5 rounded-full font-black text-[10px] tracking-widest transition-all uppercase shadow-lg"
+                                            >
+                                                Modify
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(row.id)} 
+                                                className="bg-red-500/5 hover:bg-red-600 text-red-500/60 hover:text-white border border-red-500/10 px-5 py-1.5 rounded-full font-black text-[10px] tracking-widest transition-all uppercase"
+                                            >
+                                                Purge
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
                             {data.length === 0 && (
                                 <tr>
-                                    <td colSpan={headers.length + 1} className="p-20 text-center text-gray-600 italic">No artifacts found in this dimension.</td>
+                                    <td colSpan={headers.length + 1} className="p-32 text-center text-gray-600 italic">
+                                        <div className="text-5xl mb-4 opacity-10">📖</div>
+                                        Registry is silent. No artifacts detected in the current dimension.
+                                    </td>
                                 </tr>
                             )}
                         </tbody>
@@ -190,26 +240,28 @@ const AdminDB: React.FC = () => {
         </div>
 
         <Modal isVisible={isModalOpen} onClose={() => status !== 'saving' && setIsModalOpen(false)}>
-            <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-amber-500/20 w-full max-w-lg relative overflow-hidden">
+            <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-amber-500/20 w-full max-w-lg relative overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.9)]">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent"></div>
                 <button 
                   onClick={() => setIsModalOpen(false)} 
                   disabled={status === 'saving'}
-                  className="absolute top-8 right-8 text-gray-600 hover:text-white text-4xl font-light leading-none z-10"
+                  className="absolute top-8 right-8 text-gray-600 hover:text-white text-4xl font-light leading-none z-10 transition-colors"
                 >
                   &times;
                 </button>
                 <div className="mb-10">
-                    <h3 className="text-3xl font-cinzel font-black text-white tracking-[0.1em] uppercase mb-1">{isNewRecord ? 'NEW ARTIFACT' : 'MODIFY RECORD'}</h3>
-                    <p className="text-[10px] text-amber-500/60 uppercase tracking-[0.5em] font-bold">Secure Payload Protocol</p>
+                    <h3 className="text-3xl font-cinzel font-black text-white tracking-[0.1em] uppercase mb-1">
+                        {isNewRecord ? 'NEW ARTIFACT' : 'MODIFY RECORD'}
+                    </h3>
+                    <p className="text-[10px] text-amber-500/60 uppercase tracking-[0.5em] font-bold">Secure Registry Authorization</p>
                 </div>
-                <div className="space-y-6 max-h-[45vh] overflow-y-auto pr-4 custom-scrollbar">
-                    {/* Render all fields except system ones */}
+                <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-4 custom-scrollbar">
                     {Object.keys(formData).filter(k => !SYSTEM_FIELDS.includes(k)).map(key => (
-                        <div key={key} className="space-y-1.5">
-                            <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">{key}</label>
+                        <div key={key} className="space-y-2">
+                            <label className="block text-[10px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">{key}</label>
                             {key === 'status' ? (
                                 <select 
-                                    className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 transition-all cursor-pointer" 
+                                    className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 cursor-pointer appearance-none" 
                                     value={formData[key]} 
                                     onChange={e => setFormData({ ...formData, [key]: e.target.value })}
                                 >
@@ -218,7 +270,7 @@ const AdminDB: React.FC = () => {
                                 </select>
                             ) : (
                                 <input 
-                                    className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 transition-all font-mono" 
+                                    className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono shadow-inner transition-all focus:ring-1 focus:ring-amber-500/20" 
                                     value={formData[key] ?? ''} 
                                     onChange={e => setFormData({ ...formData, [key]: e.target.value })} 
                                     placeholder={`Enter ${key}...`}
@@ -226,12 +278,10 @@ const AdminDB: React.FC = () => {
                             )}
                         </div>
                     ))}
-                    
-                    {/* Read-only ID display for existing records */}
                     {!isNewRecord && formData.id && (
-                        <div className="pt-4 border-t border-white/5 opacity-40">
-                             <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">Primary Identifier (Read Only)</label>
-                             <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-gray-400 text-xs font-mono">{formData.id}</div>
+                        <div className="pt-6 mt-6 border-t border-white/5 opacity-40">
+                             <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">Registry Identifier (Fixed)</label>
+                             <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-gray-500 text-xs font-mono truncate">{formData.id}</div>
                         </div>
                     )}
                 </div>
@@ -240,18 +290,15 @@ const AdminDB: React.FC = () => {
                     <button 
                         onClick={handleCommit} 
                         disabled={status === 'saving' || status === 'success'} 
-                        className={`w-full py-5 rounded-full font-black text-xs uppercase tracking-[0.4em] transition-all transform active:scale-95 shadow-2xl ${
+                        className={`w-full py-5 rounded-full font-black text-xs uppercase tracking-[0.4em] transition-all shadow-2xl ${
                             status === 'success' ? 'bg-green-600 text-white' :
                             status === 'saving' ? 'bg-gray-800 text-gray-500 cursor-wait' : 
-                            'bg-amber-600 hover:bg-amber-500 text-black'
+                            'bg-amber-600 hover:bg-amber-500 text-black active:scale-95'
                         }`}
                     >
-                        {status === 'saving' ? 'COMMITTING TO CLOUD...' : 
-                         status === 'success' ? 'SEALED ✅' : 'COMMIT CHANGES'}
+                        {status === 'saving' ? 'SYNCING VAULT...' : 
+                         status === 'success' ? 'MANIFESTED ✅' : 'COMMIT TO VAULT'}
                     </button>
-                    {status !== 'saving' && (
-                        <button onClick={() => setIsModalOpen(false)} className="text-gray-600 hover:text-white text-[10px] font-black uppercase tracking-[0.3em] py-2 transition-colors">Abort Procedure</button>
-                    )}
                 </div>
             </div>
         </Modal>
