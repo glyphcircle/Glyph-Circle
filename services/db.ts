@@ -48,17 +48,8 @@ export class SupabaseDatabase {
       throw new Error('Supabase missing')
     }
 
-    // 🔧 SHORTEN IMAGE URL
-    if (updates.image && updates.image.length > 200) {
-      console.log('🔧 Shortening image URL:', updates.image.length)
-      const idMatch = updates.image.match(/\/d\/([a-zA-Z0-9-_]+)/)
-      if (idMatch) {
-        updates.image = `https://drive.google.com/uc?id=${idMatch[1]}`
-        console.log('✅ Shortened:', updates.image)
-      } else {
-        updates.image = updates.image.slice(0, 200)
-      }
-    }
+    // 🚨 EMERGENCY FIX: REMOVED URL SHORTENING Logic
+    // Store EXACT payload from UI to resolve RLS 400 anomalies
 
     try {
       // NOTE: Using specific type casting to support environment-specific Supabase extensions if present
@@ -80,7 +71,7 @@ export class SupabaseDatabase {
         throw error
       }
       
-      console.log('✅ [DB] PATCH SUCCESS:', data?.[0]?.id)
+      console.log('✅ [DB] PATCH SUCCESS:', data?.[0]?.id || id)
       return data
     } catch (error: any) {
       console.error('💥 [DB] PATCH FAILED:', error.message || error)
@@ -143,7 +134,6 @@ export class SupabaseDatabase {
     if (!session) return false;
     
     const email = session.user.email?.toLowerCase();
-    // 🛡️ REFINED ADMIN CHECK: Include specific IDs and standard patterns
     const ADMIN_ENTITIES = ['mitaakxi@glyphcircle.com', 'master@glyphcircle.com', 'admin@glyphcircle.com'];
     if (email && (ADMIN_ENTITIES.includes(email) || email.includes('admin@'))) return true;
     
