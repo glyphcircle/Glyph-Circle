@@ -21,20 +21,31 @@ const AdminDB: React.FC = () => {
 
   const SYSTEM_FIELDS = ['id', 'created_at', 'updated_at', 'timestamp', 'item_ids', 'user_id'];
 
-// Disabled auto-refresh - manual only during debugging
-// useEffect(() => {
-//   console.log(`📊 [AdminDB] Synchronizing Registry for: ${tableName}`);
-//   refreshTable(tableName);
-// }, [tableName, refreshTable]);
-
+  useEffect(() => {
+    console.log(`📂 [AdminDB] Syncing: ${tableName}`);
+    refreshTable(tableName);
+  }, [tableName, refreshTable]);
 
   const headers = useMemo(() => {
     if (data.length > 0) return Object.keys(data[0]);
-    return ['id', 'name', 'price', 'description', 'status', 'path', 'image'];
-  }, [data]);
+    // Fallback schema for common tables
+    if (tableName === 'services') return ['id', 'name', 'price', 'description', 'status', 'path', 'image'];
+    if (tableName === 'store_items') return ['id', 'name', 'price', 'category', 'stock', 'status', 'description', 'image_url'];
+    return ['id', 'status'];
+  }, [data, tableName]);
 
   const openCreateModal = () => {
-      setFormData({ status: 'active', price: 0 });
+      // Initialize form with all non-system fields found in headers
+      const initialForm: Record<string, any> = {};
+      headers.forEach(header => {
+          if (!SYSTEM_FIELDS.includes(header)) {
+              if (header === 'price' || header === 'stock') initialForm[header] = 0;
+              else if (header === 'status') initialForm[header] = 'active';
+              else initialForm[header] = '';
+          }
+      });
+      
+      setFormData(initialForm);
       setIsNewRecord(true);
       setStatus('idle');
       setErrorMsg(null);
@@ -50,19 +61,61 @@ const AdminDB: React.FC = () => {
       setIsModalOpen(true);
   };
 
+  const handleDelete = async (id: string | number) => {
+      // Custom confirm - bypasses sandbox
+      const confirmed = await new Promise<boolean>(resolve => {
+          const modal = document.createElement('div');
+          const cleanId = String(id).replace(/[^a-zA-Z0-9]/g, '_');
+          const callbackKey = `__delete_${cleanId}_${Date.now()}`;
+          
+          (window as any)[callbackKey] = (result: boolean) => {
+              delete (window as any)[callbackKey];
+              modal.remove();
+              resolve(result);
+          };
+
+          modal.innerHTML = `
+              <div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-blur:4px"> 
+                  <div style="background:#1a1a2e;padding:2.5rem;border-radius:1.5rem;border:2px solid #f59e0b;max-width:400px;text-align:center;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5)"> 
+                      <h3 style="color:white;margin-bottom:1rem;font-family:Cinzel,serif;font-size:1.5rem">⚠️ Purge Artifact?</h3> 
+                      <p style="color:#f3f4f6;margin-bottom:2rem;font-family:Lora,serif;line-height:1.5">Are you sure you want to permanently delete artifact <strong style="color:#f59e0b">${id}</strong> from the Registry?</p> 
+                      <div style="display:flex;gap:1.5rem;justify-content:center"> 
+                          <button onclick="window['${callbackKey}'](false)" style="padding:0.75rem 2rem;background:#4b5563;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif;transition:all 0.2s"> Cancel </button> 
+                          <button onclick="window['${callbackKey}'](true)" style="padding:0.75rem 2rem;background:#dc2626;color:white;border:none;border-radius:0.75rem;cursor:pointer;font-weight:700;font-family:Cinzel,serif;transition:all 0.2s"> PURGE </button> 
+                      </div> 
+                  </div> 
+              </div>`;
+          document.body.appendChild(modal);
+          setTimeout(() => { if((window as any)[callbackKey]) (window as any)[callbackKey](false); }, 15000); // Auto-cancel
+      });
+
+      if (!confirmed) return;
+
+      try {
+          console.log(`🗑️ [UI] Purging ID: ${id}`);
+          await deleteEntry(tableName, id);
+          console.log(`✅ [UI] Purged: ${id}`);
+          refreshTable(tableName);
+      } catch (err: any) {
+          console.error('❌ [UI] Purge failed:', err);
+          alert(`Purge failed: ${err.message}`);
+      }
+  };
+
   const handleCommit = async () => {
       console.log("📡 [UI] Initiating Cloud Synchronization...");
       setStatus('saving');
       setErrorMsg(null);
 
-      // 🛡️ ENSURE PRIMARY KEY ID IS PRESENT
       const recordId = formData.id;
-      
       const payload = { ...formData };
+      
+      // Remove system fields from payload
       SYSTEM_FIELDS.forEach(field => delete payload[field]);
 
       try {
           if (isNewRecord) {
+              // Supabase generates UUID automatically
               await createEntry(tableName, payload);
           } else {
               if (!recordId) {
@@ -121,10 +174,15 @@ const AdminDB: React.FC = () => {
                                     ))}
                                     <td className="p-5 text-right whitespace-nowrap space-x-4">
                                         <button onClick={() => openEditModal(row)} className="text-amber-500/50 hover:text-amber-400 font-black text-[10px] tracking-widest transition-all uppercase">Modify</button>
-                                        <button onClick={() => deleteEntry(tableName, row.id)} className="text-red-500/30 hover:text-red-500 font-black text-[10px] tracking-widest transition-all uppercase">Purge</button>
+                                        <button onClick={() => handleDelete(row.id)} className="text-red-500/30 hover:text-red-500 font-black text-[10px] tracking-widest transition-all uppercase">Purge</button>
                                     </td>
                                 </tr>
                             ))}
+                            {data.length === 0 && (
+                                <tr>
+                                    <td colSpan={headers.length + 1} className="p-20 text-center text-gray-600 italic">No artifacts found in this dimension.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -145,6 +203,7 @@ const AdminDB: React.FC = () => {
                     <p className="text-[10px] text-amber-500/60 uppercase tracking-[0.5em] font-bold">Secure Payload Protocol</p>
                 </div>
                 <div className="space-y-6 max-h-[45vh] overflow-y-auto pr-4 custom-scrollbar">
+                    {/* Render all fields except system ones */}
                     {Object.keys(formData).filter(k => !SYSTEM_FIELDS.includes(k)).map(key => (
                         <div key={key} className="space-y-1.5">
                             <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">{key}</label>
@@ -167,6 +226,14 @@ const AdminDB: React.FC = () => {
                             )}
                         </div>
                     ))}
+                    
+                    {/* Read-only ID display for existing records */}
+                    {!isNewRecord && formData.id && (
+                        <div className="pt-4 border-t border-white/5 opacity-40">
+                             <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">Primary Identifier (Read Only)</label>
+                             <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-gray-400 text-xs font-mono">{formData.id}</div>
+                        </div>
+                    )}
                 </div>
                 {errorMsg && <div className="mt-8 p-4 bg-red-950/20 border border-red-500/30 rounded-xl text-red-400 text-[10px] text-center uppercase tracking-widest animate-shake">{errorMsg}</div>}
                 <div className="mt-12 flex flex-col gap-5">

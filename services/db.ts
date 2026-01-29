@@ -40,40 +40,103 @@ export class SupabaseDatabase {
     return data || [];
   }
 
-  async updateEntry(table: string, id: string | number, updates: any) {
-    const updateCount = typeof updates === 'object' ? Object.keys(updates).length : 0
-    console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})  // ← YOUR LOG
+  async updateEntry(table: string, id: string | number, updates: any, signal?: AbortSignal) {
+  console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})
   
-    if (!supabase) {
-      console.error('CRITICAL: supabase object is UNDEFINED in dbService')
-      throw new Error('Supabase client failed to initialize.')
-    }
+  if (!supabase) throw new Error('Supabase client failed to initialize.')
 
+  // FIX: Create dedicated internal controller to avoid type confusion between signal and controller.
+  // This ensures .abort() and .signal properties are correctly accessed on an AbortController instance.
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  const timeout = setTimeout(() => controller.abort(), 8000)  // 8s timeout
+
+  try {
     const { data, error } = await supabase
       .from(table)
       .update(updates)
       .eq('id', id)
       .select()
+      .abortSignal(controller.signal)
 
-    console.log('✅ [DB] UPDATE RESPONSE:', data)  // ← ADD THIS
-    console.log('❌ [DB] UPDATE ERROR:', error)    // ← ADD THIS
+    clearTimeout(timeout)
+    console.log('✅ [DB] UPDATE RESPONSE:', data)
+    
+    if (error) throw error
+    console.log('✅ [DB] Update Successful for', id)
+    return data
+  } catch (error: any) {
+    clearTimeout(timeout)
+    console.log('❌ [DB] UPDATE ERROR:', error.message)
+    if (error.name === 'AbortError') {
+      console.log('⏰ [DB] Update TIMEOUT - too many rapid updates')
+    }
+    throw error
+  }
+}
+
+  // 🔥 FIXED CREATE
+  async createEntry(table: string, payload: any) {
+    console.log('📡 [DB] CREATE START', {tableName: table, payloadKeys: Object.keys(payload)})
+  
+    if (!supabase) throw new Error('Supabase client failed to initialize.')
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)  // 10s timeout
+
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .insert([payload])
+        .select()
+        .abortSignal(controller.signal)
+
+      clearTimeout(timeoutId)
+      console.log('✅ [DB] CREATE RESPONSE:', data)
+    
+      if (error) throw error
+      console.log('✅ [DB] Create Successful:', data[0]?.id)
+      return data
+    } catch (error: any) {
+      clearTimeout(timeoutId)
+      console.log('❌ [DB] CREATE ERROR:', error.message || error)
+      if (error.name === 'AbortError') {
+        console.log('⏰ CREATE TIMEOUT - retry in 2s')
+      // Auto-retry once
+        await new Promise(r => setTimeout(r, 2000))
+        return this.createEntry(table, payload)  // Retry
+      }
+      throw error
+    }
+  }
+
+  // 🔥 FIXED DELETE
+  async deleteEntry(table: string, id: any) { 
+   console.log(`🗑️ [DB] DELETE START`, {tableName: table, id})
+  
+   if (!supabase) {
+     console.error('CRITICAL: supabase object is UNDEFINED')
+     throw new Error('Supabase missing')
+    }
+
+    const { data, error } = await supabase  // ← ADD { data, error }
+      .from(table)
+      .delete()
+      .eq('id', id)
+
+    console.log('✅ [DB] DELETE RESPONSE:', data)
+    console.log('❌ [DB] DELETE ERROR:', error)
   
     if (error) {
-      console.error('DB Supabase Error:', error.message)
+      console.error('DB Delete Error:', error.message)
       throw error
     }
   
-    console.log('✅ [DB] Update Successful for', id)  // ← YOUR LOG
-    return data
-}
-
-
-  async createEntry(table: string, payload: any) {
-    console.log(`📡 [DB] Creating record in ${table}`);
-    if (!supabase) throw new Error("Supabase is not defined.");
-    const { data, error } = await supabase.from(table).insert([payload]).select();
-    if (error) throw error;
-    return data;
+    console.log('✅ [DB] Delete Successful for', id)
+    return { success: true }
   }
 
   async checkIsAdmin(): Promise<boolean> {
@@ -107,14 +170,6 @@ export class SupabaseDatabase {
     const { data, error } = await supabase.rpc('update_records_batch', { target_table: table, updates });
     if (error) throw error;
     return data;
-  }
-
-  async deleteEntry(table: string, id: any) { 
-    console.log(`📡 [DB] Deleting ${table}:${id}`);
-    if (!supabase) throw new Error("Supabase missing");
-    const { error } = await supabase.from(table).delete().eq('id', id);
-    if (error) throw error;
-    return { success: true };
   }
 
   async recordTransaction(data: any) { return supabase.from('transactions').insert(data); }
