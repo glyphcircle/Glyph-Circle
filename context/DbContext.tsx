@@ -2,6 +2,13 @@ import React, { createContext, useState, useCallback, useEffect, ReactNode } fro
 import { dbService } from '../services/db';
 import { supabase } from '../services/supabaseClient';
 
+// Add this console log to verify it loaded
+if (!supabase) {
+  console.error('💥 FATAL: Supabase client failed to import!');
+  throw new Error('Supabase client is undefined. Check import path.');
+}
+console.log('✅ Supabase client loaded successfully');
+
 export interface NetworkEvent {
   id: string;
   endpoint: string;
@@ -47,59 +54,93 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const refresh = useCallback(async () => {
     try {
-        const bundle = await dbService.getStartupBundle();
-        if (bundle) setDb(bundle);
+      const bundle = await dbService.getStartupBundle();
+      if (bundle) setDb(bundle);
     } catch (e) {
-        await refreshTable('services');
+      await refreshTable('services');
     }
   }, [refreshTable]);
 
   /**
-   * 🛠️ Robust update entry that handles primary keys (id) and unique paths.
+   * 🛠️ ENHANCED UPDATE with RETRY LOGIC
+   * - Automatically retries on timeout
+   * - Stores full image URLs (no extraction)
    */
   const updateEntry = useCallback(async (tableName: string, id: string | number, updates: any) => {
     console.log('📡 [DB] PATCH START', { tableName, id, updatesKeys: Object.keys(updates) });
-    
-    // Clean system fields to prevent database constraint violations
+
     const cleanUpdates = { ...updates };
     ['created_at', 'updated_at', 'timestamp', 'item_ids', 'user_id', 'id'].forEach(key => delete (cleanUpdates as any)[key]);
-    
+
+    console.log('📦 [DB] Clean payload:', cleanUpdates);
+
     logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'pending' });
-    
-    try {
-      // 1. Attempt update using UUID 'id'
-      let { data, error } = await supabase
-        .from(tableName)
-        .update(cleanUpdates)
-        .eq('id', id)
-        .select();
-      
-      // 2. Fallback for services that might be identified by 'path' string (e.g. palmistry)
-      if (!data || data.length === 0) {
-        console.log('🔍 No ID match found, attempting path-based identification...');
-        const pathResponse = await supabase
+
+    // 🔥 RETRY LOGIC: Attempt up to 3 times on timeout
+    const maxRetries = 3;
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🚀 [DB] Attempt ${attempt}/${maxRetries} - Calling Supabase...`);
+
+        const updatePromise = supabase
           .from(tableName)
           .update(cleanUpdates)
-          .eq('path', id as string)
+          .eq('id', id)
           .select();
-        
-        data = pathResponse.data;
-        error = pathResponse.error;
+
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000)
+        );
+
+        const { data, error } = await Promise.race([updatePromise, timeoutPromise]) as any;
+
+        console.log('📥 [DB] Supabase response received:', { hasData: !!data, hasError: !!error });
+
+        if (error) {
+          console.error('🚨 [DB] Supabase error:', {
+            message: error.message,
+            code: error.code,
+            hint: error.hint,
+            details: error.details
+          });
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          throw new Error(`Update failed: Record "${id}" not found in "${tableName}"`);
+        }
+
+        console.log('✅ [DB] Update successful!', data[0]);
+        await refreshTable(tableName);
+        logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'success' });
+        return data[0];
+
+      } catch (err: any) {
+        lastError = err;
+
+        // Retry only on timeout errors
+        if (attempt < maxRetries && err.message?.includes('timeout')) {
+          console.warn(`⚠️ [DB] Attempt ${attempt} timed out, retrying in 1s...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        // Non-timeout error or final attempt - stop retrying
+        break;
       }
-
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error(`Artifact identification failed: ${id} not found in current dimension.`);
-
-      console.log(`✅ [DB] Update Successful for ${id}`);
-      await refreshTable(tableName);
-      logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'success' });
-      return data[0];
-      
-    } catch (err: any) {
-      console.error('💥 [DB] Sync Failed:', err.message);
-      logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'error' });
-      throw err;
     }
+
+    // All retries exhausted
+    console.error('💥 [DB] CAUGHT ERROR after all retries:', {
+      name: lastError?.name,
+      message: lastError?.message,
+      code: lastError?.code,
+      attempts: maxRetries
+    });
+    logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'error' });
+    throw lastError;
   }, [refreshTable, logEvent]);
 
   const createEntry = useCallback(async (tableName: string, payload: any) => {

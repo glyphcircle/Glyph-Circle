@@ -9,15 +9,15 @@ const AdminDB: React.FC = () => {
   const { table } = useParams<{ table: string }>();
   const { db, refreshTable, updateEntry, createEntry, deleteEntry, toggleStatus } = useDb();
   const navigate = useNavigate();
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({}); 
   const [isNewRecord, setIsNewRecord] = useState(false);
-  
+
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
+
   const tableName = table || 'services';
   const data = db[tableName] || [];
 
@@ -28,19 +28,16 @@ const AdminDB: React.FC = () => {
     refreshTable(tableName);
   }, [tableName, refreshTable]);
 
-  // 🎯 SIMPLIFIED HEADERS: Only show specific fields requested by user
   const headers = useMemo(() => {
     if (tableName === 'services') {
         return ['name', 'price', 'description', 'path', 'image', 'status'];
     }
-    // Fallback for other tables
     let rawHeaders = data.length > 0 ? Object.keys(data[0]) : ['id', 'status'];
     return rawHeaders.filter(h => !['user_id', 'created_at', 'updated_at', 'timestamp', 'id'].includes(h));
   }, [data, tableName]);
 
   const openCreateModal = () => {
       const initialForm: Record<string, any> = {};
-      // For creation, we still need basic fields even if hidden in table
       const formFields = tableName === 'services' 
         ? ['id', 'name', 'price', 'description', 'status', 'path', 'image']
         : (data.length > 0 ? Object.keys(data[0]) : ['id', 'name']);
@@ -52,7 +49,7 @@ const AdminDB: React.FC = () => {
               else initialForm[header] = '';
           }
       });
-      
+
       setFormData(initialForm);
       setIsNewRecord(true);
       setStatus('idle');
@@ -70,7 +67,6 @@ const AdminDB: React.FC = () => {
 
   const handleDelete = async (id: string | number) => {
       if (!window.confirm(`Permanently delete artifact ${id}?`)) return;
-
       try {
           await deleteEntry(tableName, id);
           refreshTable(tableName);
@@ -80,32 +76,33 @@ const AdminDB: React.FC = () => {
   };
 
   const handleCommit = async () => {
-      setStatus('saving');
-      setErrorMsg(null);
+    setStatus('saving');
+    setErrorMsg(null);
+    const recordId = formData.id;
 
-      const recordId = formData.id;
-      
-      const payload = { ...formData };
-      SYSTEM_FIELDS.forEach(field => delete (payload as any)[field]);
+    // 🔧 KEEP FULL IMAGE URL - NO EXTRACTION
+    const payload = { ...formData };
+    SYSTEM_FIELDS.forEach(field => delete (payload as any)[field]);
 
-      try {
-          if (isNewRecord) {
-              await createEntry(tableName, payload);
-          } else {
-              if (!recordId) throw new Error("IDENTIFICATION_ERROR: Missing ID.");
-              await updateEntry(tableName, recordId, payload);
-          }
-          
-          setStatus('success');
-          setTimeout(() => {
-              setIsModalOpen(false);
-              setStatus('idle');
-              refreshTable(tableName);
-          }, 1200);
-      } catch (err: any) {
-          setStatus('error');
-          setErrorMsg(err.message || "Registry rejected the payload.");
+    console.log('💾 [UI] Payload before submit:', payload);
+
+    try {
+      if (isNewRecord) {
+        await createEntry(tableName, payload);
+      } else {
+        if (!recordId) throw new Error('IDENTIFICATION ERROR: Missing ID.');
+        await updateEntry(tableName, recordId, payload);
       }
+      setStatus('success');
+      setTimeout(() => {
+        setIsModalOpen(false);
+        setStatus('idle');
+        refreshTable(tableName);
+      }, 1200);
+    } catch (err: any) {
+      setStatus('error');
+      setErrorMsg(err.message || 'Registry rejected the payload.');
+    }
   };
 
   return (
@@ -121,7 +118,7 @@ const AdminDB: React.FC = () => {
                         <p className="text-[9px] text-gray-500 uppercase tracking-[0.5em] font-bold">Active Registry Entries</p>
                     </div>
                 </div>
-                
+
                 <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
                     <div className="relative flex-grow lg:w-80">
                         <input 
@@ -201,6 +198,13 @@ const AdminDB: React.FC = () => {
                                     <option value="active">active</option>
                                     <option value="inactive">inactive</option>
                                 </select>
+                            ) : ['image', 'image_url', 'logo_url'].includes(key) ? (
+                                <textarea 
+                                    className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono min-h-[100px] resize-y" 
+                                    value={formData[key] ?? ''} 
+                                    onChange={e => setFormData({ ...formData, [key]: e.target.value })} 
+                                    placeholder="Full Google Drive URL (https://drive.google.com/file/d/...)"
+                                />
                             ) : (
                                 <input 
                                     className={`w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono ${key === 'id' && !isNewRecord ? 'opacity-50 cursor-not-allowed' : ''}`} 

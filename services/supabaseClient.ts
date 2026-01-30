@@ -53,3 +53,9 @@ supabase.auth.onAuthStateChange(async (event, session) => {
 });
 
 export default supabase;
+
+// 🔧 DEBUG: Expose to window for AI Studio testing
+if (typeof window !== 'undefined') {
+  (window as any).supabase = supabase;
+  console.log('🔧 [DEBUG] Supabase exposed to window.supabase');
+}

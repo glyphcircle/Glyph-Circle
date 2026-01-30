@@ -1,4 +1,4 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
 
@@ -14,8 +14,8 @@ interface State {
 /**
  * Standard React Error Boundary component.
  */
-// Changed to extend React.Component directly to resolve inheritance issues in some TypeScript environments
-class ErrorBoundary extends React.Component<Props, State> {
+// Fix: Changed to extend Component directly and imported it explicitly to resolve 'setState' and 'props' resolution issues in TypeScript.
+class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   // Use arrow function for class property to correctly bind 'this'
   public handleRetry = () => {
-    // Accessing setState from the inherited React.Component class
+    // Fix: Accessing setState from the inherited Component class.
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   }
@@ -45,7 +45,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   public render(): ReactNode {
     const { hasError, error } = this.state;
-    // Accessing props from the inherited React.Component class
+    // Fix: Accessing props from the inherited Component class.
     const { children } = this.props;
 
     if (hasError) {
