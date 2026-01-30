@@ -34,9 +34,33 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [db, setDb] = useState<Record<string, any[]>>({ services: [] });
   const [networkLedger, setNetworkLedger] = useState<NetworkEvent[]>([]);
 
-  // Supabase configuration - use env vars with fallback
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://huvblygddkflciwfnbcf.supabase.co';
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1dmJseWdkZGtmbGNpd2ZuYmNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NzI5NjgsImV4cCI6MjA4NDE0ODk2OH0.gtNftIJUHNuWUriF7AJvat0SLUQLcsdpWVl-yGkv5m8';
+  // 🛡️ Safe Environment Variable Access
+  const getEnv = (key: string, fallback: string): string => {
+    try {
+      const meta = import.meta as any;
+      if (typeof meta !== 'undefined' && meta.env) {
+        return meta.env[key] || fallback;
+      }
+    } catch (e) {
+      console.warn(`Environment access for ${key} failed:`, e);
+    }
+    return fallback;
+  };
+
+  const SUPABASE_URL = getEnv('VITE_SUPABASE_URL', 'https://huvblygddkflciwfnbcf.supabase.co');
+  const SUPABASE_ANON_KEY = getEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1dmJseWdkZGtmbGNpd2ZuYmNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NzI5NjgsImV4cCI6MjA4NDE0ODk2OH0.gtNftIJUHNuWUriF7AJvat0SLUQLcsdpWVl-yGkv5m8');
+
+  // 🎯 Dynamically derive project ID for the auth token key
+  const projectId = (() => {
+    try {
+      const url = new URL(SUPABASE_URL);
+      return url.hostname.split('.')[0];
+    } catch {
+      return 'huvblygddkflciwfnbcf';
+    }
+  })();
+
+  const AUTH_STORAGE_KEY = `sb-${projectId}-auth-token`;
 
   // Network event logger
   const logEvent = useCallback((event: Omit<NetworkEvent, 'id'>) => {
@@ -48,7 +72,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // 🔐 Secure token retrieval from localStorage
   const getAuthToken = (): string => {
-    const authDataStr = localStorage.getItem('sb-huvblygddkflciwfnbcf-auth-token');
+    const authDataStr = localStorage.getItem(AUTH_STORAGE_KEY);
 
     if (!authDataStr) {
       throw new Error('No authentication token found. Please log in.');
@@ -220,7 +244,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       console.error('❌ [DB] Refresh failed:', e);
       logEvent({ endpoint: tableName, method: 'GET', source: 'DB', status: 'error' });
     }
-  }, [logEvent]);
+  }, [logEvent]);  // ✅ ONLY logEvent
 
   // Refresh all data
   const refresh = useCallback(async () => {
@@ -255,7 +279,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       logEvent({ endpoint: `${tableName}/${id}`, method: 'PATCH', source: 'DB', status: 'error' });
       throw err;
     }
-  }, [logEvent]);
+  }, [logEvent]);  // ✅ ONLY logEvent
 
   // Public API: CREATE entry
   const createEntry = useCallback(async (tableName: string, payload: any) => {
@@ -274,7 +298,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       logEvent({ endpoint: tableName, method: 'POST', source: 'DB', status: 'error' });
       throw err;
     }
-  }, [refreshTable, logEvent]);
+  }, [refreshTable, logEvent]);  // ✅ ONLY refreshTable and logEvent
 
   // Public API: DELETE entry
   const deleteEntry = useCallback(async (tableName: string, id: string | number) => {
@@ -292,7 +316,7 @@ export const DbProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       logEvent({ endpoint: `${tableName}/${id}`, method: 'DELETE', source: 'DB', status: 'error' });
       throw err;
     }
-  }, [refreshTable, logEvent]);
+  }, [refreshTable, logEvent]);  // ✅ ONLY refreshTable and logEvent
 
   // Public API: Toggle status
   const toggleStatus = useCallback(async (tableName: string, id: string | number) => {

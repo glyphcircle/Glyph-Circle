@@ -16,6 +16,7 @@ const AdminDB: React.FC = () => {
     const [isNewRecord, setIsNewRecord] = useState(false);
     const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ id: string | number; name?: string } | null>(null);
 
     const tableName = table || 'services';
     const data = db[tableName] || [];
@@ -69,13 +70,19 @@ const AdminDB: React.FC = () => {
     };
 
     const handleDelete = async (id: string | number) => {
-        if (!window.confirm(`Permanently delete artifact "${id}"?`)) return;
+        console.log('🗑️ [UI] Delete confirmed for ID:', id);
+        console.log('✅ [UI] Proceeding with delete...');
 
         try {
             await deleteEntry(tableName, id);
-            refreshTable(tableName);
+            console.log('✅ [UI] Delete API call successful');
+            await refreshTable(tableName);
+            console.log('✅ [UI] Refresh triggered');
+            setDeleteConfirm(null);
         } catch (err: any) {
+            console.error('💥 [UI] Delete failed:', err);
             alert(`Purge failed: ${err.message}`);
+            setDeleteConfirm(null);
         }
     };
 
@@ -221,7 +228,7 @@ const AdminDB: React.FC = () => {
                                                         Modify
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDelete(row.id)}
+                                                        onClick={() => setDeleteConfirm({ id: row.id, name: row.name || row.id })}
                                                         className="bg-red-500/5 hover:bg-red-600 text-red-500/60 hover:text-white border border-red-500/10 px-5 py-1.5 rounded-full font-black text-[10px] tracking-widest uppercase transition-all"
                                                     >
                                                         Purge
@@ -236,12 +243,10 @@ const AdminDB: React.FC = () => {
                 </Card>
             </div>
 
-            {/* Modal */}
-            {/* Modal */}
+            {/* Edit/Create Modal */}
             <Modal
                 isVisible={isModalOpen}
                 onClose={() => {
-                    // ALWAYS allow closing and reset state
                     console.log('🚪 [UI] Modal onClose triggered, resetting all states');
                     setIsModalOpen(false);
                     setStatus('idle');
@@ -249,8 +254,6 @@ const AdminDB: React.FC = () => {
                 }}
             >
                 <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-amber-500/20 w-full max-w-lg relative overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.9)]">
-                    {/* Rest of your modal content... */}
-
                     <div className="mb-10">
                         <h3 className="text-3xl font-cinzel font-black text-white tracking-[0.1em] uppercase mb-1">
                             {isNewRecord ? 'NEW ARTIFACT' : 'MODIFY RECORD'}
@@ -320,6 +323,55 @@ const AdminDB: React.FC = () => {
                     </div>
                 </div>
             </Modal>
+
+            {/* Delete Confirmation Modal */}
+            {deleteConfirm && (
+                <Modal
+                    isVisible={true}
+                    onClose={() => setDeleteConfirm(null)}
+                >
+                    <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-red-500/20 w-full max-w-md text-center">
+                        <div className="mb-8">
+                            <h3 className="text-3xl font-cinzel font-black text-red-500 uppercase mb-2 tracking-wider">
+                                ⚠️ CONFIRM PURGE
+                            </h3>
+                            <p className="text-[10px] text-red-500/60 uppercase tracking-[0.5em] font-bold">
+                                Irreversible Action
+                            </p>
+                        </div>
+
+                        <div className="mb-8 p-6 bg-red-950/20 border border-red-500/20 rounded-2xl">
+                            <p className="text-gray-300 mb-2 text-sm">
+                                Permanently delete artifact:
+                            </p>
+                            <p className="text-white font-bold text-lg font-mono break-all">
+                                {deleteConfirm.name}
+                            </p>
+                            <p className="text-xs text-red-400/80 mt-4 uppercase tracking-wider">
+                                This action cannot be undone
+                            </p>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => {
+                                    console.log('❌ [UI] User cancelled delete');
+                                    setDeleteConfirm(null);
+                                }}
+                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-xl"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => handleDelete(deleteConfirm.id)}
+                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-2xl"
+                            >
+                                🗑️ Purge
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };
