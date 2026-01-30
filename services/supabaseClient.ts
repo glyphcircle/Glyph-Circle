@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
 const resolveEnv = (key: string, fallback: string): string => {
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
-    return (import.meta as any).env[key];
-  }
-  if (typeof process !== 'undefined' && process.env && (process.env as any)[key]) {
-    return (process.env as any)[key];
-  }
-  return fallback;
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+        return (import.meta as any).env[key];
+    }
+    if (typeof process !== 'undefined' && process.env && (process.env as any)[key]) {
+        return (process.env as any)[key];
+    }
+    return fallback;
 };
 
 const SUPABASE_URL = resolveEnv('VITE_SUPABASE_URL', 'https://huvblygddkflciwfnbcf.supabase.co');
@@ -22,40 +22,60 @@ export const isSupabaseConfigured = () => {
     }
 };
 
-// 🛡️ REFINED CLIENT CONFIGURATION
+// ✅ CUSTOM FETCH that logs and times out properly
+const customFetch: typeof fetch = async (input, init) => {
+    console.log('🌐 [FETCH] Request:', typeof input === 'string' ? input : input.url, init?.method || 'GET');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        console.error('⏱️ [FETCH] TIMEOUT after 8 seconds!');
+        controller.abort();
+    }, 8000);
+
+    try {
+        const response = await fetch(input, {
+            ...init,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        console.log('📥 [FETCH] Response:', response.status, response.statusText);
+        return response;
+
+    } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('💥 [FETCH] Error:', error);
+        throw error;
+    }
+};
+
+// Create client with custom fetch and no lock
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: {
+        fetch: customFetch
+    },
     auth: {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        flowType: 'implicit' as const, 
-        storage: window.localStorage,
-    },
-    global: {
-        // Force Authorization header to prevent RLS 400 errors during session dimension shifts
-        headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
-    }
-});
-
-// ⚡ SOVEREIGN SESSION RECOVERY: Automatically re-aligns admin context if tokens expire
-supabase.auth.onAuthStateChange(async (event, session) => {
-    console.log(`🔌 [Auth] Dimension Shift Detected: ${event}`);
-    if (!session?.user || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') {
-        try {
-            console.log('🔄 [Auth] Re-establishing Sovereign Handshake...');
-            // Fallback to anonymous session to keep public RLS active
-            await supabase.auth.signInAnonymously();
-            console.log('✅ [Auth] Session Re-aligned Successfully');
-        } catch (e) {
-            console.warn('❌ [Auth] Alignment Failed. Dimension is unstable.', e);
+        flowType: 'implicit' as const,
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
+            console.log('🔓 [LOCK] Bypassed');
+            return await fn();
         }
     }
 });
 
+// Auth state logger
+supabase.auth.onAuthStateChange((event, _session) => {
+    console.log(`🔌 [Auth] Dimension Shift Detected: ${event}`);
+});
+
 export default supabase;
 
-// 🔧 DEBUG: Expose to window for AI Studio testing
+// Debug exposure
 if (typeof window !== 'undefined') {
-  (window as any).supabase = supabase;
-  console.log('🔧 [DEBUG] Supabase exposed to window.supabase');
+    (window as any).supabase = supabase;
+    console.log('🔧 [DEBUG] Supabase exposed to window.supabase');
 }

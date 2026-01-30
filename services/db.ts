@@ -41,25 +41,20 @@ export class SupabaseDatabase {
   }
 
   async updateEntry(table: string, id: string | number, updates: any) {
-    console.log('📡 [DB] PATCH START', {tableName: table, id, updatesKeys: Object.keys(updates)})
-    
+    console.log('📡 [DB] PATCH START', { tableName: table, id, updatesKeys: Object.keys(updates) });
+
     if (!supabase) {
-      console.error('❌ CRITICAL: supabase UNDEFINED')
-      throw new Error('Supabase missing')
+      console.error('❌ CRITICAL: supabase UNDEFINED');
+      throw new Error('Supabase missing');
     }
 
-    // 🚨 EMERGENCY FIX: REMOVED URL SHORTENING Logic
-    // Store EXACT payload from UI to resolve RLS 400 anomalies
-
     try {
-      // NOTE: Using specific type casting to support environment-specific Supabase extensions if present
-      const { data, error } = await (supabase
+      // ✅ CLEAN CALL - No .timeout(), no .throwOnError()
+      const { data, error } = await supabase
         .from(table)
         .update(updates)
         .eq('id', id)
-        .select() as any)
-        .timeout(5000)
-        .throwOnError(true)
+        .select();
 
       if (error) {
         console.error('🚨 [DB] RLS ERROR:', {
@@ -67,21 +62,27 @@ export class SupabaseDatabase {
           code: error.code,
           details: error.details,
           hint: error.hint
-        })
-        throw error
+        });
+        throw error;
       }
-      
-      console.log('✅ [DB] PATCH SUCCESS:', data?.[0]?.id || id)
-      return data
+
+      if (!data || data.length === 0) {
+        throw new Error(`No records updated for ID: ${id}`);
+      }
+
+      console.log('✅ [DB] PATCH SUCCESS:', data[0]?.id || id);
+      return data;
+
     } catch (error: any) {
-      console.error('💥 [DB] PATCH FAILED:', error.message || error)
-      throw error
+      console.error('💥 [DB] PATCH FAILED:', error.message || error);
+      throw error;
     }
   }
 
+
   async createEntry(table: string, payload: any) {
-    console.log('📡 [DB] CREATE START', {tableName: table, payloadKeys: Object.keys(payload)})
-    
+    console.log('📡 [DB] CREATE START', { tableName: table, payloadKeys: Object.keys(payload) })
+
     if (!supabase) {
       console.error('CRITICAL: supabase object is UNDEFINED')
       throw new Error('Supabase client failed to initialize.')
@@ -93,19 +94,19 @@ export class SupabaseDatabase {
       .select()
 
     console.log('✅ [DB] CREATE RESPONSE:', data)
-    
+
     if (error) {
       console.error('DB Create Error:', error.message)
       throw error
     }
-    
+
     console.log('✅ [DB] Create Successful:', data)
     return data
   }
 
-  async deleteEntry(table: string, id: any) { 
-    console.log('🗑️ [DB] DELETE START', {tableName: table, id})
-    
+  async deleteEntry(table: string, id: any) {
+    console.log('🗑️ [DB] DELETE START', { tableName: table, id })
+
     if (!supabase) {
       console.error('Supabase missing')
       throw new Error('Supabase missing')
@@ -115,15 +116,15 @@ export class SupabaseDatabase {
       .from(table)
       .delete()
       .eq('id', id)
-      .select() 
+      .select()
 
     console.log('✅ [DB] DELETE RESPONSE:', data)
-    
+
     if (error) {
       console.error('DB Delete Error:', error.message)
       throw error
     }
-    
+
     console.log('✅ [DB] Delete Successful for', id)
     return { success: true, deleted: data }
   }
@@ -132,25 +133,35 @@ export class SupabaseDatabase {
     if (!supabase) return false;
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    
+
     const email = session.user.email?.toLowerCase();
     const ADMIN_ENTITIES = ['mitaakxi@glyphcircle.com', 'master@glyphcircle.com', 'admin@glyphcircle.com'];
     if (email && (ADMIN_ENTITIES.includes(email) || email.includes('admin@'))) return true;
-    
+
     const { data } = await supabase.rpc('check_is_admin');
     return data === true;
   }
 
   async getStartupBundle() {
     try {
-        if (!supabase) throw new Error("Client missing");
-        const { data, error } = await supabase.rpc('get_mystic_startup_bundle');
-        if (error) throw error;
-        return data;
-    } catch (e) {
-        return { services: await this.getAll('services') };
+      console.log('📦 [DB] Fetching startup bundle...');
+
+      // Fetch all tables in parallel
+      const [servicesRes] = await Promise.all([
+        supabase.from('services').select('*')
+      ]);
+
+      if (servicesRes.error) throw servicesRes.error;
+
+      return {
+        services: servicesRes.data || []
+      };
+    } catch (err) {
+      console.warn('⚠️ [DB] Startup bundle failed, falling back to individual calls');
+      return null;
     }
   }
+
 
   async getConfigValue(key: string): Promise<string | null> {
     if (!supabase) return null;
