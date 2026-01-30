@@ -1,4 +1,3 @@
-
 /* App.css - Mystical Theme Global Styles */
 
 :root {
@@ -52,7 +51,6 @@ body {
 /* 🔱 SACRED APPLICATION BOUNDARY */
 #root > div {
   position: relative;
-  border: 12px double rgba(245, 158, 11, 0.1);
   min-height: 100vh;
   box-sizing: border-box;
 }
@@ -63,6 +61,12 @@ body {
   outline: 6px double #d4af37;
   outline-offset: -12px;
   box-shadow: inset 0 0 50px rgba(212, 175, 55, 0.1);
+}
+
+.imperial-boundary {
+  position: relative;
+  border: 12px double rgba(245, 158, 11, 0.1);
+  box-sizing: border-box;
 }
 
 /* Custom Scrollbar */
@@ -84,6 +88,16 @@ body {
 .transform-style-3d { transform-style: preserve-3d; }
 .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .rotate-y-180 { transform: rotateY(180deg); }
+
+/* Imperial Flourish Decorations */
+.corner-flourish {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-color: rgba(245, 158, 11, 0.4);
+    pointer-events: none;
+    z-index: 0;
+}
 
 ::selection {
   background: var(--color-primary-glow);

@@ -70,14 +70,9 @@ const AdminDB: React.FC = () => {
     };
 
     const handleDelete = async (id: string | number) => {
-        console.log('🗑️ [UI] Delete confirmed for ID:', id);
-        console.log('✅ [UI] Proceeding with delete...');
-
         try {
             await deleteEntry(tableName, id);
-            console.log('✅ [UI] Delete API call successful');
             await refreshTable(tableName);
-            console.log('✅ [UI] Refresh triggered');
             setDeleteConfirm(null);
         } catch (err: any) {
             console.error('💥 [UI] Delete failed:', err);
@@ -87,37 +82,24 @@ const AdminDB: React.FC = () => {
     };
 
     const handleCommit = async () => {
-        console.log('🔵 [UI] handleCommit START');
         setStatus('saving');
         setErrorMsg(null);
         const recordId = formData.id;
 
         const payload = { ...formData };
         SYSTEM_FIELDS.forEach(field => delete (payload as any)[field]);
-        console.log('💾 [UI] Payload before submit:', payload);
 
         try {
             if (isNewRecord) {
-                console.log('🆕 [UI] Creating new entry...');
                 await createEntry(tableName, payload);
-                console.log('✅ [UI] Create successful!');
             } else {
                 if (!recordId) throw new Error('IDENTIFICATION ERROR: Missing ID.');
-                console.log('📝 [UI] Updating entry...');
                 await updateEntry(tableName, recordId, payload);
-                console.log('✅ [UI] Update successful!');
             }
 
-            // ✅ Wait for refresh to complete BEFORE closing modal
-            console.log('🔄 [UI] Refreshing table data...');
             await refreshTable(tableName);
-            console.log('✅ [UI] Table refreshed with new data');
-
-            // Now close modal with fresh data
-            console.log('🚪 [UI] Closing modal');
             setIsModalOpen(false);
             setStatus('idle');
-            console.log('✅ [UI] Modal closed, button unlocked');
 
         } catch (err: any) {
             console.error('💥 [UI] Commit failed:', err);
@@ -125,7 +107,6 @@ const AdminDB: React.FC = () => {
             setErrorMsg(err.message || 'Registry rejected the payload.');
 
             setTimeout(() => {
-                console.log('🔄 [UI] Auto-clearing error state');
                 setStatus('idle');
                 setErrorMsg(null);
             }, 3000);
@@ -135,7 +116,6 @@ const AdminDB: React.FC = () => {
     return (
         <div className="min-h-screen bg-[#020205] pt-32 p-4 md:p-8 md:pt-40 font-mono text-gray-300">
             <div className="max-w-7xl mx-auto">
-                {/* Header */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6 border-b border-white/5 pb-8">
                     <div className="flex items-center gap-6">
                         <Link
@@ -170,7 +150,6 @@ const AdminDB: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Table */}
                 <Card className="bg-black/40 border-white/5 overflow-hidden rounded-[2rem] shadow-2xl">
                     <div className="overflow-x-auto custom-scrollbar">
                         <table className="w-full text-left">
@@ -189,8 +168,8 @@ const AdminDB: React.FC = () => {
                                         <tr key={row.id} className="hover:bg-amber-500/[0.03] transition-colors group">
                                             {headers.map(h => {
                                                 const val = row[h];
-                                                const isImageField = ['image', 'image_url', 'logo_url'].includes(h);
-                                                const isStatusField = h === 'status';
+                                                const isImageField = ['image', 'image_url', 'logo_url', 'path'].includes(h.toLowerCase());
+                                                const isStatusField = h.toLowerCase() === 'status';
 
                                                 return (
                                                     <td key={h} className="p-6 text-[12px] truncate max-w-[200px] font-mono font-medium text-gray-400">
@@ -199,7 +178,7 @@ const AdminDB: React.FC = () => {
                                                                 <img
                                                                     src={toDriveEmbedUrl(String(val))}
                                                                     alt="icon"
-                                                                    className="w-8 h-8 rounded object-cover border border-white/10"
+                                                                    className="w-10 h-10 rounded-lg object-cover border border-amber-500/20 shadow-lg"
                                                                     onError={(e) => (e.currentTarget.src = 'https://placehold.co/100x100/black/amber?text=?')}
                                                                 />
                                                             </div>
@@ -243,11 +222,9 @@ const AdminDB: React.FC = () => {
                 </Card>
             </div>
 
-            {/* Edit/Create Modal */}
             <Modal
                 isVisible={isModalOpen}
                 onClose={() => {
-                    console.log('🚪 [UI] Modal onClose triggered, resetting all states');
                     setIsModalOpen(false);
                     setStatus('idle');
                     setErrorMsg(null);
@@ -276,7 +253,7 @@ const AdminDB: React.FC = () => {
                                             <option value="active">active</option>
                                             <option value="inactive">inactive</option>
                                         </select>
-                                    ) : ['image', 'image_url', 'logo_url'].includes(key) ? (
+                                    ) : ['image', 'image_url', 'logo_url', 'path'].includes(key.toLowerCase()) ? (
                                         <textarea
                                             className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono min-h-[100px] resize-y"
                                             value={formData[key] ?? ''}
@@ -324,50 +301,18 @@ const AdminDB: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* Delete Confirmation Modal */}
             {deleteConfirm && (
-                <Modal
-                    isVisible={true}
-                    onClose={() => setDeleteConfirm(null)}
-                >
+                <Modal isVisible={true} onClose={() => setDeleteConfirm(null)}>
                     <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-red-500/20 w-full max-w-md text-center">
-                        <div className="mb-8">
-                            <h3 className="text-3xl font-cinzel font-black text-red-500 uppercase mb-2 tracking-wider">
-                                ⚠️ CONFIRM PURGE
-                            </h3>
-                            <p className="text-[10px] text-red-500/60 uppercase tracking-[0.5em] font-bold">
-                                Irreversible Action
-                            </p>
-                        </div>
-
+                        <h3 className="text-3xl font-cinzel font-black text-red-500 uppercase mb-2 tracking-wider">⚠️ CONFIRM PURGE</h3>
+                        <p className="text-[10px] text-red-500/60 uppercase tracking-[0.5em] font-bold mb-8">Irreversible Action</p>
                         <div className="mb-8 p-6 bg-red-950/20 border border-red-500/20 rounded-2xl">
-                            <p className="text-gray-300 mb-2 text-sm">
-                                Permanently delete artifact:
-                            </p>
-                            <p className="text-white font-bold text-lg font-mono break-all">
-                                {deleteConfirm.name}
-                            </p>
-                            <p className="text-xs text-red-400/80 mt-4 uppercase tracking-wider">
-                                This action cannot be undone
-                            </p>
+                            <p className="text-gray-300 mb-2 text-sm">Permanently delete artifact:</p>
+                            <p className="text-white font-bold text-lg font-mono break-all">{deleteConfirm.name}</p>
                         </div>
-
                         <div className="flex gap-4">
-                            <button
-                                onClick={() => {
-                                    console.log('❌ [UI] User cancelled delete');
-                                    setDeleteConfirm(null);
-                                }}
-                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-xl"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => handleDelete(deleteConfirm.id)}
-                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-2xl"
-                            >
-                                🗑️ Purge
-                            </button>
+                            <button onClick={() => setDeleteConfirm(null)} className="flex-1 bg-gray-800 text-white py-4 rounded-full font-black uppercase text-xs">Cancel</button>
+                            <button onClick={() => handleDelete(deleteConfirm.id)} className="flex-1 bg-red-600 text-white py-4 rounded-full font-black uppercase text-xs">🗑️ Purge</button>
                         </div>
                     </div>
                 </Modal>
