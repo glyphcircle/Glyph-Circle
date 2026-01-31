@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { supabase, isSupabaseConfigured, safeStorageInstance } from '../services/supabaseClient';
 import { dbService, User, Reading } from '../services/db';
 
 interface PendingReading {
@@ -48,23 +47,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const dbHanging = useRef(false);
 
   const refreshUser = useCallback(async () => {
-    // 🛡️ PREVENT RECURSION: If already refreshing, skip to avoid AbortErrors
     if (refreshInProgress.current) return;
     refreshInProgress.current = true;
 
     try {
-      // Emergency recovery check
-      const recoverySession = localStorage.getItem('glyph_admin_session');
+      const recoverySession = safeStorageInstance.getItem('glyph_admin_session');
       if (recoverySession) {
         try {
           const sess = JSON.parse(recoverySession);
           if (sess.role === 'admin') {
             setIsAdminVerified(true);
-            // Don't update user if it exists to avoid loop
             setUser(prev => prev || { id: 'recovery-id', email: sess.user || 'admin@local', name: 'Recovery Admin', role: 'admin', credits: 999999, currency: 'INR', status: 'active', created_at: new Date().toISOString() });
           }
         } catch (e) {
-          localStorage.removeItem('glyph_admin_session');
+          safeStorageInstance.removeItem('glyph_admin_session');
         }
       }
 
@@ -93,7 +89,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(prev => prev?.id === initialUser.id ? prev : initialUser);
         setIsLoading(false);
 
-        // 🛡️ SOVEREIGN HANDSHAKE (Background)
         setIsAdminLoading(true);
         try {
             const verifiedAdmin = await dbService.checkIsAdmin();
@@ -107,7 +102,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setIsAdminLoading(false);
         }
 
-        // Fetch remaining profile data if DB is responsive
         if (!dbHanging.current) {
             try {
                 const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
@@ -131,7 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       refreshInProgress.current = false;
     }
-  }, []); // Empty deps to break the loop
+  }, []);
 
   useEffect(() => {
     refreshUser();
@@ -143,7 +137,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(null); 
         setHistory([]); 
         setIsAdminVerified(false);
-        localStorage.removeItem('glyph_admin_session');
+        safeStorageInstance.removeItem('glyph_admin_session');
       }
     });
     return () => subscription.unsubscribe();
@@ -161,7 +155,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = async () => {
-    localStorage.removeItem('glyph_admin_session');
+    safeStorageInstance.removeItem('glyph_admin_session');
     setUser(null);
     setIsAdminVerified(false);
     setHistory([]);
@@ -171,7 +165,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const saveReading = useCallback(async (readingData: PendingReading) => {
     if (user) {
       try {
-          // Fix: Extract data and error from Supabase response which returns { data, error }
           const { data, error } = await dbService.saveReading({ ...readingData, user_id: user.id });
           if (error) throw error;
           if (data) {

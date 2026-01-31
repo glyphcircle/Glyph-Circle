@@ -1,33 +1,56 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-// @ts-ignore
-import { HashRouter } from 'react-router-dom';
+import { createRoot } from 'react-dom/client';
+import { HashRouter, BrowserRouter } from 'react-router-dom';
 import App from './App';
-import './App.css';
-import { PaymentProvider } from './context/PaymentContext';
-import { LanguageProvider } from './context/LanguageContext';
-import { DbProvider } from './context/DbContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 
-const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error("Root element not found");
+// ✅ Prevent double initialization
+if (document.getElementById('root')?.hasAttribute('data-initialized')) {
+  console.warn('React root already initialized, skipping...');
+} else {
+  // ✅ BULLETPROOF AI Studio detection
+  const isAIStudio = 
+    window.location.hostname.includes('.scf.usercontent.goog') || 
+    window.location.hostname.includes('aistudio.google.com') ||
+    window.location.hostname.includes('ai.studio') ||
+    window.location.href.includes('.scf.usercontent.goog') ||
+    window !== window.top; // Detects iframe
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <HashRouter>
+  console.log('🔍 Environment check:', {
+    hostname: window.location.hostname,
+    href: window.location.href,
+    isIframe: window !== window.top,
+    isAIStudio
+  });
+
+  // ✅ Use HashRouter in AI Studio, BrowserRouter in production
+  const Router = isAIStudio ? HashRouter : BrowserRouter;
+
+  const container = document.getElementById('root');
+  if (!container) {
+    throw new Error('Root element not found');
+  }
+
+  // Mark as initialized
+  container.setAttribute('data-initialized', 'true');
+
+  const root = createRoot(container);
+
+  root.render(
+    <React.StrictMode>
       <LanguageProvider>
-        <AuthProvider>
-          <DbProvider>
-            <ThemeProvider>
-              <PaymentProvider>
-                <App />
-              </PaymentProvider>
-            </ThemeProvider>
-          </DbProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <Router>
+              <App />
+            </Router>
+          </AuthProvider>
+        </ThemeProvider>
       </LanguageProvider>
-    </HashRouter>
-  </React.StrictMode>
-);
+    </React.StrictMode>
+  );
+
+  console.log(`✅ React app rendered with ${isAIStudio ? 'HASH' : 'BROWSER'} router`);
+}

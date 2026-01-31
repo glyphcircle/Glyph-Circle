@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 // @ts-ignore
 import { Link } from 'react-router-dom';
@@ -15,6 +14,7 @@ import FullReport from './FullReport';
 import { useAuth } from '../context/AuthContext';
 import { cloudManager } from '../services/cloudManager';
 import OptimizedImage from './shared/OptimizedImage';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 const GemstoneGuide: React.FC = () => {
   const { db } = useDb();
@@ -51,7 +51,7 @@ const GemstoneGuide: React.FC = () => {
   const servicePrice = serviceConfig?.price || 49;
 
   useEffect(() => {
-    const cached = localStorage.getItem('glyph_user_details');
+    const cached = safeStorageInstance.getItem('glyph_user_details');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -121,7 +121,7 @@ const GemstoneGuide: React.FC = () => {
           setError('Please complete all fields.');
           return;
       }
-      localStorage.setItem('glyph_user_details', JSON.stringify({ name: formData.name, dob: formData.dob }));
+      safeStorageInstance.setItem('glyph_user_details', JSON.stringify({ name: formData.name, dob: formData.dob }));
 
       setIsLoading(true);
       setProgress(0);

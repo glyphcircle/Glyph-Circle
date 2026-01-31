@@ -29,11 +29,14 @@ const AdminDB: React.FC = () => {
     }, [tableName, refreshTable]);
 
     const headers = useMemo(() => {
-        if (tableName === 'services') {
-            return ['name', 'price', 'description', 'path', 'image', 'status'];
+        if (data.length === 0) {
+            return tableName === 'services' 
+                ? ['name', 'price', 'description', 'path', 'image', 'status'] 
+                : ['id'];
         }
-        let rawHeaders = data.length > 0 ? Object.keys(data[0]).filter(h => h !== 'id' && h !== 'status') : [];
-        return rawHeaders.filter(h => !['user_id', 'created_at', 'updated_at', 'timestamp', 'id'].includes(h));
+        const allKeys = Object.keys(data[0]);
+        // Filter out deep internal fields but keep functional ones like 'status'
+        return allKeys.filter(h => !['user_id', 'created_at', 'updated_at', 'timestamp', 'id', 'item_ids'].includes(h));
     }, [data, tableName]);
 
     const openCreateModal = () => {

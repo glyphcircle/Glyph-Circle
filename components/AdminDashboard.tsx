@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState } from 'react';
 // @ts-ignore
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../services/supabaseClient';
+import { supabase, safeStorageInstance } from '../services/supabaseClient';
 import Card from './shared/Card';
 import AdminContextHelp from './AdminContextHelp';
 
@@ -85,7 +84,7 @@ const AdminDashboard: React.FC = () => {
   // FIXED: Lazy initialization to prevent initial null render (Black Screen issue)
   const [user, setUser] = useState<any>(() => {
       try {
-          const session = localStorage.getItem('glyph_admin_session');
+          const session = safeStorageInstance.getItem('glyph_admin_session');
           return session ? JSON.parse(session) : null;
       } catch (e) {
           return null;
@@ -94,7 +93,7 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!user) {
-        const session = localStorage.getItem('glyph_admin_session');
+        const session = safeStorageInstance.getItem('glyph_admin_session');
         if (!session) {
             navigate('/master-login');
         } else {
@@ -104,7 +103,7 @@ const AdminDashboard: React.FC = () => {
   }, [navigate, user]);
 
   const handleLogout = () => {
-      localStorage.removeItem('glyph_admin_session');
+      safeStorageInstance.removeItem('glyph_admin_session');
       navigate('/master-login');
   };
 

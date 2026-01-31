@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Card from './shared/Card';
@@ -111,7 +110,12 @@ const ReportDesigner: React.FC = () => {
                 {/* 🌟 ENHANCED REPORT HEADER */}
                 <div className="relative z-30 w-full flex flex-col items-center pt-4 mb-16">
                     <div className="w-32 h-32 mb-8 flex items-center justify-center p-4 bg-black rounded-full border-4 border-[#d4af37] shadow-xl">
-                        <img src={LOTUS_LOGO} alt="Sacred Seal" className="w-full h-full object-contain brightness-110" />
+                        <img 
+                            src={LOTUS_LOGO} 
+                            alt="Sacred Seal" 
+                            crossOrigin="anonymous"
+                            className="w-full h-full object-contain brightness-110" 
+                        />
                     </div>
 
                     <div className="text-center">

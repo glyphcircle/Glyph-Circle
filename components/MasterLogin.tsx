@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../services/supabaseClient';
+import { supabase, safeStorageInstance } from '../services/supabaseClient';
 import { dbService } from '../services/db';
 
 const MasterLogin: React.FC = () => {
@@ -49,7 +48,7 @@ const MasterLogin: React.FC = () => {
 
                 if (isAdmin) {
                     addLog("🚀 Sovereign Clearance Verified. Access Granted.");
-                    localStorage.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Direct Handshake' }));
+                    safeStorageInstance.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Direct Handshake' }));
                     await refreshUser(); 
                     setTimeout(() => navigate('/admin/dashboard'), 800);
                 } else {
@@ -60,7 +59,7 @@ const MasterLogin: React.FC = () => {
                 if (err.message === 'TIMEOUT') {
                     addLog("⚠️ DB HANDSHAKE HUNG: Recursive Loop Detected.");
                     addLog("⚡ EMERGENCY BYPASS: Marking session for local verification...");
-                    localStorage.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Local Bypass' }));
+                    safeStorageInstance.setItem('glyph_admin_session', JSON.stringify({ user: cleanEmail, role: 'admin', method: 'Local Bypass' }));
                     await refreshUser();
                     navigate('/admin/dashboard');
                 } else {
@@ -87,7 +86,7 @@ ALTER FUNCTION public.check_is_admin() SECURITY DEFINER;`;
 
         <div className="relative z-20">
             <h1 className="text-3xl font-bold mb-2 text-center text-white tracking-tighter">🛡️ ADMIN PORTAL</h1>
-            <p className="text-[10px] text-center text-green-700 uppercase tracking-[0.5em] mb-8 border-b border-green-900/30 pb-4">Secure Cryptographic Gate</p>
+            <p className="text-[10px] text-center text-green-700 uppercase tracking-[0.5em] font-bold mb-8 border-b border-green-900/30 pb-4">Secure Cryptographic Gate</p>
 
             <form onSubmit={handleLogin} className="space-y-6">
                 <div>

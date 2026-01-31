@@ -1,5 +1,5 @@
-
 import React, { createContext, useState, useCallback, useEffect } from 'react';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 // Import Locale Objects directly
 import en from '../locales/en';
@@ -46,15 +46,14 @@ const TRANSLATIONS: Record<string, any> = {
   hi: hi,
   ta: { ...en, ...ta_dict },
   te: { ...en, ...te_dict },
-  es: en, fr: en, ar: en, pt: en, de: en, ru: en, ja: en, zh: en, bn: en, mr: en
+  es: en, fr: en, ar: en, pt: en, de: en, ru: en, key: en, ja: en, zh: en, bn: en, mr: en
 };
 
 const RTL_LANGUAGES = ['ar', 'he'];
 
-// Approximate Exchange Rates (Base: INR) - Fallback if API fails
 const FALLBACK_RATES: Record<string, number> = {
     'INR': 1,
-    'USD': 0.012, // ~1/84
+    'USD': 0.012, 
     'EUR': 0.011,
     'SAR': 0.045,
     'BRL': 0.060,
@@ -77,16 +76,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('glyph_language') as Language) || detectLanguage();
+    return (safeStorageInstance.getItem('glyph_language') as Language) || detectLanguage();
   });
 
-  // Smart Currency Initialization: Priority = LocalStorage > Timezone > Language Default
   const [currency, setCurrencyState] = useState<Currency>(() => {
-      const stored = localStorage.getItem('glyph_currency') as Currency;
+      const stored = safeStorageInstance.getItem('glyph_currency') as Currency;
       if (stored) return stored;
       
       try {
-          // Detect via Timezone
           const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
           if (tz === 'Asia/Kolkata' || tz === 'IST') return 'INR';
           if (tz.startsWith('Europe/')) return 'EUR';
@@ -101,17 +98,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const setCurrency = (c: Currency) => {
       setCurrencyState(c);
-      localStorage.setItem('glyph_currency', c);
+      safeStorageInstance.setItem('glyph_currency', c);
   };
 
-  // --- LIVE EXCHANGE RATE FETCH ---
   useEffect(() => {
       const fetchRates = async () => {
           try {
-              // Fetch rates relative to INR
               const response = await fetch('https://api.exchangerate-api.com/v4/latest/INR');
               const data = await response.json();
-              
               if (data && data.rates) {
                   setExchangeRates(prev => ({ ...prev, ...data.rates }));
               }
@@ -119,13 +113,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               console.warn("Currency API offline, using fallback rates.");
           }
       };
-      
       fetchRates();
   }, []);
 
   const setLanguageCallback = useCallback((lang: Language) => {
     setLanguage(lang);
-    localStorage.setItem('glyph_language', lang);
+    safeStorageInstance.setItem('glyph_language', lang);
     const dir = RTL_LANGUAGES.includes(lang) ? 'rtl' : 'ltr';
     document.documentElement.dir = dir;
     document.documentElement.lang = lang;
@@ -146,7 +139,6 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let price = baseINR;
     
     if (currency !== 'INR') {
-        // Convert and round nicely
         const converted = baseINR * rate;
         if (converted < 10) price = Number(converted.toFixed(2));
         else price = Math.round(converted); 

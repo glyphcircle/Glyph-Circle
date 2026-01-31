@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
+import { safeStorageInstance } from '../../services/supabaseClient';
 
 interface Props {
   children?: ReactNode;
@@ -14,7 +15,6 @@ interface State {
 /**
  * Standard React Error Boundary component.
  */
-// Fix: Changed to extend Component directly and imported it explicitly to resolve 'setState' and 'props' resolution issues in TypeScript.
 class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -29,23 +29,22 @@ class ErrorBoundary extends Component<Props, State> {
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
-  // Use arrow function for class property to correctly bind 'this'
+  // Fix: setState is now correctly inherited from Component base class.
   public handleRetry = () => {
-    // Fix: Accessing setState from the inherited Component class.
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   }
 
   public handleForceReset = () => {
-      localStorage.removeItem('supabase.auth.token');
-      localStorage.removeItem('glyph_admin_session');
-      sessionStorage.clear();
+      safeStorageInstance.removeItem('supabase.auth.token');
+      safeStorageInstance.removeItem('glyph_admin_session');
+      safeStorageInstance.clear();
       window.location.href = '/';
   }
 
   public render(): ReactNode {
     const { hasError, error } = this.state;
-    // Fix: Accessing props from the inherited Component class.
+    // Fix: this.props is now correctly recognized as inherited from Component.
     const { children } = this.props;
 
     if (hasError) {

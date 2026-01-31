@@ -1,7 +1,7 @@
-
 import React, { useEffect, useState, createContext, useContext, ReactNode } from 'react';
 import Button from './shared/Button';
 import Modal from './shared/Modal';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 export interface NotificationPreferences {
   daily: boolean;
@@ -38,7 +38,7 @@ export const PushNotifications: React.FC<{ children: ReactNode }> = ({ children 
     if ('Notification' in window) {
       setPermission(Notification.permission);
     }
-    const storedPrefs = localStorage.getItem('glyph_notif_prefs');
+    const storedPrefs = safeStorageInstance.getItem('glyph_notif_prefs');
     if (storedPrefs) {
       setPreferences(JSON.parse(storedPrefs));
     }
@@ -57,8 +57,7 @@ export const PushNotifications: React.FC<{ children: ReactNode }> = ({ children 
       const result = await Notification.requestPermission();
       setPermission(result);
       
-      // Save preferences explicitly
-      localStorage.setItem('glyph_notif_prefs', JSON.stringify(preferences));
+      safeStorageInstance.setItem('glyph_notif_prefs', JSON.stringify(preferences));
 
       if (result === 'granted') {
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -75,7 +74,7 @@ export const PushNotifications: React.FC<{ children: ReactNode }> = ({ children 
 
   const updatePreferences = (prefs: NotificationPreferences) => {
       setPreferences(prefs);
-      localStorage.setItem('glyph_notif_prefs', JSON.stringify(prefs));
+      safeStorageInstance.setItem('glyph_notif_prefs', JSON.stringify(prefs));
   };
 
   const sendNotification = (title: string, body?: string) => {
@@ -129,7 +128,6 @@ export const PushNotifications: React.FC<{ children: ReactNode }> = ({ children 
         </div>
       )}
 
-      {/* Preferences Modal (GDPR Consent) */}
       <Modal isVisible={showModal} onClose={() => setShowModal(false)}>
           <div className="p-6 bg-gray-900 text-amber-50 rounded-lg">
               <h3 className="text-xl font-cinzel font-bold text-amber-300 mb-2">Cosmic Signals</h3>

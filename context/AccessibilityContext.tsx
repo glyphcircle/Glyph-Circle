@@ -1,5 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 interface AccessibilityContextType {
   highContrast: boolean;
@@ -22,10 +22,10 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
   const [largeText, setLargeText] = useState(false);
   const [announcement, setAnnouncement] = useState('');
 
-  // Persist preferences
+  // Persist preferences using safe storage
   useEffect(() => {
-    const savedHC = localStorage.getItem('glyph_high_contrast') === 'true';
-    const savedLT = localStorage.getItem('glyph_large_text') === 'true';
+    const savedHC = safeStorageInstance.getItem('glyph_high_contrast') === 'true';
+    const savedLT = safeStorageInstance.getItem('glyph_large_text') === 'true';
     setHighContrast(savedHC);
     setLargeText(savedLT);
   }, []);
@@ -33,7 +33,7 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
   const toggleHighContrast = useCallback(() => {
     setHighContrast(prev => {
       const newVal = !prev;
-      localStorage.setItem('glyph_high_contrast', String(newVal));
+      safeStorageInstance.setItem('glyph_high_contrast', String(newVal));
       return newVal;
     });
     // Haptic feedback
@@ -43,7 +43,7 @@ export const AccessibilityProvider: React.FC<{ children: ReactNode }> = ({ child
   const toggleLargeText = useCallback(() => {
     setLargeText(prev => {
       const newVal = !prev;
-      localStorage.setItem('glyph_large_text', String(newVal));
+      safeStorageInstance.setItem('glyph_large_text', String(newVal));
       return newVal;
     });
     if (navigator.vibrate) navigator.vibrate(20);

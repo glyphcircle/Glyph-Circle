@@ -1,4 +1,3 @@
-
 // --- SCHEMA DEFINITION & SEED DATA ---
 const INITIAL_SCHEMA: Record<string, any[]> = {
   users: [
@@ -127,21 +126,56 @@ const IDB_CONFIG = {
   KEY: 'main_db_binary'
 };
 
+/**
+ * Robust IndexedDB Adapter
+ * Prevents SecurityError by probing 'indexedDB' property existence safely.
+ */
 const idbAdapter = {
+  isRestricted: false,
+  
   open: (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(IDB_CONFIG.DB_NAME, 1); 
-      request.onupgradeneeded = (e: any) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
-          db.createObjectStore(IDB_CONFIG.STORE_NAME);
+      try {
+        if (typeof window === 'undefined') {
+            reject(new Error("No window"));
+            return;
         }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = (e) => reject(request.error);
+        
+        // Some browsers throw SecurityError just by looking at indexedDB
+        if (!('indexedDB' in window)) {
+            idbAdapter.isRestricted = true;
+            reject(new Error("IndexedDB property missing"));
+            return;
+        }
+
+        const idb = window.indexedDB; 
+        if (!idb) {
+            idbAdapter.isRestricted = true;
+            reject(new Error("IndexedDB null"));
+            return;
+        }
+        
+        const request = idb.open(IDB_CONFIG.DB_NAME, 1); 
+        request.onupgradeneeded = (e: any) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
+            db.createObjectStore(IDB_CONFIG.STORE_NAME);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (e) => {
+            idbAdapter.isRestricted = true;
+            reject(request.error);
+        };
+      } catch (err) {
+        console.warn("🔐 [idbAdapter] Security restriction detected on IndexedDB Access.");
+        idbAdapter.isRestricted = true;
+        reject(err);
+      }
     });
   },
   save: async (data: Uint8Array) => {
+    if (idbAdapter.isRestricted) return;
     try {
       const db = await idbAdapter.open();
       return new Promise<void>((resolve, reject) => {
@@ -151,9 +185,12 @@ const idbAdapter = {
         tx.oncomplete = () => resolve();
         req.onerror = (e) => reject(req.error);
       });
-    } catch (err) { console.error("IDB Save Error:", err); }
+    } catch (err) { 
+        idbAdapter.isRestricted = true;
+    }
   },
   load: async (): Promise<Uint8Array | null> => {
+    if (idbAdapter.isRestricted) return null;
     try {
       const db = await idbAdapter.open();
       return new Promise((resolve, reject) => {
@@ -163,7 +200,10 @@ const idbAdapter = {
         req.onsuccess = () => resolve(req.result instanceof Uint8Array ? req.result : (req.result ? new Uint8Array(req.result) : null));
         req.onerror = () => reject(req.error);
       });
-    } catch (err) { return null; }
+    } catch (err) { 
+        idbAdapter.isRestricted = true;
+        return null; 
+    }
   }
 };
 
@@ -188,7 +228,13 @@ class SqliteService {
             locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
           });
 
-          let binaryDb = await idbAdapter.load();
+          let binaryDb = null;
+          try {
+              // Load will return null if restricted
+              binaryDb = await idbAdapter.load();
+          } catch (e) {
+              console.warn("Storage restricted. Initializing ephemeral database.");
+          }
 
           if (binaryDb) {
             try {
@@ -210,9 +256,6 @@ class SqliteService {
     return this.initPromise;
   }
 
-  /**
-   * Drops all tables and re-seeds the database.
-   */
   async factoryReset() {
       if (!this.db) return;
       Object.keys(INITIAL_SCHEMA).forEach(table => {
@@ -278,7 +321,6 @@ class SqliteService {
       try {
           const countRes = this.db.exec(`SELECT count(*) as c FROM ${tableName}`);
           const count = countRes[0].values[0][0];
-          // ALWAYS Seed if empty
           if (count === 0 && INITIAL_SCHEMA[tableName].length > 0) {
               this.populateTable(tableName, INITIAL_SCHEMA[tableName]);
               schemaChanged = true;
@@ -388,7 +430,7 @@ class SqliteService {
             try {
                 const data = this.db.export();
                 await idbAdapter.save(data);
-            } catch (e) { console.error("CRITICAL: Failed to save DB", e); }
+            } catch (e) { /* Save failures are non-critical fallback to ephemeral */ }
         });
         return this.savePromise;
     }

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAccessibility } from '../context/AccessibilityContext';
 import { useTranslation } from '../hooks/useTranslation';
@@ -10,7 +9,6 @@ const LargeTextMode: React.FC = () => {
 
   return (
     <div className="fixed bottom-24 left-4 z-50">
-      {/* Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-12 h-12 bg-blue-600 hover:bg-blue-500 rounded-full shadow-xl flex items-center justify-center text-white border-2 border-white focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform hover:scale-110"
@@ -22,13 +20,11 @@ const LargeTextMode: React.FC = () => {
         </svg>
       </button>
 
-      {/* Control Panel */}
       {isOpen && (
         <div className="absolute bottom-16 left-0 w-64 bg-gray-900 border border-amber-500/30 rounded-lg shadow-2xl p-4 animate-fade-in-up origin-bottom-left">
            <h3 className="text-amber-100 font-bold mb-4 font-cinzel text-lg border-b border-amber-500/20 pb-2">Accessibility</h3>
            
            <div className="space-y-4">
-               {/* Large Text Toggle */}
                <button 
                  onClick={toggleLargeText}
                  className={`w-full p-3 rounded flex items-center justify-between font-bold transition-colors ${largeText ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-200 hover:bg-gray-700'}`}
@@ -37,7 +33,6 @@ const LargeTextMode: React.FC = () => {
                   <span className="text-sm">{largeText ? 'Large Text: ON' : 'Large Text: OFF'}</span>
                </button>
 
-               {/* High Contrast Toggle */}
                <button 
                  onClick={toggleHighContrast}
                  className={`w-full p-3 rounded flex items-center justify-between font-bold transition-colors ${highContrast ? 'bg-yellow-400 text-black border-2 border-white' : 'bg-gray-800 text-amber-200 hover:bg-gray-700'}`}

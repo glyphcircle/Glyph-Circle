@@ -16,6 +16,7 @@ import { SmartDatePicker, SmartTimePicker, SmartCitySearch } from './SmartAstroI
 import { validationService } from '../services/validationService';
 import { cloudManager } from '../services/cloudManager';
 import InlineError from './shared/InlineError';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 interface NumerologyAstrologyProps {
   mode: 'numerology' | 'astrology';
@@ -42,7 +43,7 @@ const NumerologyAstrology: React.FC<NumerologyAstrologyProps> = ({ mode }) => {
   const reportImage = db.image_assets?.find((a: any) => a.id === (mode === 'numerology' ? 'report_bg_numerology' : 'report_bg_astrology'))?.path || "https://images.unsplash.com/photo-1509228627129-6690a87531bc?q=80&w=800";
 
   useEffect(() => {
-    const cached = localStorage.getItem('glyph_user_details');
+    const cached = safeStorageInstance.getItem('glyph_user_details');
     if (cached) { try { const p = JSON.parse(cached); setFormData(prev => ({ ...prev, ...p })); } catch (e) {} }
   }, []);
 

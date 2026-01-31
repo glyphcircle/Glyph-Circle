@@ -1,10 +1,11 @@
+import { safeStorageInstance } from './supabaseClient';
 
 // DATABASE SECURITY HELPER (Web Equivalent)
 // Implements AES-256-GCM, Integrity Checks, and Device Binding
 
 class SecurityService {
   private encryptionKey: CryptoKey | null = null;
-  private readonly SALT = "GLYPH_CIRCLE_V2_SALT_#9928"; // In prod, this should be dynamic
+  private readonly SALT = "GLYPH_CIRCLE_V2_SALT_#9928"; 
 
   constructor() {
     this.init();
@@ -16,13 +17,12 @@ class SecurityService {
 
   // --- 1. DEVICE BINDING & KEY GENERATION ---
   private async generateDeviceBoundKey() {
-    let deviceId = localStorage.getItem('glyph_device_id');
+    let deviceId = safeStorageInstance.getItem('glyph_device_id');
     if (!deviceId) {
       deviceId = crypto.randomUUID();
-      localStorage.setItem('glyph_device_id', deviceId);
+      safeStorageInstance.setItem('glyph_device_id', deviceId);
     }
 
-    // Mix device ID with app salt to create a unique key material
     const enc = new TextEncoder();
     const keyMaterial = await window.crypto.subtle.importKey(
       "raw",
@@ -46,7 +46,7 @@ class SecurityService {
     );
   }
 
-  // --- 2. AES-256 ENCRYPTION (SQLCipher Equivalent) ---
+  // --- 2. AES-256 ENCRYPTION ---
   async encryptData(data: string): Promise<string> {
     if (!this.encryptionKey) await this.init();
     
@@ -85,27 +85,32 @@ class SecurityService {
       const dec = new TextDecoder();
       return dec.decode(decryptedContent);
     } catch (e) {
-      console.error("Security Breach: Decryption failed. Data may be tampered.", e);
+      console.error("Security Breach: Decryption failed.", e);
       return null;
     }
   }
 
-  // --- 3. ROOT / INTEGRITY DETECTION (Web Equivalent) ---
+  // --- 3. ROOT / INTEGRITY DETECTION ---
   checkSystemIntegrity(): boolean {
+    let isFrame = false;
+    try {
+        isFrame = window.self !== window.top;
+    } catch (e) {
+        isFrame = true;
+    }
+
     const checks = {
-      isSecureContext: window.isSecureContext, // Must be HTTPS/Localhost
-      hasAutomation: !!(navigator.webdriver), // Detect Selenium/Puppeteer
-      isFrame: window.self !== window.top // Detect Clickjacking
+      isSecureContext: window.isSecureContext,
+      hasAutomation: !!(navigator.webdriver),
+      isFrame: isFrame
     };
 
     if (!checks.isSecureContext) console.warn("SECURITY WARNING: Insecure Context");
     if (checks.hasAutomation) console.warn("SECURITY WARNING: Automation Detected");
 
-    // Return false if environment is compromised
     return checks.isSecureContext && !checks.hasAutomation;
   }
 
-  // --- HELPERS ---
   private bufferToBase64(buf: Uint8Array): string {
     let binary = '';
     for (let i = 0; i < buf.byteLength; i++) {

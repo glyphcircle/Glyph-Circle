@@ -1,6 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { THEMES, ThemeConfig, ThemeId } from '../services/themeConfig';
+import { safeStorageInstance } from '../services/supabaseClient';
 
 interface ThemeContextType {
   currentTheme: ThemeConfig;
@@ -18,14 +18,14 @@ export const useTheme = () => {
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentThemeId, setCurrentThemeId] = useState<ThemeId>(() => {
-    return (localStorage.getItem('glyph_theme') as ThemeId) || 'default';
+    return (safeStorageInstance.getItem('glyph_theme') as ThemeId) || 'default';
   });
 
   const activeConfig = THEMES[currentThemeId] || THEMES['default'];
 
   const setTheme = (id: ThemeId) => {
     setCurrentThemeId(id);
-    localStorage.setItem('glyph_theme', id);
+    safeStorageInstance.setItem('glyph_theme', id);
   };
 
   useEffect(() => {
