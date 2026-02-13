@@ -1,106 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0F0F23" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Glyph Circle" />
-    <title>Glyph Circle</title>
-    
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-    
-    <!-- Razorpay SDK -->
-    <script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              skin: {
-                base: 'var(--color-bg-base)',
-                surface: 'var(--color-bg-surface)',
-                accent: 'var(--color-text-accent)',
-                text: 'var(--color-text-base)',
-                'button-text': 'var(--color-button-text)',
-                border: 'var(--color-border)',
-                hover: 'var(--color-bg-hover)',
-              }
+<head>
+  <meta charset="UTF-8" />
+  <!-- ✅ FIXED: Added maximum-scale and user-scalable -->
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0F0F23" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Glyph Circle" />
+  <title>Glyph Circle</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Lora:ital,wght@0,400;0,700;1,400&display=swap"
+    rel="stylesheet">
+
+  <!-- AI Load --->
+  <!-- Add Puter.ai SDK -->
+  <script src="https://js.puter.com/v2/"></script>
+  <!-- Razorpay SDK -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    const plugin = (typeof tailwind !== 'undefined') ? tailwind.plugin : (fn) => fn;
+
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            // LIGHT MODE (default)
+            background: '#fafafa',
+            foreground: '#0a0a0a',
+            card: '#ffffff',
+            'card-foreground': '#1a1a1a',
+            primary: '#f59e0b',
+            'primary-foreground': '#000000',
+            muted: '#f5f5f5',
+            'muted-foreground': '#525252',
+            border: '#e5e5e5',
+            skin: {
+              base: 'var(--color-bg-base)',
+              surface: 'var(--color-bg-surface)',
+              accent: 'var(--color-text-accent)',
+              text: 'var(--color-text-base)',
+              'button-text': 'var(--color-button-text)',
+              border: 'var(--color-border)',
+              hover: 'var(--color-bg-hover)',
+            }
+          },
+          fontFamily: {
+            cinzel: ['Cinzel', 'serif'],
+            lora: ['Lora', 'serif'],
+          },
+          screens: {
+            'xs': '375px',
+            'sm': '640px',
+            'md': '768px',
+            'lg': '1024px',
+            'xl': '1280px',
+            '2xl': '1536px',
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 1s ease-out forwards',
+            'float': 'float 6s ease-in-out infinite',
+            'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
             },
-            fontFamily: {
-               cinzel: ['Cinzel', 'serif'],
-               lora: ['Lora', 'serif'],
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-10px)' },
             },
-            screens: {
-              'xs': '375px',
-              'sm': '640px',
-              'md': '768px',
-              'lg': '1024px',
-              'xl': '1280px',
-              '2xl': '1536px',
-            },
-            animation: {
-              'fade-in-up': 'fadeInUp 1s ease-out forwards',
-              'float': 'float 6s ease-in-out infinite',
-              'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            },
-            keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              float: {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-10px)' },
-              },
-              pulseGlow: {
-                '0%, 100%': { opacity: '1', boxShadow: '0 0 20px var(--color-primary-glow)' },
-                '50%': { opacity: '0.8', boxShadow: '0 0 10px var(--color-primary-glow)' },
-              }
+            pulseGlow: {
+              '0%, 100%': { opacity: '1', boxShadow: '0 0 20px var(--color-primary-glow)' },
+              '50%': { opacity: '0.8', boxShadow: '0 0 10px var(--color-primary-glow)' },
             }
           }
         }
       }
-    </script>
+    }
+  </script>
 
-    <style>
-      body { font-family: 'Lora', serif; }
-      h1, h2, h3, h4, h5, h6 { font-family: 'Cinzel', serif; }
-      
-      /* Enhanced Report Textures */
-      .report-canvas {
-        background-color: #fffcf0;
-        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  <style>
+    :root {
+      --background: 250 250 250;
+      --foreground: 10 10 10;
+      --card: 255 255 255;
+      --card-foreground: 26 26 26;
+      --primary: 245 158 11;
+      --primary-foreground: 0 0 0;
+      --muted: 245 245 245;
+      --muted-foreground: 82 82 82;
+      --border: 229 229 229;
+    }
+
+    .dark {
+      --background: 10 10 10;
+      --foreground: 250 250 250;
+      --card: 23 23 23;
+      --card-foreground: 245 245 245;
+      --primary: 245 158 11;
+      --primary-foreground: 10 10 10;
+      --muted: 38 38 38;
+      --muted-foreground: 163 163 163;
+      --border: 38 38 38;
+
+      --color-bg-base: #0a0a0a;
+      --color-bg-surface: rgba(23, 23, 23, 0.95);
+      --color-text-base: #fafafa;
+      --color-border: #262626;
+    }
+
+    body {
+      font-family: 'Lora', serif;
+      background-color: rgb(var(--background));
+      color: rgb(var(--foreground));
+      /* ✅ Prevent overscroll bounce on iOS */
+      overscroll-behavior: none;
+      /* ✅ Smooth scrolling */
+      -webkit-overflow-scrolling: touch;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-family: 'Cinzel', serif;
+    }
+
+    .report-canvas {
+      background-color: #fffcf0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    }
+
+    .sacred-boundary {
+      border: 2px solid #d4af37;
+      outline: 8px double #d4af37;
+      outline-offset: -16px;
+      box-shadow: inset 0 0 40px rgba(139, 92, 5, 0.05);
+    }
+
+    .gold-gradient-text {
+      background: linear-gradient(to bottom, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(212, 175, 55, 0.2);
+      border-radius: 10px;
+    }
+
+    /* ✅ NEW: iOS Touch Optimization */
+    * {
+      -webkit-tap-highlight-color: rgba(245, 158, 11, 0.3);
+      -webkit-touch-callout: none;
+    }
+
+    button,
+    a,
+    [role="button"] {
+      -webkit-tap-highlight-color: rgba(245, 158, 11, 0.4);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    /* Prevent text selection on interactive elements */
+    button,
+    a {
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* Fix for iOS button styling */
+    input[type="submit"],
+    input[type="button"],
+    button {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    /* Allow text selection in inputs and textareas */
+    input[type="text"],
+    input[type="email"],
+    input[type="number"],
+    input[type="tel"],
+    textarea {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* ✅ Fix table scroll on mobile */
+    .table-container {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Safe area support for mobile nav */
+    .safe-area-bottom {
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Prevent content from going under mobile nav */
+    @media (max-width: 768px) {
+      body {
+        padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
       }
+    }
+  </style>
 
-      .sacred-boundary {
-        border: 2px solid #d4af37;
-        outline: 8px double #d4af37;
-        outline-offset: -16px;
-        box-shadow: inset 0 0 40px rgba(139, 92, 5, 0.05);
-      }
-
-      .gold-gradient-text {
-        background: linear-gradient(to bottom, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-
-      /* Custom scrollbar for report preview */
-      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.2); border-radius: 10px; }
-    </style>
-
-    <script type="importmap">
+  <script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@18.2.0",
@@ -110,18 +239,27 @@
     "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
     "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?external=react,react-dom",
     "@google/genai": "https://esm.sh/@google/genai",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.49.1?bundle",
     "uuid": "https://esm.sh/uuid@9.0.1",
     "html2canvas": "https://esm.sh/html2canvas@1.4.1",
     "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react,react-dom",
     "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.3",
+    "@google/generative-ai": "https://esm.sh/@google/generative-ai@^0.24.1"
   }
 }
 </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
-  </body>
+</head>
+
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>">
+
+</body>
+
 </html>

@@ -1,44 +1,118 @@
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { THEMES, ThemeConfig, ThemeId } from '../services/themeConfig';
+import React, { createContext, useState, useContext, useEffect, useCallback, ReactNode } from 'react';
+import { loadUserTheme, saveUserTheme, applyTheme, ThemeConfig, DEFAULT_THEME, saveThemeToLocalStorage } from '../services/themeService';
+import { THEMES, ThemeId } from '../services/themeConfig';
+import { useAuth } from './AuthContext';
 
 interface ThemeContextType {
-  currentTheme: ThemeConfig;
+  theme: ThemeConfig;
+  toggleMode: () => void;
+  setColorVariant: (variant: ThemeConfig['colorVariant']) => void;
+  setHoverOpacity: (opacity: number) => void;
+  setCardOpacity: (opacity: number) => void;
+  updateTheme: (updates: Partial<ThemeConfig>) => void;
+  isLoading: boolean;
+  currentTheme: typeof THEMES[ThemeId];
   setTheme: (id: ThemeId) => void;
-  availableThemes: ThemeConfig[];
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) throw new Error("useTheme must be used within ThemeProvider");
-  return context;
-};
-
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentThemeId, setCurrentThemeId] = useState<ThemeId>(() => {
-    return (localStorage.getItem('glyph_theme') as ThemeId) || 'default';
-  });
+  const [theme, setThemeState] = useState<ThemeConfig>(DEFAULT_THEME);
+  const [currentThemeId, setCurrentThemeId] = useState<ThemeId>('default');
+  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth(); // Monitor auth state to trigger theme sync
 
-  const activeConfig = THEMES[currentThemeId] || THEMES['default'];
-
-  const setTheme = (id: ThemeId) => {
-    setCurrentThemeId(id);
-    localStorage.setItem('glyph_theme', id);
-  };
-
+  // 1. Init theme on mount and when user changes
   useEffect(() => {
-    document.body.setAttribute('data-theme', currentThemeId);
-  }, [currentThemeId]);
+    const initTheme = async () => {
+      // Re-load theme. If user is logged in, it will pull from Supabase.
+      const loadedTheme = await loadUserTheme();
+      setThemeState(loadedTheme);
+      applyTheme(loadedTheme);
+      
+      const savedId = localStorage.getItem('glyph_festival_theme_id') as ThemeId;
+      if (savedId && THEMES[savedId]) {
+          setCurrentThemeId(savedId);
+      }
+      
+      setIsLoading(false);
+    };
+    initTheme();
+  }, [user]); // Re-run when user logs in/out
+
+  // 2. Monitor theme state and mirror to localStorage + DOM immediately
+  useEffect(() => {
+    if (!isLoading) {
+      saveThemeToLocalStorage(theme);
+      applyTheme(theme);
+      // Background sync to Supabase only if it changed from the UI
+      saveUserTheme(theme);
+    }
+  }, [theme, isLoading]);
+
+  const toggleMode = useCallback(() => {
+    setThemeState(prev => {
+      const nextMode: 'dark' | 'light' = prev.mode === 'dark' ? 'light' : 'dark';
+      return { ...prev, mode: nextMode };
+    });
+  }, []);
+
+  const setColorVariant = useCallback((variant: ThemeConfig['colorVariant']) => {
+    setThemeState(prev => ({ ...prev, colorVariant: variant }));
+  }, []);
+
+  const setHoverOpacity = useCallback((opacity: number) => {
+    setThemeState(prev => ({ ...prev, hoverOpacity: opacity }));
+  }, []);
+
+  const setCardOpacity = useCallback((opacity: number) => {
+    setThemeState(prev => ({ ...prev, cardOpacity: opacity }));
+  }, []);
+
+  const updateTheme = useCallback((updates: Partial<ThemeConfig>) => {
+    setThemeState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const setTheme = useCallback((id: ThemeId) => {
+      const festival = THEMES[id];
+      if (!festival) return;
+
+      setCurrentThemeId(id);
+      localStorage.setItem('glyph_festival_theme_id', id);
+
+      setThemeState(prev => {
+          let nextColor: ThemeConfig['colorVariant'] = 'default';
+          const nextMode: ThemeConfig['mode'] = festival.cssClass === 'theme-light' ? 'light' : 'dark';
+
+          if (id === 'holi') nextColor = 'red';
+          else if (id === 'diwali') nextColor = 'orange';
+          else if (id === 'divine') nextColor = 'blue';
+          else if (id === 'navratri') nextColor = 'purple';
+
+          return { ...prev, mode: nextMode, colorVariant: nextColor };
+      });
+  }, []);
 
   return (
-    <ThemeContext.Provider value={{ 
-        currentTheme: activeConfig, 
-        setTheme,
-        availableThemes: Object.values(THEMES) 
+    <ThemeContext.Provider value={{
+      theme,
+      toggleMode,
+      setColorVariant,
+      setHoverOpacity,
+      setCardOpacity,
+      updateTheme,
+      isLoading,
+      currentTheme: THEMES[currentThemeId],
+      setTheme
     }}>
       {children}
     </ThemeContext.Provider>
   );
+};
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (!context) throw new Error('useTheme must be used within ThemeProvider');
+  return context;
 };

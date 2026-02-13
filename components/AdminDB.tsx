@@ -3,12 +3,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useDb } from '../hooks/useDb';
 import Card from './shared/Card';
 import Modal from './shared/Modal';
-import { toDriveEmbedUrl } from '../utils/drive';
+import { toDriveEmbedUrl } from '../drive';
+import { useTranslation } from '../hooks/useTranslation';
+import { cloudManager } from '../services/cloudManager';
 
 const AdminDB: React.FC = () => {
     const { table } = useParams<{ table: string }>();
     const { db, refreshTable, updateEntry, createEntry, deleteEntry, toggleStatus } = useDb();
     const navigate = useNavigate();
+    const { getRegionalPrice } = useTranslation();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -16,12 +19,12 @@ const AdminDB: React.FC = () => {
     const [isNewRecord, setIsNewRecord] = useState(false);
     const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [deleteConfirm, setDeleteConfirm] = useState<{ id: string | number; name?: string } | null>(null);
 
     const tableName = table || 'services';
     const data = db[tableName] || [];
 
-    const SYSTEM_FIELDS = ['id', 'created_at', 'updated_at', 'timestamp', 'item_ids', 'user_id'];
+    // 🔒 READ-ONLY FIELDS (never editable)
+    const SYSTEM_FIELDS = ['id', 'created_at', 'updated_at'];
 
     useEffect(() => {
         console.log('📂 [AdminDB] Syncing Registry:', tableName);
@@ -33,7 +36,7 @@ const AdminDB: React.FC = () => {
             return ['name', 'price', 'description', 'path', 'image', 'status'];
         }
         let rawHeaders = data.length > 0 ? Object.keys(data[0]).filter(h => h !== 'id' && h !== 'status') : [];
-        return rawHeaders.filter(h => !['user_id', 'created_at', 'updated_at', 'timestamp', 'id'].includes(h));
+        return rawHeaders.filter(h => !SYSTEM_FIELDS.includes(h));
     }, [data, tableName]);
 
     const openCreateModal = () => {
@@ -43,7 +46,7 @@ const AdminDB: React.FC = () => {
             : data.length > 0 ? Object.keys(data[0]) : ['id', 'name'];
 
         formFields.forEach(header => {
-            if (!['created_at', 'updated_at', 'timestamp', 'user_id'].includes(header)) {
+            if (!SYSTEM_FIELDS.includes(header)) {
                 if (header === 'price' || header === 'stock') {
                     initialForm[header] = 0;
                 } else if (header === 'status') {
@@ -62,6 +65,8 @@ const AdminDB: React.FC = () => {
     };
 
     const openEditModal = (record: any) => {
+        console.log(`🛠️ [UI] Inspecting artifact: ${record.id}`)
+        // Copy ALL fields (don't filter yet)
         setFormData({ ...record });
         setIsNewRecord(false);
         setStatus('idle');
@@ -70,65 +75,63 @@ const AdminDB: React.FC = () => {
     };
 
     const handleDelete = async (id: string | number) => {
-        console.log('🗑️ [UI] Delete confirmed for ID:', id);
-        console.log('✅ [UI] Proceeding with delete...');
+        if (!window.confirm(`Permanently delete artifact "${id}"?`)) return;
 
         try {
             await deleteEntry(tableName, id);
-            console.log('✅ [UI] Delete API call successful');
-            await refreshTable(tableName);
-            console.log('✅ [UI] Refresh triggered');
-            setDeleteConfirm(null);
+            refreshTable(tableName);
         } catch (err: any) {
-            console.error('💥 [UI] Delete failed:', err);
             alert(`Purge failed: ${err.message}`);
-            setDeleteConfirm(null);
         }
     };
 
     const handleCommit = async () => {
-        console.log('🔵 [UI] handleCommit START');
+        console.log('📡 [UI] Initiating Cloud Synchronization...');
         setStatus('saving');
         setErrorMsg(null);
-        const recordId = formData.id;
 
+        const recordId = formData.id;
         const payload = { ...formData };
-        SYSTEM_FIELDS.forEach(field => delete (payload as any)[field]);
+
+        // ONLY remove system fields
+        SYSTEM_FIELDS.forEach(field => delete payload[field]);
+
         console.log('💾 [UI] Payload before submit:', payload);
 
         try {
+            let result;
             if (isNewRecord) {
                 console.log('🆕 [UI] Creating new entry...');
-                await createEntry(tableName, payload);
-                console.log('✅ [UI] Create successful!');
+                result = await createEntry(tableName, payload);
+                console.log('✅ [UI] Create successful!', result);
             } else {
-                if (!recordId) throw new Error('IDENTIFICATION ERROR: Missing ID.');
-                console.log('📝 [UI] Updating entry...');
-                await updateEntry(tableName, recordId, payload);
-                console.log('✅ [UI] Update successful!');
+                if (!recordId) throw new Error('IDENTIFICATION_ERROR: Cannot modify artifact without valid id.');
+                console.log(`📡 [UI] Update for ID: ${recordId}`)
+                result = await updateEntry(tableName, recordId, payload);
+                console.log('✅ [UI] Update result:', result);
+
+                if (!result || (Array.isArray(result) && result.length === 0)) {
+                    throw new Error('UPDATE_ABORTED: Server returned empty record set. Verify RLS policies or permissions.');
+                }
             }
 
-            // ✅ Wait for refresh to complete BEFORE closing modal
-            console.log('🔄 [UI] Refreshing table data...');
-            await refreshTable(tableName);
-            console.log('✅ [UI] Table refreshed with new data');
+            setStatus('success');
 
-            // Now close modal with fresh data
-            console.log('🚪 [UI] Closing modal');
-            setIsModalOpen(false);
-            setStatus('idle');
-            console.log('✅ [UI] Modal closed, button unlocked');
+            setTimeout(() => {
+                setIsModalOpen(false);
+                setStatus('idle');
+                refreshTable(tableName);
+            }, 1500);
 
         } catch (err: any) {
             console.error('💥 [UI] Commit failed:', err);
             setStatus('error');
-            setErrorMsg(err.message || 'Registry rejected the payload.');
+            setErrorMsg(err.message || 'Celestial Link Failed: Update rejected by server.');
 
             setTimeout(() => {
-                console.log('🔄 [UI] Auto-clearing error state');
                 setStatus('idle');
                 setErrorMsg(null);
-            }, 3000);
+            }, 5000);
         }
     };
 
@@ -191,17 +194,19 @@ const AdminDB: React.FC = () => {
                                                 const val = row[h];
                                                 const isImageField = ['image', 'image_url', 'logo_url'].includes(h);
                                                 const isStatusField = h === 'status';
+                                                const isPriceField = h.toLowerCase().includes('price') || h.toLowerCase().includes('amount');
 
                                                 return (
                                                     <td key={h} className="p-6 text-[12px] truncate max-w-[200px] font-mono font-medium text-gray-400">
                                                         {isImageField && val ? (
                                                             <div className="flex items-center gap-2">
                                                                 <img
-                                                                    src={toDriveEmbedUrl(String(val))}
+                                                                    src={cloudManager.resolveImage(String(val))}
                                                                     alt="icon"
                                                                     className="w-8 h-8 rounded object-cover border border-white/10"
                                                                     onError={(e) => (e.currentTarget.src = 'https://placehold.co/100x100/black/amber?text=?')}
                                                                 />
+
                                                             </div>
                                                         ) : isStatusField ? (
                                                             <button
@@ -213,6 +218,8 @@ const AdminDB: React.FC = () => {
                                                             >
                                                                 {val}
                                                             </button>
+                                                        ) : isPriceField && typeof val === 'number' ? (
+                                                            <span className="text-amber-500 font-bold">{getRegionalPrice(val).display}</span>
                                                         ) : (
                                                             String(val ?? '-')
                                                         )}
@@ -228,7 +235,7 @@ const AdminDB: React.FC = () => {
                                                         Modify
                                                     </button>
                                                     <button
-                                                        onClick={() => setDeleteConfirm({ id: row.id, name: row.name || row.id })}
+                                                        onClick={() => handleDelete(row.id)}
                                                         className="bg-red-500/5 hover:bg-red-600 text-red-500/60 hover:text-white border border-red-500/10 px-5 py-1.5 rounded-full font-black text-[10px] tracking-widest uppercase transition-all"
                                                     >
                                                         Purge
@@ -243,11 +250,10 @@ const AdminDB: React.FC = () => {
                 </Card>
             </div>
 
-            {/* Edit/Create Modal */}
+            {/* Modal */}
             <Modal
                 isVisible={isModalOpen}
                 onClose={() => {
-                    console.log('🚪 [UI] Modal onClose triggered, resetting all states');
                     setIsModalOpen(false);
                     setStatus('idle');
                     setErrorMsg(null);
@@ -263,7 +269,7 @@ const AdminDB: React.FC = () => {
 
                     <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-4 custom-scrollbar">
                         {Object.keys(formData)
-                            .filter(k => !['created_at', 'updated_at', 'timestamp', 'user_id'].includes(k))
+                            .filter(k => !SYSTEM_FIELDS.includes(k))
                             .map(key => (
                                 <div key={key} className="space-y-2">
                                     <label className="block text-[10px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">{key}</label>
@@ -285,16 +291,26 @@ const AdminDB: React.FC = () => {
                                         />
                                     ) : (
                                         <input
-                                            className={`w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono ${key === 'id' && !isNewRecord ? 'opacity-50 cursor-not-allowed' : ''
-                                                }`}
+                                            className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono"
                                             value={formData[key] ?? ''}
                                             onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
                                             placeholder={`Enter ${key}...`}
-                                            disabled={key === 'id' && !isNewRecord}
+                                            type={key.includes('price') || key.includes('stock') ? 'number' : 'text'}
                                         />
                                     )}
                                 </div>
                             ))}
+
+                        {!isNewRecord && formData.id && (
+                            <div className="pt-4 border-t border-white/5 opacity-40">
+                                <label className="block text-[9px] text-gray-500 uppercase font-black ml-1 tracking-[0.2em]">
+                                    Primary Identifier (Read Only)
+                                </label>
+                                <div className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-gray-400 text-xs font-mono cursor-not-allowed">
+                                    {formData.id}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {errorMsg && (
@@ -323,55 +339,6 @@ const AdminDB: React.FC = () => {
                     </div>
                 </div>
             </Modal>
-
-            {/* Delete Confirmation Modal */}
-            {deleteConfirm && (
-                <Modal
-                    isVisible={true}
-                    onClose={() => setDeleteConfirm(null)}
-                >
-                    <div className="p-10 bg-[#0a0a14] rounded-[2.4rem] border border-red-500/20 w-full max-w-md text-center">
-                        <div className="mb-8">
-                            <h3 className="text-3xl font-cinzel font-black text-red-500 uppercase mb-2 tracking-wider">
-                                ⚠️ CONFIRM PURGE
-                            </h3>
-                            <p className="text-[10px] text-red-500/60 uppercase tracking-[0.5em] font-bold">
-                                Irreversible Action
-                            </p>
-                        </div>
-
-                        <div className="mb-8 p-6 bg-red-950/20 border border-red-500/20 rounded-2xl">
-                            <p className="text-gray-300 mb-2 text-sm">
-                                Permanently delete artifact:
-                            </p>
-                            <p className="text-white font-bold text-lg font-mono break-all">
-                                {deleteConfirm.name}
-                            </p>
-                            <p className="text-xs text-red-400/80 mt-4 uppercase tracking-wider">
-                                This action cannot be undone
-                            </p>
-                        </div>
-
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => {
-                                    console.log('❌ [UI] User cancelled delete');
-                                    setDeleteConfirm(null);
-                                }}
-                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-xl"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => handleDelete(deleteConfirm.id)}
-                                className="flex-1 bg-red-600 hover:bg-red-500 text-white py-4 rounded-full font-black uppercase text-xs tracking-widest transition-all shadow-2xl"
-                            >
-                                🗑️ Purge
-                            </button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
         </div>
     );
 };

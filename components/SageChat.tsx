@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createSageSession } from '../services/geminiService';
+import { createSageSession } from '../services/aiService';
 import { useAuth } from '../context/AuthContext';
 import { ACTION_POINTS } from '../services/gamificationConfig';
 
@@ -21,7 +21,7 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [chatSession, setChatSession] = useState<any>(null);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { awardKarma } = useAuth();
 
@@ -34,10 +34,10 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
         text: `Namaste. I have contemplated your ${type} reading. What seeks clarification, seeker?`
       }]);
       try {
-          const session = createSageSession(context, type);
-          setChatSession(session);
+        const session = createSageSession(context, type);
+        setChatSession(session);
       } catch (e) {
-          console.error("Chat init failed", e);
+        console.error("Chat init failed", e);
       }
     }
   }, [isOpen, context, type, chatSession]);
@@ -55,18 +55,18 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
     setIsTyping(true);
 
     try {
-        const result = await chatSession.sendMessage({ message: input });
-        const sageMsg: Message = { 
-            id: (Date.now() + 1).toString(), 
-            sender: 'sage', 
-            text: result.text || "The stars are silent momentarily." 
-        };
-        setMessages(prev => [...prev, sageMsg]);
-        awardKarma(5); // Small reward for engagement
+      const result = await chatSession.sendMessage({ message: input });
+      const sageMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        sender: 'sage',
+        text: result.text || "The stars are silent momentarily."
+      };
+      setMessages(prev => [...prev, sageMsg]);
+      awardKarma(5); // Small reward for engagement
     } catch (e) {
-        setMessages(prev => [...prev, { id: 'err', sender: 'sage', text: "The connection to the ether is weak. Please try again." }]);
+      setMessages(prev => [...prev, { id: 'err', sender: 'sage', text: "The connection to the ether is weak. Please try again." }]);
     } finally {
-        setIsTyping(false);
+      setIsTyping(false);
     }
   };
 
@@ -86,7 +86,7 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
       {/* CHAT WINDOW */}
       {isOpen && (
         <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 w-full md:w-96 h-[80vh] md:h-[600px] z-[60] flex flex-col bg-gray-900/95 backdrop-blur-xl border border-amber-500/30 rounded-t-xl md:rounded-2xl shadow-2xl animate-fade-in-up">
-          
+
           {/* HEADER */}
           <div className="flex justify-between items-center p-4 border-b border-amber-500/20 bg-gradient-to-r from-indigo-900 to-black rounded-t-xl">
             <div className="flex items-center gap-3">
@@ -98,11 +98,11 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
                 <p className="text-[10px] text-purple-300 font-mono tracking-wider">VEDIC GUIDE • ONLINE</p>
               </div>
             </div>
-            <button 
-                onClick={() => setIsOpen(false)} 
-                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400"
+            <button
+              onClick={() => setIsOpen(false)}
+              className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-gray-400"
             >
-                ✕
+              ✕
             </button>
           </div>
 
@@ -110,12 +110,11 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
           <div className="flex-grow overflow-y-auto p-4 space-y-4 custom-scrollbar">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div 
-                  className={`max-w-[85%] p-3 rounded-lg text-sm leading-relaxed ${
-                    msg.sender === 'user' 
-                      ? 'bg-amber-900/60 text-amber-100 border border-amber-700/50 rounded-br-none' 
+                <div
+                  className={`max-w-[85%] p-3 rounded-lg text-sm leading-relaxed ${msg.sender === 'user'
+                      ? 'bg-amber-900/60 text-amber-100 border border-amber-700/50 rounded-br-none'
                       : 'bg-indigo-900/60 text-indigo-100 border border-indigo-500/30 rounded-bl-none'
-                  }`}
+                    }`}
                 >
                   {msg.text}
                 </div>
@@ -136,21 +135,21 @@ const SageChat: React.FC<SageChatProps> = ({ context, type }) => {
           {/* INPUT AREA */}
           <div className="p-4 border-t border-amber-500/20 bg-black/40">
             <div className="relative">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="Ask a question..."
-                  className="w-full bg-gray-800 border border-gray-600 rounded-full pl-4 pr-12 py-3 text-sm text-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all"
-                  disabled={isTyping}
-                />
-                <button 
-                  onClick={handleSend}
-                  disabled={!input.trim() || isTyping}
-                  className="absolute right-1 top-1 w-10 h-10 bg-amber-600 hover:bg-amber-500 text-white rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  ➤
-                </button>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                placeholder="Ask a question..."
+                className="w-full bg-gray-800 border border-gray-600 rounded-full pl-4 pr-12 py-3 text-sm text-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all"
+                disabled={isTyping}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isTyping}
+                className="absolute right-1 top-1 w-10 h-10 bg-amber-600 hover:bg-amber-500 text-white rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ➤
+              </button>
             </div>
             <p className="text-[9px] text-center text-gray-500 mt-2">AI guidance may vary. Trust your intuition.</p>
           </div>

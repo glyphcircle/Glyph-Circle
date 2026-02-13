@@ -21,7 +21,7 @@ export const biometricService = {
   isAvailable: async (): Promise<boolean> => {
     try {
       if (window.PublicKeyCredential &&
-          PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
         return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
       }
     } catch (e) {
@@ -69,8 +69,8 @@ export const biometricService = {
       return null;
     } catch (err: any) {
       if (err.name === 'NotAllowedError' || err.message?.includes('not enabled')) {
-          console.warn("WebAuthn blocked by permissions policy.");
-          return null; 
+        console.warn("WebAuthn blocked by permissions policy.");
+        return null;
       }
       console.warn("Biometric Registration Failed:", err);
       throw err;
@@ -101,8 +101,8 @@ export const biometricService = {
       return !!assertion;
     } catch (err: any) {
       if (err.name === 'NotAllowedError' || err.message?.includes('not enabled')) {
-          console.warn("Biometric authentication blocked.");
-          throw new Error("Biometric authentication not allowed.");
+        console.warn("Biometric authentication blocked.");
+        throw new Error("Biometric authentication not allowed.");
       }
       console.debug("Biometric Verification unavailable:", err);
       throw err;

@@ -1,25 +1,24 @@
-
 // --- SCHEMA DEFINITION & SEED DATA ---
 const INITIAL_SCHEMA: Record<string, any[]> = {
   users: [
-    { 
-      id: 'master_admin_001', 
-      name: 'Master Keeper', 
-      role: 'admin', 
-      status: 'active', 
-      email: 'master@gylphcircle.com', 
+    {
+      id: 'master_admin_001',
+      name: 'Master Keeper',
+      role: 'admin',
+      status: 'active',
+      email: 'master@gylphcircle.com',
       password: 'master123',
-      biometric_id: null, 
+      biometric_id: null,
       uses_biometrics: false,
       credits: 999999,
       created_at: new Date(Date.now() - 30 * 86400000).toISOString()
     },
-    { 
-      id: 'demo_seeker_001', 
-      name: 'Rakesh Seeker', 
-      role: 'seeker', 
-      status: 'active', 
-      email: 'rakesh@example.com', 
+    {
+      id: 'demo_seeker_001',
+      name: 'Rakesh Seeker',
+      role: 'seeker',
+      status: 'active',
+      email: 'rakesh@example.com',
       password: 'user123',
       credits: 150,
       created_at: new Date(Date.now() - 5 * 86400000).toISOString()
@@ -47,11 +46,11 @@ const INITIAL_SCHEMA: Record<string, any[]> = {
     { id: 'store', name: 'Vedic Store', price: 0, description: 'Authentic Rudraksha, Yantras, and Gemstones for your spiritual path.', path: '/store', status: 'active', image: 'photo-1600609842388-3e4b489d71c6' }
   ],
   config: [
-      { id: 'app_title', key: 'title', value: 'Glyph Circle', status: 'active'},
-      { id: 'admin_secret_key', key: 'admin_portal_secret', value: '1509', status: 'active'},
-      { id: 'card_hover_opacity', key: 'card_hover_opacity', value: '0.85', status: 'active'},
-      { id: 'currency_default', key: 'currency', value: 'INR', status: 'active'},
-      { id: 'support_email', key: 'contact_email', value: 'support@glyphcircle.com', status: 'active'}
+    { id: 'app_title', key: 'title', value: 'Glyph Circle', status: 'active' },
+    { id: 'admin_secret_key', key: 'admin_portal_secret', value: '1509', status: 'active' },
+    { id: 'card_hover_opacity', key: 'card_hover_opacity', value: '0.85', status: 'active' },
+    { id: 'currency_default', key: 'currency', value: 'INR', status: 'active' },
+    { id: 'support_email', key: 'contact_email', value: 'support@glyphcircle.com', status: 'active' }
   ],
   cloud_providers: [
     { id: 'gdrive_main', provider: 'Google Drive', name: 'Primary Drive', is_active: true, status: 'active' }
@@ -122,7 +121,7 @@ declare global {
 }
 
 const IDB_CONFIG = {
-  DB_NAME: 'GlyphCircleStorage_V4', 
+  DB_NAME: 'GlyphCircleStorage_V4',
   STORE_NAME: 'sqlite_store',
   KEY: 'main_db_binary'
 };
@@ -130,7 +129,7 @@ const IDB_CONFIG = {
 const idbAdapter = {
   open: (): Promise<IDBDatabase> => {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(IDB_CONFIG.DB_NAME, 1); 
+      const request = indexedDB.open(IDB_CONFIG.DB_NAME, 1);
       request.onupgradeneeded = (e: any) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
@@ -174,37 +173,37 @@ class SqliteService {
   private savePromise: Promise<void> = Promise.resolve();
   private initPromise: Promise<void> | null = null;
 
-  constructor() {}
+  constructor() { }
 
   async init() {
     if (this.isReady) return;
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-        try {
-          if (!window.initSqlJs) return;
+      try {
+        if (!window.initSqlJs) return;
 
-          this.SQL = await window.initSqlJs({
-            locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
-          });
+        this.SQL = await window.initSqlJs({
+          locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        });
 
-          let binaryDb = await idbAdapter.load();
+        let binaryDb = await idbAdapter.load();
 
-          if (binaryDb) {
-            try {
-                this.db = new this.SQL.Database(binaryDb);
-            } catch (e) {
-                this.db = new this.SQL.Database();
-            }
-          } else {
+        if (binaryDb) {
+          try {
+            this.db = new this.SQL.Database(binaryDb);
+          } catch (e) {
             this.db = new this.SQL.Database();
           }
-
-          await this.runSchemaMigration(true);
-          this.isReady = true;
-        } catch (err) {
-          console.error("SQLite Init Failed:", err);
+        } else {
+          this.db = new this.SQL.Database();
         }
+
+        await this.runSchemaMigration(true);
+        this.isReady = true;
+      } catch (err) {
+        console.error("SQLite Init Failed:", err);
+      }
     })();
 
     return this.initPromise;
@@ -214,22 +213,22 @@ class SqliteService {
    * Drops all tables and re-seeds the database.
    */
   async factoryReset() {
-      if (!this.db) return;
-      Object.keys(INITIAL_SCHEMA).forEach(table => {
-          try { this.db.run(`DROP TABLE IF EXISTS ${table}`); } catch (e) {}
-      });
-      await this.runSchemaMigration(true);
-      await this.saveToStorage();
+    if (!this.db) return;
+    Object.keys(INITIAL_SCHEMA).forEach(table => {
+      try { this.db.run(`DROP TABLE IF EXISTS ${table}`); } catch (e) { }
+    });
+    await this.runSchemaMigration(true);
+    await this.saveToStorage();
   }
 
   exportDatabaseBlob(): Blob | null {
-      if (!this.db) return null;
-      try {
-          const binary = this.db.export();
-          return new Blob([binary], { type: 'application/x-sqlite3' });
-      } catch (e) {
-          return null;
-      }
+    if (!this.db) return null;
+    try {
+      const binary = this.db.export();
+      return new Blob([binary], { type: 'application/x-sqlite3' });
+    } catch (e) {
+      return null;
+    }
   }
 
   private async runSchemaMigration(isFreshDb: boolean) {
@@ -238,101 +237,101 @@ class SqliteService {
       const sample = INITIAL_SCHEMA[tableName][0];
       let tableExists = false;
       try {
-          this.db.exec(`SELECT count(*) FROM ${tableName}`);
-          tableExists = true;
+        this.db.exec(`SELECT count(*) FROM ${tableName}`);
+        tableExists = true;
       } catch (e) {
-          if (sample) {
-              const columns = Object.keys(sample);
-              const columnDefs = columns.map(k => {
-                  const val = sample[k];
-                  let type = 'TEXT';
-                  if (typeof val === 'number') type = Number.isInteger(val) ? 'INTEGER' : 'REAL';
-                  return k === 'id' ? `${k} ${type} PRIMARY KEY` : `${k} ${type}`;
-              });
-              this.db.run(`CREATE TABLE ${tableName} (${columnDefs.join(', ')})`);
-          } else {
-              this.db.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY, status TEXT)`);
-          }
-          schemaChanged = true;
-          tableExists = true;
+        if (sample) {
+          const columns = Object.keys(sample);
+          const columnDefs = columns.map(k => {
+            const val = sample[k];
+            let type = 'TEXT';
+            if (typeof val === 'number') type = Number.isInteger(val) ? 'INTEGER' : 'REAL';
+            return k === 'id' ? `${k} ${type} PRIMARY KEY` : `${k} ${type}`;
+          });
+          this.db.run(`CREATE TABLE ${tableName} (${columnDefs.join(', ')})`);
+        } else {
+          this.db.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY, status TEXT)`);
+        }
+        schemaChanged = true;
+        tableExists = true;
       }
 
       if (tableExists && sample) {
-          const res = this.db.exec(`PRAGMA table_info(${tableName})`);
-          const existingCols = res[0].values.map((row: any) => row[1]);
-          const columns = Object.keys(sample);
-          
-          columns.forEach(col => {
-              if (!existingCols.includes(col)) {
-                  let type = 'TEXT';
-                  const val = sample[col];
-                  if (typeof val === 'number') type = Number.isInteger(val) ? 'INTEGER' : 'REAL';
-                  try {
-                      this.db.run(`ALTER TABLE ${tableName} ADD COLUMN ${col} ${type}`);
-                      schemaChanged = true;
-                  } catch (err) {}
-              }
-          });
+        const res = this.db.exec(`PRAGMA table_info(${tableName})`);
+        const existingCols = res[0].values.map((row: any) => row[1]);
+        const columns = Object.keys(sample);
+
+        columns.forEach(col => {
+          if (!existingCols.includes(col)) {
+            let type = 'TEXT';
+            const val = sample[col];
+            if (typeof val === 'number') type = Number.isInteger(val) ? 'INTEGER' : 'REAL';
+            try {
+              this.db.run(`ALTER TABLE ${tableName} ADD COLUMN ${col} ${type}`);
+              schemaChanged = true;
+            } catch (err) { }
+          }
+        });
       }
 
       try {
-          const countRes = this.db.exec(`SELECT count(*) as c FROM ${tableName}`);
-          const count = countRes[0].values[0][0];
-          // ALWAYS Seed if empty
-          if (count === 0 && INITIAL_SCHEMA[tableName].length > 0) {
-              this.populateTable(tableName, INITIAL_SCHEMA[tableName]);
-              schemaChanged = true;
-          }
-      } catch (e) {}
+        const countRes = this.db.exec(`SELECT count(*) as c FROM ${tableName}`);
+        const count = countRes[0].values[0][0];
+        // ALWAYS Seed if empty
+        if (count === 0 && INITIAL_SCHEMA[tableName].length > 0) {
+          this.populateTable(tableName, INITIAL_SCHEMA[tableName]);
+          schemaChanged = true;
+        }
+      } catch (e) { }
     });
 
     if (schemaChanged || isFreshDb) {
-        await this.saveToStorage();
+      await this.saveToStorage();
     }
   }
 
   private populateTable(tableName: string, records: any[]) {
-      if (records.length === 0) return;
-      const columns = Object.keys(records[0]);
-      const placeholders = columns.map(() => '?').join(', ');
-      const insertSql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
-      
-      records.forEach(record => {
-          const values = columns.map(col => {
-              const val = record[col];
-              if (val === undefined || val === null) return null;
-              if (typeof val === 'object') return JSON.stringify(val);
-              return val;
-          });
-          try { this.db.run(insertSql, values); } catch (e) {}
+    if (records.length === 0) return;
+    const columns = Object.keys(records[0]);
+    const placeholders = columns.map(() => '?').join(', ');
+    const insertSql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
+
+    records.forEach(record => {
+      const values = columns.map(col => {
+        const val = record[col];
+        if (val === undefined || val === null) return null;
+        if (typeof val === 'object') return JSON.stringify(val);
+        return val;
       });
+      try { this.db.run(insertSql, values); } catch (e) { }
+    });
   }
 
   exec(sql: string): any[] {
     if (!this.db) return [];
     try {
-        const res = this.db.exec(sql);
-        if (res.length > 0) {
-            const columns = res[0].columns;
-            const values = res[0].values;
-            return values.map((row: any[]) => {
-                const obj: any = {};
-                columns.forEach((col: string, i: number) => {
-                    try {
-                        const val = row[i];
-                        if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
-                            obj[col] = JSON.parse(val);
-                        } else {
-                            obj[col] = val;
-                        }
-                    } catch {
-                        obj[col] = row[i];
-                    }
-                });
-                return obj;
-            });
-        }
-        return [];
+      const res = this.db.exec(sql);
+      if (res.length > 0) {
+        const columns = res[0].columns;
+        const values = res[0].values;
+        return values.map((row: any[]) => {
+          const obj: any = {};
+          columns.forEach((col: string, i: number) => {
+            try {
+              const val = row[i];
+              if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+                obj[col] = JSON.parse(val);
+              } else {
+                obj[col] = val;
+              }
+            } catch {
+              obj[col] = row[i];
+            }
+          });
+          return obj;
+        });
+      }
+      return [];
     } catch (e) { return []; }
   }
 
@@ -345,52 +344,52 @@ class SqliteService {
   }
 
   async insert(tableName: string, data: any) {
-    if(!this.db) return null;
+    if (!this.db) return null;
     try {
-        const columns = Object.keys(data);
-        const placeholders = columns.map(() => '?').join(', ');
-        const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
-        const values = columns.map(k => {
-            const val = data[k];
-            if (val === undefined || val === null) return null;
-            if (typeof val === 'object') return JSON.stringify(val);
-            if (typeof val === 'boolean') return val ? 1 : 0;
-            return val;
-        });
-        this.db.run(sql, values);
-        await this.saveToStorage(); 
-        return data;
+      const columns = Object.keys(data);
+      const placeholders = columns.map(() => '?').join(', ');
+      const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
+      const values = columns.map(k => {
+        const val = data[k];
+        if (val === undefined || val === null) return null;
+        if (typeof val === 'object') return JSON.stringify(val);
+        if (typeof val === 'boolean') return val ? 1 : 0;
+        return val;
+      });
+      this.db.run(sql, values);
+      await this.saveToStorage();
+      return data;
     } catch (e) { return null; }
   }
 
   async update(tableName: string, id: string | number, data: any) {
-    if(!this.db) return;
+    if (!this.db) return;
     try {
-        const keys = Object.keys(data);
-        const setClause = keys.map(k => `${k} = ?`).join(', ');
-        const sql = `UPDATE ${tableName} SET ${setClause} WHERE id = ?`;
-        const values = keys.map(k => {
-            const val = data[k];
-            if (val === undefined || val === null) return null;
-            if (typeof val === 'object') return JSON.stringify(val);
-            if (typeof val === 'boolean') return val ? 1 : 0;
-            return val;
-        });
-        values.push(id);
-        this.db.run(sql, values);
-        await this.saveToStorage(); 
+      const keys = Object.keys(data);
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      const sql = `UPDATE ${tableName} SET ${setClause} WHERE id = ?`;
+      const values = keys.map(k => {
+        const val = data[k];
+        if (val === undefined || val === null) return null;
+        if (typeof val === 'object') return JSON.stringify(val);
+        if (typeof val === 'boolean') return val ? 1 : 0;
+        return val;
+      });
+      values.push(id);
+      this.db.run(sql, values);
+      await this.saveToStorage();
     } catch (e) { }
   }
 
   private async saveToStorage() {
     if (this.db) {
-        this.savePromise = this.savePromise.then(async () => {
-            try {
-                const data = this.db.export();
-                await idbAdapter.save(data);
-            } catch (e) { console.error("CRITICAL: Failed to save DB", e); }
-        });
-        return this.savePromise;
+      this.savePromise = this.savePromise.then(async () => {
+        try {
+          const data = this.db.export();
+          await idbAdapter.save(data);
+        } catch (e) { console.error("CRITICAL: Failed to save DB", e); }
+      });
+      return this.savePromise;
     }
   }
 }

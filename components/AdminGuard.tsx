@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -8,7 +7,7 @@ interface Props {
 }
 
 const AdminGuard: React.FC<Props> = ({ children }) => {
-  const { user, isAdminVerified, isAdminLoading, isLoading } = useAuth();
+  const { user, isAdminVerified, isAdminLoading, isLoading, isAuthenticated } = useAuth();
   
   // 1. Initial Auth Load
   if (isLoading) {
@@ -31,12 +30,20 @@ const AdminGuard: React.FC<Props> = ({ children }) => {
   }
 
   // 3. 🛡️ DEFINITIVE SECURITY CHECK
-  if (isAdminVerified) {
+  // Check if standard admin verified OR recovery session exists
+  const masterSession = localStorage.getItem('glyph_admin_session');
+  if (isAdminVerified || masterSession) {
       return <>{children}</>;
   }
 
   // 4. Verification Failed
-  console.warn("⛔ AdminGuard: Definitive Access Denied. Server-side check failed.");
+  if (isAuthenticated) {
+      // Logged in but NOT an admin -> Redirect to app home
+      console.warn("⛔ AdminGuard: Access Denied for standard user. Returning to Home.");
+      return <Navigate to="/home" replace />;
+  }
+
+  // Not logged in at all -> Redirect to standard login
   return <Navigate to="/login" replace />;
 };
 

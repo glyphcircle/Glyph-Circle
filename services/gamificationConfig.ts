@@ -1,4 +1,4 @@
-
+// gamificationConfig.ts
 export interface Sigil {
   id: string;
   name: string;

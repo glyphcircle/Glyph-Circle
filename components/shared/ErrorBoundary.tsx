@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import Card from './Card';
 import Button from './Button';
 
@@ -14,24 +14,28 @@ interface State {
 /**
  * Standard React Error Boundary component.
  */
-// Fix: Changed to extend Component directly and imported it explicitly to resolve 'setState' and 'props' resolution issues in TypeScript.
-class ErrorBoundary extends Component<Props, State> {
+// Explicitly using React.Component to ensure proper inheritance and access to standard members like setState, state, and props
+class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
   };
 
+  constructor(props: Props) {
+    super(props);
+  }
+
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
+  // Lifecycle method for side-effects when errors are caught
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("🌌 Cosmic Interruption Caught:", error, errorInfo);
   }
 
-  // Use arrow function for class property to correctly bind 'this'
   public handleRetry = () => {
-    // Fix: Accessing setState from the inherited Component class.
+    // Accessing setState from the base React.Component class
     this.setState({ hasError: false, error: null });
     window.location.reload(); 
   }
@@ -44,8 +48,8 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public render(): ReactNode {
+    // Accessing state and props inherited from React.Component
     const { hasError, error } = this.state;
-    // Fix: Accessing props from the inherited Component class.
     const { children } = this.props;
 
     if (hasError) {

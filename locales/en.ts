@@ -1,4 +1,3 @@
-
 export default {
   "logout": "Logout",
   "welcomeToPath": "Welcome to Your Path of Discovery",
@@ -19,10 +18,6 @@ export default {
   "personalGuidanceDesc": "Get personalized remedies and guidance for your life challenges.",
   "matchmaking": "Vedic Matchmaking",
   "matchmakingDesc": "Check compatibility score (Guna Milan) for relationships.",
-  "gemstones": "Gemstones & Mantras",
-  "gemstonesDesc": "Find your power stone and sacred sound vibrations.",
-  "store": "Vedic Store",
-  "storeDesc": "Authentic Rudraksha, Yantras, and Gemstones for your spiritual path.",
   "backToHome": "Back to Home",
   "backToDashboard": "Back to Dashboard",
   "aiPalmReading": "AI Palmistry Reading",

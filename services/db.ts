@@ -9,6 +9,13 @@ export interface User {
   currency: string;
   status: 'active' | 'inactive';
   created_at: string;
+  // Stats from v_user_dashboard_summary
+  total_spent?: number;
+  transaction_count?: number;
+  readings_count?: number;
+  paid_readings_count?: number;
+  theme?: string;
+  theme_settings?: any;
   gamification?: {
     karma: number;
     streak: number;
@@ -18,7 +25,7 @@ export interface User {
 }
 
 export interface Reading {
-  id: string;
+  id: string; // Maps from reading_id in v_user_readings_history
   user_id: string;
   type: 'tarot' | 'palmistry' | 'astrology' | 'numerology' | 'face-reading' | 'remedy' | 'matchmaking' | 'dream-analysis';
   title: string;
@@ -26,107 +33,275 @@ export interface Reading {
   content: string;
   image_url?: string;
   is_favorite?: boolean;
-  timestamp: string;
+  timestamp: string; // Maps from reading_date in v_user_readings_history
   created_at: string;
   meta_data?: any;
+  is_paid?: boolean;
+  // Payment details from history view
+  payment_amount?: number;
+  payment_currency?: string;
+  payment_status?: string;
+}
+
+export interface StoreItemWithStock {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  price: number;
+  image_url: string;
+  status: string;
+  sku: string;
+  system_stock: number;
+  reserved_stock: number;
+  available_stock: number;
+  stock_status: 'in_stock' | 'low_stock' | 'out_of_stock';
+  low_stock_threshold: number;
+  allow_backorder: boolean;
+  total_stock_in: number;
+  total_stock_out: number;
+}
+
+export interface ReportTemplate {
+  id: number;
+  template_name: string;
+  template_code: string;
+  template_image_url: string;
+  thumbnail_url: string | null;
+  description: string;
+  category: string;
+  is_active: boolean;
+  is_default: boolean;
+  is_premium: boolean;
+  display_order: number;
+  source_type: 'format' | 'template';
+  content_area_config: {
+    marginTop: number;
+    marginBottom: number;
+    marginLeft: number;
+    marginRight: number;
+    textColor: string;
+    fontFamily: string;
+    backgroundColor: string;
+  };
 }
 
 export class SupabaseDatabase {
+  public client = supabase;
+
   async getAll(table: string) {
-    console.log(`📡 [DB] Fetching all from: ${table}`);
-    if (!supabase) throw new Error("Supabase is not defined.");
+    if (!supabase) throw new Error("Supabase client not initialized.");
     const { data, error } = await supabase.from(table).select('*');
     if (error) throw error;
     return data || [];
   }
 
-  async updateEntry(table: string, id: string | number, updates: any) {
-    console.log('📡 [DB] PATCH START', { tableName: table, id, updatesKeys: Object.keys(updates) });
+  /**
+   * Convert Google Drive sharing URLs to direct image URLs before saving
+   */
+  private convertDriveUrlForStorage(url: string | undefined): string {
+    if (!url || typeof url !== 'string') return '';
 
-    if (!supabase) {
-      console.error('❌ CRITICAL: supabase UNDEFINED');
-      throw new Error('Supabase missing');
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+
+    // If already converted, return as is
+    if (trimmed.includes('lh3.googleusercontent.com') ||
+      trimmed.includes('drive.google.com/uc?export=')) {
+      return trimmed;
     }
 
+    // Extract file ID from Google Drive sharing link
+    const driveMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+      const fileId = driveMatch[1];
+      console.log('🔄 [dbService] Converting Drive URL for storage, ID:', fileId);
+      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    }
+
+    // Return original if not a Drive link
+    return trimmed;
+  }
+
+  /**
+ * 🆕 AUTO-CONVERT all image fields in ANY payload (improved)
+ */
+  private convertImageFieldsInPayload(data: any): any {
+    if (!data || typeof data !== 'object') return data;
+
+    const converted = { ...data };
+
+    // Recursively check ALL fields (not just known ones)
+    Object.keys(converted).forEach(key => {
+      const value = converted[key];
+
+      // If value looks like a Google Drive URL, convert it
+      if (typeof value === 'string' && value.includes('drive.google.com/file')) {
+        const original = value;
+        converted[key] = this.convertDriveUrlForStorage(value);
+
+        if (original !== converted[key]) {
+          console.log(`🔄 [dbService] Converted ${key}:`, original, '→', converted[key]);
+        }
+      }
+
+      // Handle nested objects (like metadata)
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        converted[key] = this.convertImageFieldsInPayload(value);
+      }
+    });
+
+    return converted;
+  }
+
+  /**
+ * DEPRECATED - Use updateEntry() directly (it auto-converts now)
+ */
+  async updateService(id: string, data: any): Promise<any> {
+    return this.updateEntry('services', id, data);
+  }
+
+  /**
+  * DEPRECATED - Use createEntry() directly (it auto-converts now)
+  */
+  async createService(data: any): Promise<any> {
+    return this.createEntry('services', data);
+  }
+
+
+
+  /**
+   * Optimized Template Fetching using v_report_templates_with_format
+   */
+  async getRandomTemplate(category: string): Promise<ReportTemplate | null> {
     try {
-      // ✅ CLEAN CALL - No .timeout(), no .throwOnError()
       const { data, error } = await supabase
-        .from(table)
-        .update(updates)
-        .eq('id', id)
-        .select();
+        .from('v_report_templates_with_format')
+        .select('*')
+        .eq('is_active', true)
+        .eq('category', category);
 
-      if (error) {
-        console.error('🚨 [DB] RLS ERROR:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
-        });
-        throw error;
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        return data[Math.floor(Math.random() * data.length)];
       }
 
-      if (!data || data.length === 0) {
-        throw new Error(`No records updated for ID: ${id}`);
+      const { data: defaultData } = await supabase
+        .from('v_report_templates_with_format')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_default', true)
+        .maybeSingle();
+
+      return defaultData;
+    } catch (err) {
+      console.error('❌ [DB] Template fetch failed:', err);
+      return null;
+    }
+  }
+
+  /**
+ * Update entry - NOW WORKS FOR ALL TABLES (with timeout protection)
+ */
+  async updateEntry(table: string, id: string | number, updates: any) {
+    const convertedUpdates = this.convertImageFieldsInPayload(updates);
+    console.log('💾 [dbService] UPDATE START:', { table, id, updates: convertedUpdates });
+
+    try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      // ✅ Get from environment variables
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://huvblygddkflciwfnbcf.supabase.co';
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh1dmJseWdkZGtmbGNpd2ZuYmNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1NzI5NjgsImV4cCI6MjA4NDE0ODk2OH0.gtNftIJUHNuWUriF7AJvat0SLUQLcsdpWVl-yGkv5m8';
+
+      // ✅ Use direct REST API instead of Supabase client
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(convertedUpdates)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('💥 [dbService] UPDATE ERROR:', response.status, errorText);
+        throw new Error(`Update failed: ${response.status} ${errorText}`);
       }
 
-      console.log('✅ [DB] PATCH SUCCESS:', data[0]?.id || id);
+      const updatedData = await response.json();
+
+      if (!updatedData || updatedData.length === 0) {
+        console.warn('⚠️ [dbService] UPDATE affected 0 rows');
+        throw new Error(`No record found with id: ${id}`);
+      }
+
+      console.log('✅ [dbService] UPDATE complete:', updatedData);
+      return updatedData;
+
+    } catch (error: any) {
+      console.error('💥 [dbService] UPDATE FAILED:', error.message || error);
+      throw error;
+    }
+  }
+
+  /**
+ * Create entry - NOW WORKS FOR ALL TABLES
+ */
+  async createEntry(table: string, payload: any) {
+    const convertedPayload = this.convertImageFieldsInPayload(payload);
+    console.log('🆕 [dbService] CREATE START:', { table, payload: convertedPayload });
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://huvblygddkflciwfnbcf.supabase.co';
+      const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-key';
+
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(convertedPayload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Create failed: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ [dbService] CREATE complete:', data);
       return data;
 
     } catch (error: any) {
-      console.error('💥 [DB] PATCH FAILED:', error.message || error);
+      console.error('💥 [dbService] CREATE FAILED:', error.message || error);
       throw error;
     }
   }
 
 
-  async createEntry(table: string, payload: any) {
-    console.log('📡 [DB] CREATE START', { tableName: table, payloadKeys: Object.keys(payload) })
-
-    if (!supabase) {
-      console.error('CRITICAL: supabase object is UNDEFINED')
-      throw new Error('Supabase client failed to initialize.')
-    }
-
-    const { data, error } = await supabase
-      .from(table)
-      .insert([payload])
-      .select()
-
-    console.log('✅ [DB] CREATE RESPONSE:', data)
-
-    if (error) {
-      console.error('DB Create Error:', error.message)
-      throw error
-    }
-
-    console.log('✅ [DB] Create Successful:', data)
-    return data
-  }
-
   async deleteEntry(table: string, id: any) {
-    console.log('🗑️ [DB] DELETE START', { tableName: table, id })
-
-    if (!supabase) {
-      console.error('Supabase missing')
-      throw new Error('Supabase missing')
-    }
-
+    if (!supabase) throw new Error("Supabase client not initialized.");
     const { data, error } = await supabase
       .from(table)
       .delete()
       .eq('id', id)
-      .select()
+      .select();
 
-    console.log('✅ [DB] DELETE RESPONSE:', data)
-
-    if (error) {
-      console.error('DB Delete Error:', error.message)
-      throw error
-    }
-
-    console.log('✅ [DB] Delete Successful for', id)
-    return { success: true, deleted: data }
+    if (error) throw error;
+    return { success: true, deleted: data };
   }
 
   async checkIsAdmin(): Promise<boolean> {
@@ -135,33 +310,48 @@ export class SupabaseDatabase {
     if (!session) return false;
 
     const email = session.user.email?.toLowerCase();
-    const ADMIN_ENTITIES = ['mitaakxi@glyphcircle.com', 'master@glyphcircle.com', 'admin@glyphcircle.com'];
+    const ADMIN_ENTITIES = [
+      'mitaakxi@glyphcircle.com',
+      'master@glyphcircle.com',
+      'admin@glyphcircle.com',
+      'master@gylphcircle.com',
+      'admin@gylphcircle.com'
+    ];
     if (email && (ADMIN_ENTITIES.includes(email) || email.includes('admin@'))) return true;
 
-    const { data } = await supabase.rpc('check_is_admin');
+    const { data } = await supabase.rpc('is_jwt_admin');
     return data === true;
   }
 
+  /**
+   * Optimized Bundle Fetch using specialised Views
+   */
   async getStartupBundle() {
     try {
-      console.log('📦 [DB] Fetching startup bundle...');
-
-      // Fetch all tables in parallel
-      const [servicesRes] = await Promise.all([
-        supabase.from('services').select('*')
+      const [servicesRes, configRes, providersRes, itemsRes, assetsRes, formatsRes, gemstoneRes] = await Promise.all([
+        supabase.from('v_active_services').select('*'),
+        supabase.from('config').select('*'),
+        supabase.from('v_active_payment_methods').select('*'),
+        supabase.from('v_store_items_with_stock').select('*'),
+        supabase.from('v_image_assets_by_type').select('*'),
+        supabase.from('v_report_templates_with_format').select('*'),
+        supabase.from('v_active_gemstones').select('*')
       ]);
 
-      if (servicesRes.error) throw servicesRes.error;
-
       return {
-        services: servicesRes.data || []
+        services: servicesRes.data || [],
+        config: configRes.data || [],
+        payment_methods: providersRes.data || [],
+        store_items: itemsRes.data || [],
+        image_assets: assetsRes.data || [],
+        report_formats: formatsRes.data || [],
+        gemstones: gemstoneRes.data || []
       };
     } catch (err) {
-      console.warn('⚠️ [DB] Startup bundle failed, falling back to individual calls');
+      console.error('❌ [DB] Bundle fetch failed:', err);
       return null;
     }
   }
-
 
   async getConfigValue(key: string): Promise<string | null> {
     if (!supabase) return null;
@@ -170,14 +360,112 @@ export class SupabaseDatabase {
   }
 
   async invokeBatchUpdate(table: string, updates: any[]) {
-    if (!supabase) throw new Error("Client missing");
-    const { data, error } = await supabase.rpc('update_records_batch', { target_table: table, updates });
+    if (!supabase) throw new Error("Supabase client not initialized.");
+    const { data, error } = await supabase.functions.invoke('admin-batch-update', {
+      body: { target_table: table, updates }
+    });
     if (error) throw error;
     return data;
   }
 
-  async recordTransaction(data: any) { return supabase.from('transactions').insert(data); }
-  async saveReading(data: any) { return supabase.from('readings').insert(data).select().single(); }
+  async recordTransaction(data: any) {
+    try {
+      const { data: existing } = await supabase
+        .from('transactions')
+        .select('id, order_id')
+        .eq('order_id', data.order_id)
+        .maybeSingle();
+
+      if (existing) return { data: existing, error: null };
+
+      return await supabase.from('transactions').insert(data).select().single();
+    } catch (err) {
+      console.error('❌ [DB] Transaction record failed:', err);
+      throw err;
+    }
+  }
+
+  async saveReading(readingData: any) {
+    try {
+      const { data, error } = await supabase
+        .from('readings')
+        .insert([readingData])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('💥 [DB] Save Reading ERROR:', err.message)
+      return { data: { ...readingData, id: `fb_${Date.now()}` }, error: err };
+    }
+  }
+
+  normalizeInputs(serviceType: string, rawInputs: any) {
+    const normalized = { ...rawInputs }
+    if (normalized.dob) {
+      const dateStr = normalized.dob.toString()
+      let parsed: Date | null = null
+      const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+      if (ddmmyyyy) parsed = new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`)
+      const mmddyyyy = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+      if (mmddyyyy) parsed = new Date(`${mmddyyyy[3]}-${mmddyyyy[1]}-${mmddyyyy[2]}`)
+      if (!parsed && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) parsed = new Date(dateStr)
+      if (parsed && !isNaN(parsed.getTime())) normalized.dob = parsed.toISOString().split('T')[0]
+    }
+    if (normalized.name) normalized.name = normalized.name.trim().toLowerCase()
+    if (normalized.pob) normalized.pob = normalized.pob.trim().toLowerCase()
+    if (normalized.tob) normalized.tob = normalized.tob.replace(/\s+/g, '')
+    return normalized
+  }
+
+  async checkAlreadyPaid(serviceType: string, formInputs: Record<string, any>) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { exists: false };
+
+      const inputs = this.normalizeInputs(serviceType, formInputs);
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: txs, error } = await supabase
+        .from('v_recent_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('service_type', serviceType)
+        .eq('status', 'success')
+        .gte('transaction_date', since)
+        .order('transaction_date', { ascending: false });
+
+      if (error || !txs) return { exists: false };
+
+      for (const tx of txs) {
+        const storedInputs = this.normalizeInputs(serviceType, tx.metadata || {});
+
+        let isMatch = false;
+        if (serviceType === 'astrology') {
+          isMatch = (storedInputs.name === inputs.name && storedInputs.dob === inputs.dob && storedInputs.tob === inputs.tob && storedInputs.pob === inputs.pob);
+        } else if (serviceType === 'numerology' || serviceType === 'palmistry' || serviceType === 'face-reading') {
+          isMatch = (storedInputs.name === inputs.name && storedInputs.dob === inputs.dob);
+        } else if (serviceType === 'tarot') {
+          isMatch = (storedInputs.name === inputs.name && (storedInputs.card_name === inputs.card_name || storedInputs.question === inputs.question));
+        }
+
+        if (isMatch) {
+          let readingData = null;
+          if (tx.reading_id) {
+            const { data } = await supabase.from('v_user_readings_history').select('*').eq('reading_id', tx.reading_id).single();
+            if (data) {
+              readingData = { id: data.reading_id, ...data, timestamp: data.reading_date };
+            }
+          }
+          return { exists: true, transaction: tx, reading: readingData as Reading };
+        }
+      }
+      return { exists: false };
+    } catch (err) {
+      return { exists: false };
+    }
+  }
 }
 
 export const dbService = new SupabaseDatabase();

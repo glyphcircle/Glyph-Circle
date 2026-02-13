@@ -259,3 +259,4 @@ export const SmartCitySearch: React.FC<SmartCitySearchProps> = ({ value, onChang
     </div>
   );
 };
+

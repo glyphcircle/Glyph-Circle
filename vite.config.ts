@@ -1,18 +1,38 @@
-
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Fix: Cast process to any to ensure access to cwd() if the environment's Process type is incomplete
   const env = loadEnv(mode, (process as any).cwd(), '');
   const apiKey = env.API_KEY || '';
 
+  // Check if we want HTTPS (for localhost only)
+  const useHttps = process.env.VITE_HTTPS === 'true';
+
   return {
     plugins: [react()],
-    base: './', 
-    
+    base: './',
+
+    server: {
+      // ✅ Only use HTTPS when explicitly enabled
+      https: useHttps,
+      port: 5173,
+      host: '0.0.0.0', // Listen on all interfaces
+      strictPort: true,
+    },
+
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, './'),
+      },
+    },
+
     define: {
       'process.env.API_KEY': JSON.stringify(apiKey),
     },

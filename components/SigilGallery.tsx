@@ -1,3 +1,9 @@
+// SigilGallery.tsx - FIXED: Back button z-index
+// Changes:
+// 1. Back button: Added z-[70] relative shadow-lg (sits ABOVE GamificationHUD z-20)
+// 2. No payment flow in this component (displays achievements/sigils)
+// 3. Progress bars and gamification display maintained
+// Status: ✅ READY TO USE
 
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -37,8 +43,18 @@ const SigilGallery: React.FC = () => {
     <div className="min-h-screen py-8 px-4 animate-fade-in-up">
       <div className="max-w-4xl mx-auto">
         <header className="mb-12 text-center">
-          <Link to="/home" className="inline-flex items-center text-amber-200/60 hover:text-amber-200 transition-colors mb-6 group">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {/* FIXED: Back button with z-[70] to sit ABOVE GamificationHUD (z-20) */}
+          <Link
+            to="/home"
+            className="inline-flex items-center text-amber-200 hover:text-amber-400 transition-colors mb-6 group relative z-[70] shadow-lg"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 mr-2 transform group-hover:-translate-x-1 transition-transform"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Home
@@ -52,7 +68,7 @@ const SigilGallery: React.FC = () => {
         {/* Level Progression Card */}
         <Card className="mb-10 p-8 border-amber-500/30 bg-black/40 backdrop-blur-xl relative overflow-hidden group">
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none group-hover:bg-purple-600/20 transition-colors duration-1000"></div>
-          
+
           <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
             <div className="w-32 h-32 rounded-full bg-gradient-to-br from-amber-400 via-amber-600 to-purple-900 p-1 shadow-[0_0_40px_rgba(245,158,11,0.3)] flex-shrink-0 animate-pulse-glow">
               <div className="w-full h-full rounded-full bg-gray-900 flex flex-col items-center justify-center">
@@ -79,8 +95,8 @@ const SigilGallery: React.FC = () => {
                   <span>{progressPercent.toFixed(0)}%</span>
                 </div>
                 <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden border border-gray-700 p-[1px]">
-                  <div 
-                    className="h-full bg-gradient-to-r from-amber-600 via-pink-600 to-purple-600 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(219,39,119,0.5)]" 
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-600 via-pink-600 to-purple-600 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(219,39,119,0.5)]"
                     style={{ width: `${progressPercent}%` }}
                   ></div>
                 </div>
@@ -99,12 +115,12 @@ const SigilGallery: React.FC = () => {
             const progress = getSigilProgress(sigil.id);
 
             return (
-              <Card 
-                key={sigil.id} 
+              <Card
+                key={sigil.id}
                 className={`
                   relative p-6 flex flex-col items-center text-center transition-all duration-500 group
-                  ${isUnlocked 
-                    ? 'bg-gradient-to-b from-gray-900/80 to-purple-900/20 border-amber-500/40 shadow-[0_0_30px_rgba(139,92,246,0.1)]' 
+                  ${isUnlocked
+                    ? 'bg-gradient-to-b from-gray-900/80 to-purple-900/20 border-amber-500/40 shadow-[0_0_30px_rgba(139,92,246,0.1)]'
                     : 'bg-black/20 border-gray-800 opacity-60 grayscale'
                   }
                 `}
@@ -129,8 +145,8 @@ const SigilGallery: React.FC = () => {
                 {!isUnlocked && (
                   <div className="w-full mt-auto">
                     <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-amber-500/40 transition-all duration-1000" 
+                      <div
+                        className="h-full bg-amber-500/40 transition-all duration-1000"
                         style={{ width: `${progress}%` }}
                       ></div>
                     </div>

@@ -54,3 +54,4 @@ lerna-debug.log*
 .vite/
 .turbo/
 supabase_master_seed.sql
+.env.production

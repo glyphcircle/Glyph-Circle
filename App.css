@@ -1,43 +1,76 @@
-
 /* App.css - Mystical Theme Global Styles */
 
 :root {
-  /* BASE DEFAULT (Mystic Night) */
-  --color-bg-base: #0F0F23;
-  --color-bg-surface: rgba(15, 15, 35, 0.85);
+  /* Dynamic opacity variables controlled by ThemeContext */
+  --hover-opacity: 0.85;
+  --card-opacity: 0.95;
+
+  /* BASE DEFAULT (Dark Mode / Default Gold) */
+  --color-bg-base: #0B0F1F;
+  --color-bg-surface: rgba(15, 15, 35, 0.9);
   --color-bg-hover: rgba(139, 92, 246, 0.2);
-  --color-text-base: #fffbeb;
-  --color-text-accent: #fbbf24;
-  --color-button-text: #1e1b4b; /* Dark text for gold buttons */
-  --color-border: rgba(245, 158, 11, 0.3);
+  --color-text-base: #E8D7BA;
+  --color-text-accent: #D4A574;
+  --color-button-text: #1e1b4b;
+  --color-border: rgba(212, 165, 116, 0.2);
   --color-primary-glow: #8B5CF6;
-  
+
   --safe-top: env(safe-area-inset-top, 20px);
   --safe-bottom: env(safe-area-inset-bottom, 20px);
 }
 
-/* THEME: MYSTIC NIGHT (Default) */
-[data-theme='default'], [data-theme='theme_default'] {
-  --color-bg-base: #0F0F23;
-  --color-bg-surface: rgba(20, 20, 40, 0.9);
-  --color-bg-hover: rgba(139, 92, 246, 0.3);
-  --color-text-base: #fffbeb;
-  --color-text-accent: #fbbf24;
-  --color-button-text: #1e1b4b;
-  --color-border: rgba(245, 158, 11, 0.3);
-  --color-primary-glow: #8B5CF6;
+/* Light Mode Overrides */
+[data-theme='light'] {
+  --color-bg-base: #F5F0E8;
+  --color-bg-surface: rgba(255, 255, 255, 0.95);
+  --color-bg-hover: rgba(139, 111, 71, 0.1);
+  --color-text-base: #2C2416;
+  --color-text-accent: #8B6F47;
+  --color-button-text: #F5F0E8;
+  --color-border: rgba(139, 111, 71, 0.3);
+  --color-primary-glow: #A68B5B;
 }
 
-/* THEME: ROYAL MAROON & GOLD */
-[data-theme='diwali'], [data-theme='theme_solar'] {
-  --color-bg-base: #3b0303; 
-  --color-bg-surface: rgba(60, 5, 5, 0.95);
-  --color-bg-hover: rgba(245, 158, 11, 0.2);
-  --color-text-base: #ffffff;
-  --color-text-accent: #F59E0B; 
-  --color-button-text: #3b0303; 
-  --color-border: rgba(245, 158, 11, 0.4);
-  --color-primary-glow: #d97706;
+/* Color Variant: Blue */
+[data-color='blue'] {
+  --color-text-accent: #4A9EFF;
+  --color-primary-glow: #2E7DD6;
+  --color-border: rgba(74, 158, 255, 0.3);
+}
+
+/* Color Variant: Purple */
+[data-color='purple'] {
+  --color-text-accent: #A855F7;
+  --color-primary-glow: #7C3AED;
+  --color-border: rgba(168, 85, 247, 0.3);
+}
+
+/* Color Variant: Green */
+[data-color='green'] {
+  --color-text-accent: #10B981;
+  --color-primary-glow: #059669;
+  --color-border: rgba(16, 185, 129, 0.3);
+}
+
+/* Color Variant: Orange */
+[data-color='orange'] {
+  --color-text-accent: #F97316;
+  --color-primary-glow: #EA580C;
+  --color-border: rgba(249, 115, 22, 0.3);
+}
+
+/* Color Variant: Red */
+[data-color='red'] {
+  --color-text-accent: #EF4444;
+  --color-primary-glow: #DC2626;
+  --color-border: rgba(239, 68, 68, 0.3);
+}
+
+/* Color Variant: Teal */
+[data-color='teal'] {
+  --color-text-accent: #14B8A6;
+  --color-primary-glow: #0D9488;
+  --color-border: rgba(20, 184, 166, 0.3);
 }
 
 body {
@@ -49,41 +82,71 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Accessibility Focus Styles */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-text-accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 10px var(--color-primary-glow);
+  transition: outline-offset 0.2s ease;
+}
+
+/* Removed global opacity that made elements look blurry */
+.imperial-card,
+.sacred-boundary,
+div[role="button"],
+button {
+  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.imperial-card:hover,
+button:hover,
+a:hover {
+  transform: translateY(-4px);
+}
+
 /* 🔱 SACRED APPLICATION BOUNDARY */
-#root > div {
+#root>div {
   position: relative;
-  border: 12px double rgba(245, 158, 11, 0.1);
+  border: 12px double var(--color-border);
   min-height: 100vh;
   box-sizing: border-box;
 }
 
-/* 📜 SACRED REPORT BOUNDARY */
-.sacred-report-frame {
-  border: 2px solid #d4af37;
-  outline: 6px double #d4af37;
-  outline-offset: -12px;
-  box-shadow: inset 0 0 50px rgba(212, 175, 55, 0.1);
-}
-
-/* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.05); 
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(139, 69, 19, 0.3);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 69, 19, 0.5);
+  background: rgba(0, 0, 0, 0.05);
 }
 
-.perspective-1000 { perspective: 1000px; }
-.transform-style-3d { transform-style: preserve-3d; }
-.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.rotate-y-180 { transform: rotateY(180deg); }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-text-accent);
+  opacity: 0.3;
+  border-radius: 10px;
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
 
 ::selection {
   background: var(--color-primary-glow);
@@ -91,10 +154,20 @@ body {
 }
 
 @keyframes float-gentle {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-5px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
 }
-.animate-float-gentle { animation: float-gentle 4s ease-in-out infinite; }
+
+.animate-float-gentle {
+  animation: float-gentle 4s ease-in-out infinite;
+}
 
 .feature-image-container {
   position: relative;
@@ -111,19 +184,168 @@ body {
   transition: transform 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-.group:hover .dynamic-image { transform: scale(1.08); }
-.pb-safe { padding-bottom: calc(4rem + var(--safe-bottom)); }
+.group:hover .dynamic-image {
+  transform: scale(1.08);
+}
 
-/* Report Specific Print Styles */
+.pb-safe {
+  padding-bottom: calc(4rem + var(--safe-bottom));
+}
+
+.gold-gradient-text {
+  background: linear-gradient(to bottom, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Target specific accent text to use the CSS variable */
+.text-skin-accent {
+  color: var(--color-text-accent) !important;
+}
+
 @media print {
-  .no-print { display: none !important; }
-  body { 
-    background: white !important; 
-    padding: 0 !important; 
-    margin: 0 !important; 
+  .no-print {
+    display: none !important;
   }
+
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
   @page {
     size: A4;
     margin: 0;
   }
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+.animate-fade-out {
+  animation: fadeOut 5s ease-in-out forwards;
+}
+
+/* --- PRICING SECTION ALIGNMENT FIXES --- */
+.pricing-section-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  align-items: stretch;
+}
+
+.pricing-card-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pricing-card-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card-button-footer {
+  margin-top: auto;
+}
+
+@keyframes spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-spin-reverse {
+  animation: spin-reverse 1.5s linear infinite;
+}
+
+/* PDF Styles */
+@media print {
+
+  button,
+  .no-print,
+  [role="button"],
+  .download-button {
+    display: none !important;
+  }
+
+  .section-container {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Add some breathing room when scrolling to sections */
+.report-preview,
+.payment-section {
+  scroll-margin-top: 100px;
+  /* Space from top of viewport */
+}
+
+/* Highlight section when scrolled to */
+.report-preview:target,
+.payment-section:target {
+  animation: highlight-fade 2s ease;
+}
+
+@keyframes highlight-fade {
+  0% {
+    background-color: rgba(251, 191, 36, 0.2);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Add to your global CSS or component CSS */
+.animate-fade-in-up {
+  scroll-margin-top: 120px;
+  /* Adjust based on your header height */
+}
+
+/* Automatically add scroll
+/* Smooth fade-in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-in-out;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
 }
