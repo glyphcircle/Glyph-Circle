@@ -14,176 +14,155 @@ import { supabase } from '../services/supabaseClient';
 import { calculateMoonPhase, MoonPhaseData } from '../services/moonPhaseService';
 
 const MoonPhaseReading: React.FC = () => {
-    const [birthDate, setBirthDate] = useState<string>('');
-    const [moonData, setMoonData] = useState<MoonPhaseData | null>(null);
-    const [fullReading, setFullReading] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [progress, setProgress] = useState<number>(0);
-    const [error, setError] = useState<string>('');
-    const [isPaid, setIsPaid] = useState<boolean>(false);
-    const [servicePrice, setServicePrice] = useState(49);
-    const [readingId, setReadingId] = useState<string | null>(null);
+  const [birthDate, setBirthDate] = useState<string>('');
+  const [moonData, setMoonData] = useState<MoonPhaseData | null>(null);
+  const [fullReading, setFullReading] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [error, setError] = useState<string>('');
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [servicePrice, setServicePrice] = useState(49);
+  const [readingId, setReadingId] = useState<string | null>(null);
 
-    const reportRef = useRef<HTMLDivElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
-    const { t, language } = useTranslation();
-    const { openPayment } = usePayment();
-    const { user } = useAuth();
-    const { db } = useDb();
+  const { t, language } = useTranslation();
+  const { openPayment } = usePayment();
+  const { user } = useAuth();
+  const { db } = useDb();
 
-    const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_moon')?.path ||
-        "https://images.unsplash.com/photo-1509803874385-db7c23652552?q=80&w=800";
+  const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_moon')?.path ||
+    "https://images.unsplash.com/photo-1509803874385-db7c23652552?q=80&w=800";
 
-    // Fetch service price
-    useEffect(() => {
-        fetchServicePrice();
-    }, []);
+  // Fetch service price
+  useEffect(() => {
+    fetchServicePrice();
+  }, []);
 
-    const fetchServicePrice = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('services')
-                .select('price')
-                .eq('name', 'Moon Phase Reading')
-                .eq('status', 'active')
-                .single();
+  const fetchServicePrice = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('price')
+        .eq('name', 'Moon Phase Reading')
+        .eq('status', 'active')
+        .single();
 
-            if (!error && data) {
-                setServicePrice(data.price);
-                console.log('✅ Moon Phase price loaded:', data.price);
-            }
-        } catch (err) {
-            console.error('Error fetching price:', err);
-        }
-    };
+      if (!error && data) {
+        setServicePrice(data.price);
+        console.log('✅ Moon Phase price loaded:', data.price);
+      }
+    } catch (err) {
+      console.error('Error fetching price:', err);
+    }
+  };
 
-    // Auto-scroll when paid
-    useEffect(() => {
-        if (isPaid && reportRef.current) {
-            setTimeout(() => {
-                reportRef.current?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }, 300);
-        }
-    }, [isPaid]);
+  // Auto-scroll when paid
+  useEffect(() => {
+    if (isPaid && reportRef.current) {
+      setTimeout(() => {
+        reportRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }, 300);
+    }
+  }, [isPaid]);
 
-    const generateReadingKey = (date: string): string => {
-        const key = `moon_${user?.id || 'anon'}_${date}`;
-        return key.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    };
+  const generateReadingKey = (date: string): string => {
+    const key = `moon_${user?.id || 'anon'}_${date}`;
+    return key.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  };
 
-    const generateFullReading = (data: MoonPhaseData): string => {
-        return `
-# ${data.phaseName} ${data.phaseEmoji} - Your Lunar Blueprint
+  const generateFullReading = (data: MoonPhaseData): string => {
+    return `# ${data.phaseName} ${data.phaseEmoji} - Your Lunar Blueprint
 
 ## Your Celestial Identity
 
-Born under the **${data.phaseName}** at **${data.percentage.toFixed(1)}% illumination**, your soul carries the archetype of **${data.personalityType}**. The moon was positioned at **${data.angle.toFixed(1)}°** in the zodiac sign of **${data.zodiac Sign
-    }**, within the sacred lunar mansion of ** ${ data.nakshatra }** Nakshatra.
+Born under the **${data.phaseName}** at **${data.percentage.toFixed(1)}% illumination**, your soul carries the archetype of **${data.personalityType}**. The moon was positioned at **${data.angle.toFixed(1)}°** in the zodiac sign of **${data.zodiacSign}**, within the sacred lunar mansion of **${data.nakshatra}** Nakshatra.
 
 ## Personality Essence
 
-${ data.traits.map(t => `**${t}**`).join(' • ') }
+${data.traits.map(t => `**${t}**`).join(' • ')}
 
-Your lunar personality is characterized by a unique blend of energies that shape how you navigate the world.${ data.emotionalNature }
+Your lunar personality is characterized by a unique blend of energies that shape how you navigate the world. ${data.emotionalNature}
 
 ## Core Strengths
 
-${ data.strengths.map((s, i) => `${i + 1}. **${s}**`).join('\n') }
+${data.strengths.map((s, i) => `${i + 1}. **${s}**`).join('\n')}
 
-These innate gifts are your spiritual superpowers.Embrace them fully, for they are the tools through which your soul expresses its highest potential.
+These innate gifts are your spiritual superpowers. Embrace them fully, for they are the tools through which your soul expresses its highest potential.
 
 ## Growth Challenges
 
-${ data.challenges.map((c, i) => `${i + 1}. *${c}*`).join('\n') }
+${data.challenges.map((c, i) => `${i + 1}. *${c}*`).join('\n')}
 
-These challenges are not obstacles but invitations for growth.Each one represents a doorway to deeper self - mastery and spiritual evolution.
+These challenges are not obstacles but invitations for growth. Each one represents a doorway to deeper self-mastery and spiritual evolution.
 
 ## Your Life Purpose
 
-        ** ${ data.lifePurpose }**
+**${data.lifePurpose}**
 
-            This is not merely a career path or goal—it is the essence of why your soul chose to incarnate at this particular moment in cosmic time.
+This is not merely a career path or goal—it is the essence of why your soul chose to incarnate at this particular moment in cosmic time.
 
 ## Spiritual Path & Soul Mission
 
-        ** Spiritual Path:** ${ data.spiritualPath }
+**Spiritual Path:** ${data.spiritualPath}
 
-** Karmic Lesson:** ${ data.karmicLesson }
+**Karmic Lesson:** ${data.karmicLesson}
 
-** Soul Mission:** ${ data.soulMission }
+**Soul Mission:** ${data.soulMission}
 
 ## Emotional & Intuitive Nature
 
-Your emotional landscape is: ** ${ data.emotionalNature }**
+Your emotional landscape is: **${data.emotionalNature}**
 
 ### Intuitive Gifts
-${ data.intuitiveGifts.map(g => `• ${g}`).join('\n') }
+${data.intuitiveGifts.map(g => `• ${g}`).join('\n')}
 
 ## Relationships & Love
 
-        ** ${ data.relationshipStyle }**
+**${data.relationshipStyle}**
 
-            Your moon phase influences how you give and receive love, the types of partners you attract, and the lessons you're meant to learn through intimate connections.
+Your moon phase influences how you give and receive love, the types of partners you attract, and the lessons you're meant to learn through intimate connections.
 
 ## Career & Life Work
 
-        ** ${ data.careerGuidance }**
+**${data.careerGuidance}**
 
-            Your lunar energy naturally aligns with certain vocations and life paths.Trust these inclinations—they are cosmic breadcrumbs leading you toward your dharma.
+Your lunar energy naturally aligns with certain vocations and life paths. Trust these inclinations—they are cosmic breadcrumbs leading you toward your dharma.
 
 ## Lucky Elements & Power Tools
 
 ### Colors
-${ data.luckyElements.colors.map(c => `• ${c}`).join('\n') }
+${data.luckyElements.colors.map(c => `• ${c}`).join('\n')}
 
 ### Numbers
-${ data.luckyElements.numbers.join(', ') }
+${data.luckyElements.numbers.join(', ')}
 
 ### Gemstones
-${ data.luckyElements.gemstones.map(g => `• ${g}`).join('\n') }
+${data.luckyElements.gemstones.map(g => `• ${g}`).join('\n')}
 
 ### Power Days
-${ data.luckyElements.days.map(d => `• ${d}`).join('\n') }
+${data.luckyElements.days.map(d => `• ${d}`).join('\n')}
 
 ## Manifestation Power Index
 
 Your lunar birth phase grants you specific manifestation abilities across different life areas:
 
-- ** Wealth & Abundance:** ${ data.manifestationPower.wealth }%
-- ** Love & Relationships:** ${ data.manifestationPower.love }%
-- ** Career & Purpose:** ${ data.manifestationPower.career }%
-- ** Health & Vitality:** ${ data.manifestationPower.health }%
-- ** Spiritual Growth:** ${ data.manifestationPower.spiritual }%
-
-## Sacred Practices for Your Moon Phase
-
-### Daily Rituals
-    1. ** Morning:** Meditate during the hour after sunrise, visualizing yourself bathed in ${ data.phaseName } moonlight
-    2. ** Evening:** Journal about your emotional experiences and intuitive insights
-    3. ** Weekly:** Perform a ritual on your power day(${ data.luckyElements.days[0] })
-
-### Moon Phase Alignment
-    Work **with** your birth moon phase whenever it returns in the monthly lunar cycle.This is when your manifestation power is at its peak.
-
-### Crystal Grid
-Create a crystal grid using ${ data.luckyElements.gemstones[0]}, ${ data.luckyElements.gemstones[1]}, and ${ data.luckyElements.gemstones[2]} to amplify your natural lunar energies.
+- **Wealth & Abundance:** ${data.manifestationPower.wealth}%
+- **Love & Relationships:** ${data.manifestationPower.love}%
+- **Career & Purpose:** ${data.manifestationPower.career}%
+- **Health & Vitality:** ${data.manifestationPower.health}%
+- **Spiritual Growth:** ${data.manifestationPower.spiritual}%
 
 ## Closing Wisdom
 
-Born under the ${ data.phaseName }, you are a child of both light and shadow, carrying within you the wisdom of lunar cycles and the power of cosmic timing.Your journey is unique, your path sacred, and your purpose divinely ordained.
+Born under the ${data.phaseName}, you are a child of both light and shadow, carrying within you the wisdom of lunar cycles and the power of cosmic timing. Your journey is unique, your path sacred, and your purpose divinely ordained.
 
-        Remember: The moon's phases teach us that all of life is cyclical. Honor your own rhythms, trust your intuitive nature, and know that you are exactly where you need to be on your soul's evolutionary journey.
-
-** Blessed be your path, Lunar Soul.** 🌙✨
-
-    ---
-
-* This reading is based on Vedic lunar astrology(Chandra Jyotish) and Western lunar phase personality research.May it serve as a guide on your journey of self - discovery and spiritual awakening.*
-        `;
+**Blessed be your path, Lunar Soul.** 🌙✨`;
   };
+
 
   const saveToDatabase = async (data: MoonPhaseData, reading: string) => {
     try {
@@ -197,7 +176,7 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
         .insert([{
           user_id: user?.id || null,
           type: 'moon-phase',
-          title: `Moon Phase Reading - ${ data.phaseName } `,
+          title: `Moon Phase Reading - ${data.phaseName} `,
           subtitle: data.personalityType,
           content: reading,
           is_paid: isPaid,
@@ -275,14 +254,14 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
         .insert([{
           user_id: user?.id || null,
           service_type: 'moon-phase',
-          service_title: `Moon Phase Reading - ${ moonData?.phaseName } `,
+          service_title: `Moon Phase Reading - ${moonData?.phaseName} `,
           amount: servicePrice,
           currency: 'INR',
           status: 'success',
           payment_method: 'upi',
           payment_provider: 'manual',
           reading_id: readId,
-          order_id: `MOON_${ Date.now() }_${ Math.random().toString(36).substr(2, 9) } `,
+          order_id: `MOON_${Date.now()}_${Math.random().toString(36).substr(2, 9)} `,
           metadata: {
             birth_date: birthDate,
             moon_phase: moonData?.phaseName,
@@ -344,7 +323,7 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
 
     } catch (err: any) {
       clearInterval(timer);
-      setError(`Failed to calculate moon phase: ${ err.message } `);
+      setError(`Failed to calculate moon phase: ${err.message} `);
     } finally {
       setIsLoading(false);
     }
@@ -399,11 +378,11 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
         {/* Moon circle */}
         <div className="absolute inset-0 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 shadow-2xl">
           {/* Illuminated portion */}
-          <div 
+          <div
             className="absolute inset-0 rounded-full bg-gradient-to-br from-white to-gray-300"
             style={{
-              clipPath: moonData.percentage < 50 
-                ? `inset(0 ${ 100 - (moonData.percentage * 2) } % 0 0)`
+              clipPath: moonData.percentage < 50
+                ? `inset(0 ${100 - (moonData.percentage * 2)} % 0 0)`
                 : `inset(0 0 0 ${((moonData.percentage - 50) * 2)}%)`
             }}
           />
@@ -471,9 +450,9 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
                   <span className="text-purple-400 font-bold">{power}%</span>
                 </div>
                 <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-gradient-to-r from-purple-600 to-pink-500"
-                    style={{ width: `${ power }% ` }}
+                    style={{ width: `${power}% ` }}
                   />
                 </div>
               </div>
@@ -518,8 +497,8 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
                 </p>
               </div>
 
-              <Button 
-                onClick={handleCalculate} 
+              <Button
+                onClick={handleCalculate}
                 disabled={isLoading}
                 className="w-full bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 border-purple-400/50 shadow-lg"
               >
@@ -643,7 +622,7 @@ Born under the ${ data.phaseName }, you are a child of both light and shadow, ca
                 <FullReport
                   reading={fullReading}
                   category="moon-phase"
-                  title={`${ moonData.phaseName } Reading`}
+                  title={`${moonData.phaseName} Reading`}
                   subtitle={moonData.personalityType}
                   imageUrl={cloudManager.resolveImage(reportImage)}
                   chartData={moonData}

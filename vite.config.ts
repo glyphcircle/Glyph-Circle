@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  const env = loadEnv(mode, process.cwd(), '');
   const apiKey = env.API_KEY || '';
 
   // Check if we want HTTPS (for localhost only)
@@ -20,12 +20,13 @@ export default defineConfig(({ mode }) => {
     base: './',
 
     server: {
-      // ✅ Only use HTTPS when explicitly enabled
-      https: useHttps,
+      // ✅ FIXED: Remove https completely for default behavior
+      ...(useHttps && { https: true }),
       port: 5173,
-      host: '0.0.0.0', // Listen on all interfaces
+      host: '0.0.0.0',
       strictPort: true,
     },
+
 
     resolve: {
       alias: {

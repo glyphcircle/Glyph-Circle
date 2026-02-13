@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePayment } from '../contexts/PaymentContext';
-import { useAuth } from '../contexts/AuthContext';
+import { usePayment } from '../context/PaymentContext';
+import { useAuth } from '../context/AuthContext';
+
 import {
     createShubhMuhuratReading,
     updateMuhuratPaymentStatus,

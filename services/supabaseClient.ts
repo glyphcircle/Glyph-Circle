@@ -16,7 +16,7 @@ if (!(window as any).__SUPABASE_CLIENT__) {
             flowType: 'implicit' as const,
             storage: window.localStorage,
             storageKey: 'vedic-astro-auth-v2', // ✅ NEW storage key to avoid conflicts
-            lock: false, // ✅ Disable locks
+            //lock: false, // ✅ Disable locks
         },
         global: {
             headers: {
