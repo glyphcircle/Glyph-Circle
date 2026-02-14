@@ -1,307 +1,234 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { dbService } from '../services/db';
 
 interface LogEntry {
     id: number;
-    type: 'log' | 'error' | 'warn' | 'info';
-    message: string;
     timestamp: string;
+    type: 'log' | 'warn' | 'error';
+    message: string;
+    data?: any;
 }
 
 export const DebugConsole: React.FC = () => {
+    const { theme } = useTheme();
+    const isLight = theme.mode === 'light';
     const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [isVisible, setIsVisible] = useState(true);
+    const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
-    const [isMaximized, setIsMaximized] = useState(false);
-
-    // Dragging state
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-    const [position, setPosition] = useState({ x: 20, y: window.innerHeight - 300 });
-
-    // Resizing state
-    const [isResizing, setIsResizing] = useState(false);
-    const [size, setSize] = useState({ width: 400, height: 280 });
-
+    const [isEnabled, setIsEnabled] = useState(false); // ✅ NEW: Check if enabled
+    const logIdCounter = useRef(0);
     const consoleRef = useRef<HTMLDivElement>(null);
-    const logIdRef = useRef(0); // ✅ Use ref instead of let variable
 
+    // ✅ Check if debug console is enabled in admin config
     useEffect(() => {
-        // Intercept console methods
-        const originalLog = console.log;
-        const originalError = console.error;
-        const originalWarn = console.warn;
-        const originalInfo = console.info;
-
-        const addLog = (type: LogEntry['type'], args: any[]) => {
-            const message = args.map(arg =>
-                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' ');
-
-            const timestamp = new Date().toLocaleTimeString();
-
-            // ✅ Use setTimeout to avoid state update during render
-            setTimeout(() => {
-                setLogs(prev => [...prev.slice(-49), {
-                    id: logIdRef.current++,
-                    type,
-                    message,
-                    timestamp
-                }]);
-            }, 0);
+        const checkEnabled = async () => {
+            try {
+                const enabled = await dbService.getConfigValue('debug_console_enabled');
+                setIsEnabled(enabled === 'true' || enabled === true);
+            } catch (err) {
+                console.debug('Debug console config not set, defaulting to disabled');
+                setIsEnabled(false);
+            }
         };
 
-        console.log = (...args) => {
-            originalLog(...args);
-            addLog('log', args);
-        };
+        checkEnabled();
 
-        console.error = (...args) => {
-            originalError(...args);
-            addLog('error', args);
-        };
-
-        console.warn = (...args) => {
-            originalWarn(...args);
-            addLog('warn', args);
-        };
-
-        console.info = (...args) => {
-            originalInfo(...args);
-            addLog('info', args);
-        };
-
-        // Catch unhandled errors
-        const handleError = (event: ErrorEvent) => {
-            addLog('error', [`Uncaught Error: ${event.message} at ${event.filename}:${event.lineno}`]);
-        };
-
-        const handleRejection = (event: PromiseRejectionEvent) => {
-            addLog('error', [`Unhandled Promise Rejection: ${event.reason}`]);
-        };
-
-        window.addEventListener('error', handleError);
-        window.addEventListener('unhandledrejection', handleRejection);
-
-        return () => {
-            console.log = originalLog;
-            console.error = originalError;
-            console.warn = originalWarn;
-            console.info = originalInfo;
-            window.removeEventListener('error', handleError);
-            window.removeEventListener('unhandledrejection', handleRejection);
-        };
+        // Poll every 5 seconds to check if admin changed the setting
+        const interval = setInterval(checkEnabled, 5000);
+        return () => clearInterval(interval);
     }, []);
 
-    // ... rest of the component stays the same (dragging, resizing, etc.) ...
-
-    // Handle dragging
+    // Intercept console methods
     useEffect(() => {
-        if (!isDragging) return;
+        if (!isEnabled) return; // ✅ Don't intercept if disabled
 
-        const handleMouseMove = (e: MouseEvent) => {
-            setPosition({
-                x: e.clientX - dragOffset.x,
-                y: e.clientY - dragOffset.y
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+
+        const addLog = (type: 'log' | 'warn' | 'error', args: any[]) => {
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    try {
+                        return JSON.stringify(arg, null, 2);
+                    } catch {
+                        return String(arg);
+                    }
+                }
+                return String(arg);
+            }).join(' ');
+
+            setLogs(prev => {
+                const newLog: LogEntry = {
+                    id: logIdCounter.current++,
+                    timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                    type,
+                    message,
+                    data: args.length > 1 ? args : undefined
+                };
+                return [...prev.slice(-99), newLog]; // Keep last 100 logs
             });
         };
 
-        const handleMouseUp = () => {
-            setIsDragging(false);
+        console.log = (...args: any[]) => {
+            originalLog.apply(console, args);
+            addLog('log', args);
         };
 
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
+        console.warn = (...args: any[]) => {
+            originalWarn.apply(console, args);
+            addLog('warn', args);
+        };
+
+        console.error = (...args: any[]) => {
+            originalError.apply(console, args);
+            addLog('error', args);
+        };
 
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
+            console.log = originalLog;
+            console.warn = originalWarn;
+            console.error = originalError;
         };
-    }, [isDragging, dragOffset]);
+    }, [isEnabled]);
 
-    // Handle resizing
+    // Scroll to bottom when new logs arrive
     useEffect(() => {
-        if (!isResizing) return;
+        if (consoleRef.current && isOpen && !isMinimized) {
+            consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+        }
+    }, [logs, isOpen, isMinimized]);
 
-        const handleMouseMove = (e: MouseEvent) => {
-            if (!consoleRef.current) return;
+    // ✅ Don't render anything if disabled
+    if (!isEnabled) return null;
 
-            const rect = consoleRef.current.getBoundingClientRect();
-            const newWidth = Math.max(300, e.clientX - rect.left);
-            const newHeight = Math.max(200, e.clientY - rect.top);
-
-            setSize({ width: newWidth, height: newHeight });
-        };
-
-        const handleMouseUp = () => {
-            setIsResizing(false);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [isResizing]);
-
-    const handleHeaderMouseDown = (e: React.MouseEvent) => {
-        if (isMaximized) return;
-        setIsDragging(true);
-        setDragOffset({
-            x: e.clientX - position.x,
-            y: e.clientY - position.y
-        });
+    const getTypeColor = (type: string) => {
+        switch (type) {
+            case 'error': return isLight ? 'text-red-600' : 'text-red-400';
+            case 'warn': return isLight ? 'text-yellow-600' : 'text-yellow-400';
+            default: return isLight ? 'text-gray-800' : 'text-gray-200';
+        }
     };
 
-    const handleResizeMouseDown = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setIsResizing(true);
+    const getTypeIcon = (type: string) => {
+        switch (type) {
+            case 'error': return '❌';
+            case 'warn': return '⚠️';
+            default: return '📝';
+        }
     };
 
-    const toggleMaximize = () => {
-        setIsMaximized(!isMaximized);
-    };
+    return (
+        <>
+            {/* Toggle Button */}
+            {!isOpen && (
+                <button
+                    onClick={() => setIsOpen(true)}
+                    className={`fixed bottom-6 right-6 z-[9999] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 ${isLight
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white'
+                            : 'bg-gradient-to-br from-blue-600 to-blue-800 text-white'
+                        }`}
+                    title="Open Debug Console"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {logs.length > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                            {logs.length > 99 ? '99+' : logs.length}
+                        </span>
+                    )}
+                </button>
+            )}
 
-    if (!isVisible) {
-        return (
-            <button
-                onClick={() => setIsVisible(true)}
-                className="fixed bottom-4 right-4 bg-purple-600 text-white p-3 rounded-full shadow-lg z-50 hover:bg-purple-700 transition-colors"
-                title="Show Debug Console"
-            >
-                📱 Console
-            </button>
-        );
-    }
-
-    if (isMinimized) {
-        return (
-            <div
-                className="fixed bottom-4 right-4 z-50"
-                style={{ width: '240px' }}
-            >
-                <div className="bg-white border-2 border-purple-500 rounded-lg shadow-xl">
-                    <div
-                        className="flex items-center justify-between bg-purple-600 text-white p-2 rounded-t-md cursor-move"
-                        onMouseDown={handleHeaderMouseDown}
-                    >
-                        <span className="font-bold text-sm">🔍 Debug Console</span>
-                        <div className="flex gap-2">
+            {/* Console Window */}
+            {isOpen && (
+                <div
+                    className={`fixed bottom-6 right-6 z-[9999] rounded-lg shadow-2xl border-2 transition-all ${isLight
+                            ? 'bg-white border-gray-300'
+                            : 'bg-gray-900 border-gray-700'
+                        } ${isMinimized ? 'w-80' : 'w-[600px] h-[500px]'}`}
+                >
+                    {/* Header */}
+                    <div className={`flex items-center justify-between p-3 border-b ${isLight ? 'border-gray-300 bg-gray-100' : 'border-gray-700 bg-gray-800'
+                        }`}>
+                        <div className="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isLight ? 'text-blue-600' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className={`font-mono font-bold text-sm ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+                                Debug Console
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${isLight ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/30 text-blue-300'
+                                }`}>
+                                {logs.length}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
                             <button
-                                onClick={() => setIsMinimized(false)}
-                                className="hover:bg-purple-700 px-2 rounded transition-colors"
-                                title="Restore"
+                                onClick={() => setLogs([])}
+                                className={`p-1 rounded hover:bg-opacity-10 hover:bg-black transition-colors ${isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                title="Clear logs"
                             >
-                                ▲
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
                             </button>
                             <button
-                                onClick={() => setIsVisible(false)}
-                                className="hover:bg-purple-700 px-2 rounded transition-colors"
+                                onClick={() => setIsMinimized(!isMinimized)}
+                                className={`p-1 rounded hover:bg-opacity-10 hover:bg-black transition-colors ${isLight ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-200'
+                                    }`}
+                                title={isMinimized ? 'Maximize' : 'Minimize'}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMinimized ? "M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" : "M20 12H4"} />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className={`p-1 rounded hover:bg-red-100 transition-colors ${isLight ? 'text-gray-600 hover:text-red-600' : 'text-gray-400 hover:text-red-400'
+                                    }`}
                                 title="Close"
                             >
-                                <X size={16} />
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
                             </button>
                         </div>
                     </div>
-                </div>
-            </div>
-        );
-    }
 
-    const consoleStyle = isMaximized
-        ? { top: 0, left: 0, width: '100vw', height: '100vh' }
-        : {
-            top: `${position.y}px`,
-            left: `${position.x}px`,
-            width: `${size.width}px`,
-            height: `${size.height}px`
-        };
-
-    return (
-        <div
-            ref={consoleRef}
-            className="fixed z-50 bg-white border-2 border-purple-500 rounded-lg shadow-2xl overflow-hidden flex flex-col"
-            style={consoleStyle}
-        >
-            {/* Header */}
-            <div
-                className="flex items-center justify-between bg-purple-600 text-white p-2 cursor-move select-none"
-                onMouseDown={handleHeaderMouseDown}
-            >
-                <span className="font-bold text-sm">🔍 Debug Console ({logs.length} logs)</span>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setLogs([])}
-                        className="hover:bg-purple-700 px-2 py-1 rounded text-xs transition-colors"
-                        title="Clear Logs"
-                    >
-                        Clear
-                    </button>
-                    <button
-                        onClick={() => setIsMinimized(true)}
-                        className="hover:bg-purple-700 px-2 rounded transition-colors"
-                        title="Minimize"
-                    >
-                        ▼
-                    </button>
-                    <button
-                        onClick={toggleMaximize}
-                        className="hover:bg-purple-700 px-2 rounded transition-colors"
-                        title={isMaximized ? "Restore" : "Maximize"}
-                    >
-                        {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                    </button>
-                    <button
-                        onClick={() => setIsVisible(false)}
-                        className="hover:bg-purple-700 px-2 rounded transition-colors"
-                        title="Close"
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Logs Container */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 font-mono text-xs bg-white">
-                {logs.length === 0 ? (
-                    <div className="text-gray-400 text-center py-8">No logs yet...</div>
-                ) : (
-                    logs.map(log => (
+                    {/* Logs */}
+                    {!isMinimized && (
                         <div
-                            key={log.id}
-                            className={`p-2 rounded border-l-4 ${log.type === 'error' ? 'bg-red-50 border-red-500 text-red-900' :
-                                    log.type === 'warn' ? 'bg-yellow-50 border-yellow-500 text-yellow-900' :
-                                        log.type === 'info' ? 'bg-blue-50 border-blue-500 text-blue-900' :
-                                            'bg-gray-50 border-gray-400 text-gray-900'
+                            ref={consoleRef}
+                            className={`p-3 overflow-y-auto font-mono text-xs ${isLight ? 'bg-gray-50' : 'bg-black'
                                 }`}
+                            style={{ height: 'calc(500px - 52px)' }}
                         >
-                            <div className="flex gap-2 items-center mb-1">
-                                <span className="text-gray-500 text-[10px]">{log.timestamp}</span>
-                                <span className="text-sm">
-                                    {log.type === 'error' ? '❌' :
-                                        log.type === 'warn' ? '⚠️' :
-                                            log.type === 'info' ? 'ℹ️' : '📝'}
-                                </span>
-                                <span className="font-bold text-[10px] uppercase">{log.type}</span>
-                            </div>
-                            <div className="whitespace-pre-wrap break-all text-xs leading-relaxed">{log.message}</div>
+                            {logs.length === 0 ? (
+                                <div className={`text-center py-20 ${isLight ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    No logs yet. Console output will appear here.
+                                </div>
+                            ) : (
+                                logs.map(log => (
+                                    <div key={log.id} className={`mb-2 pb-2 border-b ${isLight ? 'border-gray-200' : 'border-gray-800'
+                                        }`}>
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-xs opacity-50">{log.timestamp}</span>
+                                            <span>{getTypeIcon(log.type)}</span>
+                                            <span className={`flex-1 whitespace-pre-wrap break-words ${getTypeColor(log.type)}`}>
+                                                {log.message}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
-                    ))
-                )}
-            </div>
-
-            {/* Resize Handle */}
-            {!isMaximized && (
-                <div
-                    className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-purple-500 hover:bg-purple-600 transition-colors"
-                    onMouseDown={handleResizeMouseDown}
-                    style={{
-                        clipPath: 'polygon(100% 0, 100% 100%, 0 100%)',
-                    }}
-                />
+                    )}
+                </div>
             )}
-        </div>
+        </>
     );
 };

@@ -107,7 +107,11 @@ const Login: React.FC = () => {
           data: {
             full_name: regFullName || regEmail.split('@')[0],
           },
-          emailRedirectTo: `${window.location.origin}${window.location.pathname.includes('Glyph-Circle') ? '/Glyph-Circle' : ''}/auth/callback`
+          emailRedirectTo: window.location.hostname === 'localhost'
+            ? 'http://localhost:5173/#/auth/callback'
+            : 'https://glyphcircle.github.io/Glyph-Circle/#/auth/callback'
+
+
         }
       });
 

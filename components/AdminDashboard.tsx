@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-// @ts-ignore
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import Card from './shared/Card';
@@ -71,7 +70,7 @@ const SystemStatus: React.FC = () => {
         try {
             const { error } = await supabase.from('v_active_services').select('id').limit(1);
             const latency = Date.now() - start;
-            
+
             if (error) throw new Error(error.message || JSON.stringify(error));
 
             setStats({
@@ -121,76 +120,169 @@ const SystemStatus: React.FC = () => {
     );
 };
 
+const DebugConsoleToggle: React.FC = () => {
+    const [debugConsoleEnabled, setDebugConsoleEnabled] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Load current setting
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('config')
+                    .select('value')
+                    .eq('key', 'debug_console_enabled')
+                    .single();
+
+                if (!error && data) {
+                    setDebugConsoleEnabled(data.value === 'true');
+                }
+            } catch (err) {
+                console.error('Failed to load debug console setting:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadSettings();
+    }, []);
+
+    // Save setting
+    const toggleDebugConsole = async () => {
+        setIsSaving(true);
+        try {
+            const newValue = !debugConsoleEnabled;
+
+            const { error } = await supabase
+                .from('config')
+                .upsert({
+                    key: 'debug_console_enabled',
+                    value: newValue ? 'true' : 'false'
+                }, {
+                    onConflict: 'key'
+                });
+
+            if (error) throw error;
+
+            setDebugConsoleEnabled(newValue);
+            console.log('✅ Debug console setting updated:', newValue);
+        } catch (err) {
+            console.error('❌ Failed to update debug console setting:', err);
+            alert('Failed to update setting');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (isLoading) return null;
+
+    return (
+        <Card className="mb-6 border-l-4 border-blue-500 bg-blue-950/20 backdrop-blur-md p-6">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <span className="text-2xl">🐛</span>
+                    <div>
+                        <h3 className="text-sm font-mono font-bold uppercase tracking-widest text-blue-400">Developer Tools</h3>
+                        <p className="text-[10px] text-blue-100/60 uppercase">Show floating debug console for all users</p>
+                    </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={debugConsoleEnabled}
+                        onChange={toggleDebugConsole}
+                        disabled={isSaving}
+                        className="sr-only peer"
+                    />
+                    <div className={`w-14 h-7 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}></div>
+                </label>
+            </div>
+
+            {debugConsoleEnabled && (
+                <div className="mt-4 p-3 rounded bg-yellow-900/30 border border-yellow-500/30">
+                    <p className="text-xs text-yellow-300 flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>Debug console is currently <strong>enabled</strong> for all users. Disable before production deployment.</span>
+                    </p>
+                </div>
+            )}
+        </Card>
+    );
+};
+
 const AdminDashboard: React.FC = () => {
-  const navigate = useNavigate();
-  const { user, isAdminVerified, logout } = useAuth();
-  const [adminUser] = useState<any>(() => {
-      try {
-          const session = localStorage.getItem('glyph_admin_session');
-          return session ? JSON.parse(session) : null;
-      } catch (e) { return null; }
-  });
+    const navigate = useNavigate();
+    const { user, isAdminVerified, logout } = useAuth();
+    const [adminUser] = useState<any>(() => {
+        try {
+            const session = localStorage.getItem('glyph_admin_session');
+            return session ? JSON.parse(session) : null;
+        } catch (e) { return null; }
+    });
 
-  useEffect(() => {
-    if (!isAdminVerified && !adminUser) navigate('/login');
-  }, [navigate, isAdminVerified, adminUser]);
+    useEffect(() => {
+        if (!isAdminVerified && !adminUser) navigate('/login');
+    }, [navigate, isAdminVerified, adminUser]);
 
-  const handleLogout = () => {
-      localStorage.removeItem('glyph_admin_session');
-      logout();
-      navigate('/login');
-  };
+    const handleLogout = () => {
+        localStorage.removeItem('glyph_admin_session');
+        logout();
+        navigate('/login');
+    };
 
-  if (!isAdminVerified && !adminUser) {
-      return (
+    if (!isAdminVerified && !adminUser) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center font-sans p-4">
+                <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <h2 className="text-green-500 font-cinzel font-bold tracking-widest text-sm animate-pulse">INITIALIZING SECURE LINK...</h2>
+            </div>
+        );
+    }
+
+    return (
         <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center font-sans p-4">
-            <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <h2 className="text-green-500 font-cinzel font-bold tracking-widest text-sm animate-pulse">INITIALIZING SECURE LINK...</h2>
-        </div>
-      );
-  }
+            <div className="max-w-xl w-full">
+                <div className="text-center mb-8">
+                    <h1 className="text-3xl font-cinzel font-bold text-white mb-2 tracking-widest">Admin Sanctum</h1>
+                    <p className="text-green-400 text-sm font-mono tracking-widest uppercase">IDENTIFIED: {adminUser?.user || user?.email || 'Authorized Entity'}</p>
+                </div>
 
-  return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center font-sans p-4">
-      <div className="max-w-xl w-full">
-        <div className="text-center mb-8">
-            <h1 className="text-3xl font-cinzel font-bold text-white mb-2 tracking-widest">Admin Sanctum</h1>
-            <p className="text-green-400 text-sm font-mono tracking-widest uppercase">IDENTIFIED: {adminUser?.user || user?.email || 'Authorized Entity'}</p>
-        </div>
+                <SystemStatus />
+                <DebugConsoleToggle />
+                <InventoryAlerts />
 
-        <SystemStatus />
-        <InventoryAlerts />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button onClick={() => navigate('/home')} className="group p-6 bg-blue-900/20 hover:bg-blue-600 border border-blue-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
+                        <span className="text-3xl group-hover:scale-110 transition-transform">👤</span>
+                        <span className="font-bold text-blue-100 uppercase tracking-widest text-xs">Run App as User</span>
+                    </button>
+                    <button onClick={() => navigate('/admin/config')} className="group p-6 bg-purple-900/20 hover:bg-purple-600 border border-purple-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
+                        <span className="text-3xl group-hover:scale-110 transition-transform">⚙️</span>
+                        <span className="font-bold text-purple-100 uppercase tracking-widest text-xs">Full Configuration</span>
+                    </button>
+                    <button onClick={() => navigate('/admin/batch-editor')} className="group p-6 bg-amber-900/20 hover:bg-amber-600 border border-amber-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
+                        <span className="text-3xl group-hover:scale-110 transition-transform">⚡</span>
+                        <span className="font-bold text-amber-100 uppercase tracking-widest text-xs">Bulk Manifestation</span>
+                    </button>
+                    <button onClick={() => navigate('/admin/payments')} className="group p-6 bg-emerald-900/20 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
+                        <span className="text-3xl group-hover:scale-110 transition-transform">💳</span>
+                        <span className="font-bold text-emerald-100 uppercase tracking-widest text-xs">Payment Routes</span>
+                    </button>
+                    <button onClick={() => navigate('/admin/revenue')} className="group p-6 bg-indigo-900/20 hover:bg-indigo-600 border border-indigo-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg col-span-1 sm:col-span-2">
+                        <span className="text-3xl group-hover:scale-110 transition-transform">📈</span>
+                        <span className="font-bold text-indigo-100 uppercase tracking-widest text-xs">Financial Analytics</span>
+                    </button>
+                </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button onClick={() => navigate('/home')} className="group p-6 bg-blue-900/20 hover:bg-blue-600 border border-blue-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
-                <span className="text-3xl group-hover:scale-110 transition-transform">👤</span>
-                <span className="font-bold text-blue-100 uppercase tracking-widest text-xs">Run App as User</span>
-            </button>
-            <button onClick={() => navigate('/admin/config')} className="group p-6 bg-purple-900/20 hover:bg-purple-600 border border-purple-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
-                <span className="text-3xl group-hover:scale-110 transition-transform">⚙️</span>
-                <span className="font-bold text-purple-100 uppercase tracking-widest text-xs">Full Configuration</span>
-            </button>
-            <button onClick={() => navigate('/admin/batch-editor')} className="group p-6 bg-amber-900/20 hover:bg-amber-600 border border-amber-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
-                <span className="text-3xl group-hover:scale-110 transition-transform">⚡</span>
-                <span className="font-bold text-amber-100 uppercase tracking-widest text-xs">Bulk Manifestation</span>
-            </button>
-            <button onClick={() => navigate('/admin/payments')} className="group p-6 bg-emerald-900/20 hover:bg-emerald-600 border border-emerald-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg">
-                <span className="text-3xl group-hover:scale-110 transition-transform">💳</span>
-                <span className="font-bold text-emerald-100 uppercase tracking-widest text-xs">Payment Routes</span>
-            </button>
-            <button onClick={() => navigate('/admin/revenue')} className="group p-6 bg-indigo-900/20 hover:bg-indigo-600 border border-indigo-500/50 rounded-xl transition-all flex flex-col items-center justify-center gap-3 shadow-lg col-span-1 sm:col-span-2">
-                <span className="text-3xl group-hover:scale-110 transition-transform">📈</span>
-                <span className="font-bold text-indigo-100 uppercase tracking-widest text-xs">Financial Analytics</span>
-            </button>
+                <div className="mt-8 pt-4 border-t border-gray-800 text-center">
+                    <button onClick={handleLogout} className="text-red-500 hover:text-red-400 text-xs font-bold uppercase tracking-widest underline underline-offset-4">De-Authorize Session</button>
+                </div>
+            </div>
+            <AdminContextHelp context="dashboard" />
         </div>
-
-        <div className="mt-8 pt-4 border-t border-gray-800 text-center">
-            <button onClick={handleLogout} className="text-red-500 hover:text-red-400 text-xs font-bold uppercase tracking-widest underline underline-offset-4">De-Authorize Session</button>
-        </div>
-      </div>
-      <AdminContextHelp context="dashboard" />
-    </div>
-  );
+    );
 };
 
 export default AdminDashboard;

@@ -12,7 +12,7 @@ const AdminDB: React.FC = () => {
     const { db, refreshTable, updateEntry, createEntry, deleteEntry, toggleStatus } = useDb();
     const navigate = useNavigate();
     const { getRegionalPrice } = useTranslation();
-
+    const [imagePreview, setImagePreview] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState<Record<string, any>>({});
@@ -61,16 +61,25 @@ const AdminDB: React.FC = () => {
         setIsNewRecord(true);
         setStatus('idle');
         setErrorMsg(null);
+        setImagePreview(''); // ✅ Clear preview
         setIsModalOpen(true);
     };
 
     const openEditModal = (record: any) => {
         console.log(`🛠️ [UI] Inspecting artifact: ${record.id}`)
-        // Copy ALL fields (don't filter yet)
         setFormData({ ...record });
         setIsNewRecord(false);
         setStatus('idle');
         setErrorMsg(null);
+
+        // ✅ Set preview for existing image
+        const imageField = record.image || record.image_url || record.logo_url;
+        if (imageField) {
+            setImagePreview(cloudManager.resolveImage(imageField));
+        } else {
+            setImagePreview('');
+        }
+
         setIsModalOpen(true);
     };
 
@@ -92,6 +101,15 @@ const AdminDB: React.FC = () => {
 
         const recordId = formData.id;
         const payload = { ...formData };
+
+        // ✅ AUTO-CONVERT IMAGE URLs BEFORE SAVING
+        ['image', 'image_url', 'logo_url'].forEach(field => {
+            if (payload[field]) {
+                const convertedUrl = cloudManager.resolveImage(payload[field]);
+                payload[field] = convertedUrl;
+                console.log(`🖼️ [UI] Converted ${field}:`, convertedUrl);
+            }
+        });
 
         // ONLY remove system fields
         SYSTEM_FIELDS.forEach(field => delete payload[field]);
@@ -120,6 +138,7 @@ const AdminDB: React.FC = () => {
             setTimeout(() => {
                 setIsModalOpen(false);
                 setStatus('idle');
+                setImagePreview(''); // ✅ Clear preview
                 refreshTable(tableName);
             }, 1500);
 
@@ -134,6 +153,7 @@ const AdminDB: React.FC = () => {
             }, 5000);
         }
     };
+
 
     return (
         <div className="min-h-screen bg-[#020205] pt-32 p-4 md:p-8 md:pt-40 font-mono text-gray-300">
@@ -283,21 +303,62 @@ const AdminDB: React.FC = () => {
                                             <option value="inactive">inactive</option>
                                         </select>
                                     ) : ['image', 'image_url', 'logo_url'].includes(key) ? (
-                                        <textarea
-                                            className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono min-h-[100px] resize-y"
-                                            value={formData[key] ?? ''}
-                                            onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
-                                            placeholder="Full Google Drive URL (https://drive.google.com/file/d/...)"
-                                        />
-                                    ) : (
-                                        <input
-                                            className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono"
-                                            value={formData[key] ?? ''}
-                                            onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
-                                            placeholder={`Enter ${key}...`}
-                                            type={key.includes('price') || key.includes('stock') ? 'number' : 'text'}
-                                        />
-                                    )}
+                                        <div className="space-y-3">
+                                            <textarea
+                                                className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono min-h-[100px] resize-y"
+                                                value={formData[key] ?? ''}
+                                                onChange={(e) => {
+                                                    const newUrl = e.target.value;
+                                                    setFormData({ ...formData, [key]: newUrl });
+
+                                                    // Auto-convert and show preview
+                                                    if (newUrl) {
+                                                        const convertedUrl = cloudManager.resolveImage(newUrl);
+                                                        setImagePreview(convertedUrl);
+                                                    } else {
+                                                        setImagePreview('');
+                                                    }
+                                                }}
+                                                placeholder="Paste Google Drive URL or direct image link"
+                                            />
+
+                                            {/* Preview Section */}
+                                            {imagePreview && (
+                                                <div className="p-3 bg-green-900/10 border border-green-500/20 rounded-xl">
+                                                    <p className="text-xs text-green-400 mb-2 flex items-center gap-2 font-bold uppercase tracking-wider">
+                                                        <span>✅</span>
+                                                        <span>Auto-Converted Preview</span>
+                                                    </p>
+                                                    <div className="flex items-center gap-3">
+                                                        <img
+                                                            src={imagePreview}
+                                                            alt="Preview"
+                                                            className="w-20 h-20 object-cover rounded-lg border-2 border-green-500/30 shadow-lg"
+                                                            onError={(e) => {
+                                                                e.currentTarget.src = 'https://placehold.co/80x80/0a0a14/ef4444?text=Error';
+                                                            }}
+                                                        />
+                                                        <div className="flex-1 overflow-hidden">
+                                                            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Converted URL:</p>
+                                                            <code className="text-xs text-green-300 break-all block font-mono">
+                                                                {imagePreview}
+                                                            </code>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )
+
+                                        : (
+                                            <input
+                                                className="w-full bg-black border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-amber-500 font-mono"
+                                                value={formData[key] ?? ''}
+                                                onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+                                                placeholder={`Enter ${key}...`}
+                                                type={key.includes('price') || key.includes('stock') ? 'number' : 'text'}
+                                            />
+                                        )}
                                 </div>
                             ))}
 
