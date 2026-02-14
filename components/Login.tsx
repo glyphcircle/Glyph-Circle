@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/db';
 import { useTheme } from '../context/ThemeContext';
@@ -22,7 +23,7 @@ const Login: React.FC = () => {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regFullName, setRegFullName] = useState('');
 
-  const { login, signInWithGoogle, signInWithPhone, verifyOtp } = useAuth();
+  const { login, signInWithPhone, verifyOtp } = useAuth();
   const navigate = useNavigate();
   const { theme } = useTheme();
   const isLight = theme.mode === 'light';
@@ -77,7 +78,6 @@ const Login: React.FC = () => {
     setLocalError(null);
     setSuccessMessage(null);
 
-    // Validation
     if (regPassword !== regConfirmPassword) {
       setLocalError("Passwords do not match");
       setIsSubmitting(false);
@@ -99,7 +99,6 @@ const Login: React.FC = () => {
     try {
       console.log('📧 [Register] Starting registration:', regEmail);
 
-      // Create auth user - trigger will automatically create profile
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: regEmail,
         password: regPassword,
@@ -110,8 +109,6 @@ const Login: React.FC = () => {
           emailRedirectTo: window.location.hostname === 'localhost'
             ? 'http://localhost:5173/#/auth/callback'
             : 'https://glyphcircle.github.io/Glyph-Circle/#/auth/callback'
-
-
         }
       });
 
@@ -134,10 +131,8 @@ const Login: React.FC = () => {
         console.log('✅ [Register] Profile will be created automatically by database trigger');
       }
 
-      // Check if email confirmation is required
       const requiresConfirmation = authData.user && !authData.session;
 
-      // Success message
       if (requiresConfirmation) {
         setSuccessMessage("✅ Registration successful! Please check your email to verify your account before logging in.");
       } else if (authData.user?.identities?.length === 0) {
@@ -148,13 +143,11 @@ const Login: React.FC = () => {
 
       console.log('✅ [Register] Registration complete');
 
-      // Clear form
       setRegEmail('');
       setRegPassword('');
       setRegConfirmPassword('');
       setRegFullName('');
 
-      // Switch back to login after 4 seconds
       setTimeout(() => {
         setMode('form');
         setSuccessMessage(null);
@@ -171,22 +164,39 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.hostname === 'localhost'
-          ? 'http://localhost:5173/#/home'
-          : 'https://glyphcircle.github.io/Glyph-Circle/#/home'
-      }
-    });
+  // ✅ NEW: Handle Google OAuth with @react-oauth/google
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    console.log('🔐 [Google] Login success, credential received');
+    setIsSubmitting(true);
+    setLocalError(null);
 
-    if (error) {
-      console.error('❌ Google login error:', error);
-      setLocalError(error.message);
+    try {
+      // Exchange Google token for Supabase session
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: credentialResponse.credential!,
+      });
+
+      if (error) {
+        console.error('❌ [Google] Supabase error:', error);
+        throw error;
+      }
+
+      console.log('✅ [Google] Supabase session created:', data.user.email);
+
+      // Navigate to home
+      navigate('/home');
+    } catch (err: any) {
+      console.error('❌ [Google] Login failed:', err);
+      setLocalError(err.message || 'Google sign-in failed. Please try again.');
+      setIsSubmitting(false);
     }
   };
 
+  const handleGoogleError = () => {
+    console.error('❌ [Google] Login failed');
+    setLocalError('Google sign-in was cancelled or failed');
+  };
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,8 +244,10 @@ const Login: React.FC = () => {
             </p>
           </div>
 
+          {/* Registration Form */}
           {mode === 'register' ? (
             <form onSubmit={handleRegisterSubmit} className="space-y-5">
+              {/* ... keep all your registration form fields ... */}
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Full Name (Optional)</label>
                 <input
@@ -360,6 +372,7 @@ const Login: React.FC = () => {
             </form>
           ) : (
             <>
+              {/* Login Form */}
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Administrative ID</label>
@@ -369,7 +382,8 @@ const Login: React.FC = () => {
                     onChange={(e) => handleEmailChange(e.target.value)}
                     className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
                       }`}
-                    placeholder="user@glyphcircle.com" required
+                    placeholder="user@glyphcircle.com"
+                    required
                   />
                 </div>
 
@@ -381,7 +395,8 @@ const Login: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
                       }`}
-                    placeholder="••••••••" required
+                    placeholder="••••••••"
+                    required
                   />
                 </div>
 
@@ -398,24 +413,32 @@ const Login: React.FC = () => {
               </form>
 
               <div className="relative my-8">
-                <div className="absolute inset-0 flex items-center"><span className={`w-full border-t ${isLight ? 'border-amber-200' : 'border-gray-800'}`}></span></div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-[0.2em]"><span className={`${isLight ? 'bg-white' : 'bg-gray-900'} px-4 text-gray-500`}>Or continue with</span></div>
+                <div className="absolute inset-0 flex items-center">
+                  <span className={`w-full border-t ${isLight ? 'border-amber-200' : 'border-gray-800'}`}></span>
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase tracking-[0.2em]">
+                  <span className={`${isLight ? 'bg-white' : 'bg-gray-900'} px-4 text-gray-500`}>Or continue with</span>
+                </div>
               </div>
 
+              {/* ✅ NEW: Updated Google Login Section */}
               <div className="grid grid-cols-3 gap-3">
-                <button
-                  onClick={handleGoogleLogin}
-                  className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-700 text-white'
-                    }`}
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                  </svg>
-                  <span className="text-[9px] uppercase tracking-wider">Google</span>
-                </button>
+                {/* Google Login Button */}
+                <div className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
+                  }`}>
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    theme={isLight ? 'outline' : 'filled_black'}
+                    size="medium"
+                    text="signin"
+                    shape="circle"
+                    logo_alignment="center"
+                    width="80"
+                  />
+                </div>
+
+                {/* Mobile Button */}
                 <button
                   onClick={() => setMode('phone')}
                   className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-black border-amber-500/20 text-amber-500'
@@ -426,6 +449,8 @@ const Login: React.FC = () => {
                   </svg>
                   <span className="text-[9px] uppercase tracking-wider">Mobile</span>
                 </button>
+
+                {/* Register Button */}
                 <button
                   onClick={() => setMode('register')}
                   className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-purple-50 border-purple-200 text-purple-900' : 'bg-purple-900/20 border-purple-500/20 text-purple-400'
@@ -448,7 +473,9 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
-      <button onClick={() => navigate('/home')} className="mt-8 text-gray-700 hover:text-amber-500 text-[10px] uppercase font-bold tracking-[0.4em] transition-all">Return to Home Portal</button>
+      <button onClick={() => navigate('/home')} className="mt-8 text-gray-700 hover:text-amber-500 text-[10px] uppercase font-bold tracking-[0.4em] transition-all">
+        Return to Home Portal
+      </button>
     </div>
   );
 };

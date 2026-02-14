@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './App.css';
 import { PaymentProvider } from './context/PaymentContext';
@@ -14,19 +15,27 @@ if (!rootElement) throw new Error("Root element not found");
 
 const root = ReactDOM.createRoot(rootElement);
 
-// ✅ REMOVED React.StrictMode to prevent duplicate API calls in development
+// ✅ Get Google Client ID from environment variable
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
+if (!GOOGLE_CLIENT_ID) {
+  console.error('❌ VITE_GOOGLE_CLIENT_ID not found in .env file');
+}
+
 root.render(
-  <HashRouter>
-    <LanguageProvider>
-      <AuthProvider>
-        <DbProvider>
-          <ThemeProvider>
-            <PaymentProvider>
-              <App />
-            </PaymentProvider>
-          </ThemeProvider>
-        </DbProvider>
-      </AuthProvider>
-    </LanguageProvider>
-  </HashRouter>
+  <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    <HashRouter>
+      <LanguageProvider>
+        <AuthProvider>
+          <DbProvider>
+            <ThemeProvider>
+              <PaymentProvider>
+                <App />
+              </PaymentProvider>
+            </ThemeProvider>
+          </DbProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </HashRouter>
+  </GoogleOAuthProvider>
 );
