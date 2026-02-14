@@ -99,7 +99,7 @@ const Login: React.FC = () => {
     try {
       console.log('📧 [Register] Starting registration:', regEmail);
 
-      // Step 1: Create auth user with Supabase
+      // Create auth user - trigger will automatically create profile
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: regEmail,
         password: regPassword,
@@ -116,54 +116,18 @@ const Login: React.FC = () => {
       if (authError) {
         console.error('❌ [Register] Auth error:', authError);
 
-        // Handle specific error cases
         if (authError.message.includes('User already registered') || authError.message.includes('already been registered')) {
           throw new Error('This email is already registered. Please login instead.');
         } else if (authError.message.includes('Invalid email')) {
           throw new Error('Please enter a valid email address.');
-        } else if (authError.status === 500 || authError.code === 'unexpected_failure') {
-          throw new Error('Registration service temporarily unavailable. Please try signing in with Google or Mobile instead.');
         } else {
           throw new Error(authError.message || 'Registration failed');
         }
       }
 
-      // Step 2: Create user profile in users table (ONLY if auth succeeded and we have a user ID)
       if (authData.user) {
-        console.log('📧 [Register] Auth user created, ID:', authData.user.id);
-        console.log('📧 [Register] Creating user profile in database...');
-
-        const { data: newUser, error: profileError } = await supabase
-          .from('users')
-          .insert([{
-            id: authData.user.id,
-            email: regEmail,
-            role: 'user',
-            credits: 100  // Give new users 100 free credits
-          }])
-          .select()
-          .single();
-
-        if (profileError) {
-          console.error('❌ [Register] Profile creation error:', profileError);
-
-          // Check if profile already exists
-          const { data: existingProfile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authData.user.id)
-            .single();
-
-          if (existingProfile) {
-            console.log('✅ [Register] Profile already exists (user previously registered)');
-          } else {
-            console.log('⚠️ [Register] Profile creation failed, will be created on first login');
-          }
-        } else {
-          console.log('✅ [Register] User profile created:', newUser);
-        }
-      } else {
-        console.warn('⚠️ [Register] No user returned from auth signup');
+        console.log('✅ [Register] Auth user created:', authData.user.id);
+        console.log('✅ [Register] Profile will be created automatically by database trigger');
       }
 
       // Check if email confirmation is required
@@ -175,7 +139,7 @@ const Login: React.FC = () => {
       } else if (authData.user?.identities?.length === 0) {
         setSuccessMessage("⚠️ Email already registered! Please login instead.");
       } else {
-        setSuccessMessage("✅ Registration successful! You can now login with your credentials. You've received 100 free credits!");
+        setSuccessMessage("✅ Registration successful! Please check your email to verify your account. You've received 100 free credits!");
       }
 
       console.log('✅ [Register] Registration complete');
@@ -191,7 +155,7 @@ const Login: React.FC = () => {
         setMode('form');
         setSuccessMessage(null);
         if (!requiresConfirmation) {
-          setEmail(regEmail); // Pre-fill email for convenience
+          setEmail(regEmail);
         }
       }, 4000);
 
@@ -202,8 +166,6 @@ const Login: React.FC = () => {
       setIsSubmitting(false);
     }
   };
-
-
 
   const handleGoogleLogin = async () => {
     try {
