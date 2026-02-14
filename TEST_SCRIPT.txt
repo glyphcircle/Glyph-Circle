@@ -1,4 +1,6 @@
-git status
+If successful, push to GitHub:
+
+powershell
 git add .
-git commit -m "fix: resolve Supabase update timeout by using direct REST API
+git commit -m "feat: add debug console for remote troubleshooting"
 git push origin main

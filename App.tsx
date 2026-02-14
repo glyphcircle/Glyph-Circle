@@ -59,6 +59,7 @@ import ContextDbNavigator from './components/ContextDbNavigator';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
+import { DebugConsole } from './components/DebugConsole';
 
 // Idle Cursor Component
 const IdleCursor: React.FC = () => {
@@ -123,7 +124,15 @@ function AppRoutes() {
   const { isAuthenticated, isAdminVerified, logout } = useAuth();
   const location = useLocation();
   const { isMobile } = useDevice();
-
+  useEffect(() => {
+    console.log('📱 Device Detection:', {
+      isMobile,
+      userAgent: navigator.userAgent,
+      screenWidth: window.innerWidth,
+      screenHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio
+    });
+  }, [isMobile]);
   const isAuthPage = ['/login', '/register', '/master-login'].includes(location.pathname);
   const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/master-login';
   const showLayout = isAuthenticated && !isAuthPage && !isAdminPage;
@@ -131,7 +140,6 @@ function AppRoutes() {
   return (
     <CartProvider>
       <div className="bg-skin-base min-h-screen text-skin-text flex flex-col font-lora transition-colors duration-500">
-        {/* ✅ Removed overflow-x-hidden from root - it breaks mobile scroll */}
 
         <IdleCursor />
 
@@ -155,14 +163,12 @@ function AppRoutes() {
           </>
         )}
 
-        {/* ✅ FIXED: Better responsive padding and overflow handling */}
         <main className={`flex-grow ${showLayout ? `container mx-auto ${isMobile ? 'px-3 pt-4 pb-28' : 'px-4 py-8'}` : ''} overflow-x-hidden`}>
-          {/* ✅ Moved overflow-x-hidden to main only, increased pb to pb-28 (112px) for mobile nav clearance */}
 
           {location.pathname === '/home' && isAuthenticated && <PanchangBar />}
 
           <Routes>
-            {/* ... your routes stay the same ... */}
+            {/* ... all your routes stay the same ... */}
             <Route path="/" element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />} />
             <Route path="/login" element={isAuthenticated ? <Navigate to="/home" /> : <Login />} />
             <Route path="/register" element={isAuthenticated ? <Navigate to="/home" /> : <Register />} />
@@ -210,13 +216,15 @@ function AppRoutes() {
         {/* ✅ Mobile nav must be outside main to avoid overflow issues */}
         {showLayout && isMobile && <MobileNavBar />}
         {showLayout && !isMobile && <Footer />}
-      </div>
 
+        {/* ✅ FIXED: Debug Console moved OUTSIDE Routes and always visible */}
+        <DebugConsole />
+      </div>
     </CartProvider>
   );
 }
 
-// Main App Component
+// Main App Component stays the same
 function App() {
   return (
     <AccessibilityProvider>
