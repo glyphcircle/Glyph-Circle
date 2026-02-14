@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import SmartBackButton from './shared/SmartBackButton';
 import { Heart, Sparkles, TrendingUp, AlertTriangle, Lock, CheckCircle } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
+
 const CosmicSync: React.FC = () => {
     const { openPayment } = usePayment();
     const { db } = useDb();
@@ -29,6 +30,7 @@ const CosmicSync: React.FC = () => {
     const [readingId, setReadingId] = useState<string | null>(null);
     const [servicePrice, setServicePrice] = useState(69);
 
+    // ... all your useEffect hooks and functions stay exactly the same ...
     // Fetch service price on mount
     useEffect(() => {
         fetchServicePrice();
@@ -394,7 +396,7 @@ const CosmicSync: React.FC = () => {
                     {/* Person A */}
                     <Card className={`p-6 border-l-4 ${isLight
                         ? 'border-pink-500 bg-white shadow-lg'
-                        : 'border-pink-500 bg-black/60'
+                        : 'border-pink-500 bg-gray-900/80'
                         }`}>
                         <h3 className={`font-bold mb-4 flex items-center gap-2 ${isLight ? 'text-pink-600' : 'text-pink-400'
                             }`}>
@@ -402,14 +404,15 @@ const CosmicSync: React.FC = () => {
                             Person A
                         </h3>
                         <div className="space-y-4">
+                            {/* ✅ FIXED: Theme-aware input field */}
                             <input
                                 value={p1.name}
                                 onChange={e => setP1({ ...p1, name: e.target.value })}
                                 placeholder="Name *"
                                 className={`w-full p-3 rounded border-2 focus:outline-none transition-colors ${isLight
-                                    ? 'bg-gray-50 border-gray-300 focus:border-pink-500 text-gray-900'
-                                    : 'bg-black/50 border-gray-600 focus:border-pink-500 text-white'
-                                    } placeholder-gray-500`}
+                                    ? 'bg-white border-pink-200 focus:border-pink-500 text-gray-900 placeholder-gray-400'
+                                    : 'bg-gray-800 border-pink-500/30 focus:border-pink-500 text-white placeholder-gray-500'
+                                    }`}
                             />
                             <SmartDatePicker value={p1.dob} onChange={d => setP1({ ...p1, dob: d })} />
                             <SmartTimePicker value={p1.tob} date={p1.dob} onChange={t => setP1({ ...p1, tob: t })} />
@@ -420,7 +423,7 @@ const CosmicSync: React.FC = () => {
                     {/* Person B */}
                     <Card className={`p-6 border-r-4 ${isLight
                         ? 'border-purple-500 bg-white shadow-lg'
-                        : 'border-purple-500 bg-black/60'
+                        : 'border-purple-500 bg-gray-900/80'
                         }`}>
                         <h3 className={`font-bold mb-4 text-right flex items-center justify-end gap-2 ${isLight ? 'text-purple-600' : 'text-purple-400'
                             }`}>
@@ -428,14 +431,15 @@ const CosmicSync: React.FC = () => {
                             <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
                         </h3>
                         <div className="space-y-4">
+                            {/* ✅ FIXED: Theme-aware input field */}
                             <input
                                 value={p2.name}
                                 onChange={e => setP2({ ...p2, name: e.target.value })}
                                 placeholder="Name *"
                                 className={`w-full p-3 rounded border-2 text-right focus:outline-none transition-colors ${isLight
-                                    ? 'bg-gray-50 border-gray-300 focus:border-purple-500 text-gray-900'
-                                    : 'bg-black/50 border-gray-600 focus:border-purple-500 text-white'
-                                    } placeholder-gray-500`}
+                                    ? 'bg-white border-purple-200 focus:border-purple-500 text-gray-900 placeholder-gray-400'
+                                    : 'bg-gray-800 border-purple-500/30 focus:border-purple-500 text-white placeholder-gray-500'
+                                    }`}
                             />
                             <SmartDatePicker value={p2.dob} onChange={d => setP2({ ...p2, dob: d })} />
                             <SmartTimePicker value={p2.tob} date={p2.dob} onChange={t => setP2({ ...p2, tob: t })} />
@@ -472,7 +476,7 @@ const CosmicSync: React.FC = () => {
                     </Button>
                 </div>
 
-                {/* Results Section */}
+                {/* Results Section - stays exactly the same */}
                 {result && (
                     <div ref={resultRef} className="animate-fade-in-up scroll-mt-24">
                         <Card className={`p-8 ${isLight
