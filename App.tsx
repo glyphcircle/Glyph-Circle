@@ -60,7 +60,7 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
 import { DebugConsole } from './components/DebugConsole';
-
+import AuthCallback from './components/AuthCallback';
 // Idle Cursor Component
 const IdleCursor: React.FC = () => {
   const [isIdle, setIsIdle] = useState(false);
@@ -210,6 +210,7 @@ function AppRoutes() {
             <Route path="/calendar" element={<ProtectedRoute><ErrorBoundary><KalnirnayeCalendar /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/coming-soon" element={<ComingSoon />} />
             <Route path="*" element={<Navigate to="/login" />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
           </Routes>
         </main>
 
