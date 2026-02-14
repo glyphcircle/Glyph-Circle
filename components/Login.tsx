@@ -167,7 +167,6 @@ const Login: React.FC = () => {
     }
   };
 
-
   const handleGoogleLogin = async () => {
     try {
       await signInWithGoogle();
