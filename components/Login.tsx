@@ -172,12 +172,21 @@ const Login: React.FC = () => {
   };
 
   const handleGoogleLogin = async () => {
-    try {
-      await signInWithGoogle();
-    } catch (err) {
-      console.error("Google Auth failed", err);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.hostname === 'localhost'
+          ? 'http://localhost:5173/#/home'
+          : 'https://glyphcircle.github.io/Glyph-Circle/#/home'
+      }
+    });
+
+    if (error) {
+      console.error('❌ Google login error:', error);
+      setLocalError(error.message);
     }
   };
+
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
