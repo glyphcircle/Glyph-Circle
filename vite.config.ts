@@ -17,16 +17,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    base: './',
+    base: mode === 'production' ? '/Glyph-Circle/' : '/', // ✅ FIXED
 
     server: {
-      // ✅ FIXED: Remove https completely for default behavior
       ...(useHttps && { https: true }),
       port: 5173,
       host: '0.0.0.0',
       strictPort: true,
     },
-
 
     resolve: {
       alias: {

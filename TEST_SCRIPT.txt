@@ -2,5 +2,5 @@ If successful, push to GitHub:
 
 powershell
 git add .
-git commit -m "User clicks "Confirm Identity" in email"
+git commit -m  "User clicks Confirm Identity in email"
 git push origin main
