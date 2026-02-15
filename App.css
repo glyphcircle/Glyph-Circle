@@ -31,55 +31,113 @@
   --color-primary-glow: #A68B5B;
 }
 
-/* Color Variant: Blue */
+/* Color Variants */
 [data-color='blue'] {
   --color-text-accent: #4A9EFF;
   --color-primary-glow: #2E7DD6;
   --color-border: rgba(74, 158, 255, 0.3);
 }
 
-/* Color Variant: Purple */
 [data-color='purple'] {
   --color-text-accent: #A855F7;
   --color-primary-glow: #7C3AED;
   --color-border: rgba(168, 85, 247, 0.3);
 }
 
-/* Color Variant: Green */
 [data-color='green'] {
   --color-text-accent: #10B981;
   --color-primary-glow: #059669;
   --color-border: rgba(16, 185, 129, 0.3);
 }
 
-/* Color Variant: Orange */
 [data-color='orange'] {
   --color-text-accent: #F97316;
   --color-primary-glow: #EA580C;
   --color-border: rgba(249, 115, 22, 0.3);
 }
 
-/* Color Variant: Red */
 [data-color='red'] {
   --color-text-accent: #EF4444;
   --color-primary-glow: #DC2626;
   --color-border: rgba(239, 68, 68, 0.3);
 }
 
-/* Color Variant: Teal */
 [data-color='teal'] {
   --color-text-accent: #14B8A6;
   --color-primary-glow: #0D9488;
   --color-border: rgba(20, 184, 166, 0.3);
 }
 
+/* ✅ ENHANCED: Base body styles with better mobile support */
 body {
   background-color: var(--color-bg-base);
   color: var(--color-text-base);
   min-height: 100vh;
+  min-height: 100dvh;
+  /* ✅ NEW: Dynamic viewport height for mobile */
   overflow-x: hidden;
   transition: background-color 0.5s ease, color 0.5s ease;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ✅ NEW: Image-specific styles for cross-browser compatibility */
+img {
+  display: block;
+  /* Prevents inline spacing issues */
+  max-width: 100%;
+  height: auto;
+  /* ✅ REMOVED: image-rendering property that breaks iQOO */
+  /* image-rendering: -webkit-optimize-contrast; ❌ */
+  image-rendering: auto;
+  /* ✅ Safe default */
+  image-rendering: crisp-edges;
+  /* ✅ For pixel-perfect images */
+  image-rendering: -webkit-crisp-edges;
+  /* ✅ Safari fallback */
+  backface-visibility: hidden;
+  /* ✅ Fixes rendering glitches */
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  /* ✅ Force GPU acceleration */
+  will-change: auto;
+  /* ✅ Better performance */
+}
+
+/* ✅ NEW: Prevent image dragging on mobile */
+img {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  pointer-events: auto;
+  /* ✅ Ensure touch events work */
+}
+
+/* ✅ NEW: Loading state for images */
+img:not([src]),
+img[src=""],
+img[src="about:blank"] {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* ✅ NEW: Error state for broken images */
+img[alt]::after {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg-surface);
+  content: '🖼️ ' attr(alt);
+  text-align: center;
+  padding: 20px;
+  color: var(--color-text-base);
+  font-size: 14px;
 }
 
 /* Accessibility Focus Styles */
@@ -94,19 +152,33 @@ body {
   transition: outline-offset 0.2s ease;
 }
 
-/* Removed global opacity that made elements look blurry */
+/* ✅ FIXED: Removed image-rendering from here */
 .imperial-card,
 .sacred-boundary,
 div[role="button"],
 button {
   transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
-  image-rendering: -webkit-optimize-contrast;
+  /* ❌ REMOVED: image-rendering: -webkit-optimize-contrast; */
 }
 
+/* ✅ ENHANCED: Safer hover effects */
 .imperial-card:hover,
 button:hover,
 a:hover {
   transform: translateY(-4px);
+  /* ✅ NEW: Use will-change for better performance */
+  will-change: transform;
+}
+
+/* ✅ NEW: Disable hover effects on touch devices */
+@media (hover: none) and (pointer: coarse) {
+
+  .imperial-card:hover,
+  button:hover,
+  a:hover {
+    transform: none;
+    /* ✅ No hover on touch devices */
+  }
 }
 
 /* 🔱 SACRED APPLICATION BOUNDARY */
@@ -114,11 +186,23 @@ a:hover {
   position: relative;
   border: 12px double var(--color-border);
   min-height: 100vh;
+  min-height: 100dvh;
+  /* ✅ NEW: Dynamic viewport for mobile */
   box-sizing: border-box;
+}
+
+/* ✅ ENHANCED: Better scrollbar for all browsers */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  /* ✅ Firefox */
+  scrollbar-color: var(--color-text-accent) transparent;
+  /* ✅ Firefox */
 }
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
+  /* ✅ NEW: Horizontal scrollbar */
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -131,6 +215,11 @@ a:hover {
   border-radius: 10px;
 }
 
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  opacity: 0.5;
+}
+
+/* 3D Transform Support */
 .perspective-1000 {
   perspective: 1000px;
 }
@@ -169,23 +258,35 @@ a:hover {
   animation: float-gentle 4s ease-in-out infinite;
 }
 
+/* ✅ ENHANCED: Better image container */
 .feature-image-container {
   position: relative;
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, var(--color-bg-base) 0%, var(--color-bg-surface) 100%);
   overflow: hidden;
+  /* ✅ NEW: Prevent layout shift */
+  aspect-ratio: 16 / 9;
+  /* Adjust based on your images */
 }
 
+/* ✅ ENHANCED: Better image handling with fallbacks */
 .dynamic-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* ✅ Fallbacks for older browsers */
+  font-family: 'object-fit: cover;';
+  /* IE11 polyfill support */
   transition: transform 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform: translateZ(0);
+  /* ✅ Force GPU acceleration */
+  backface-visibility: hidden;
 }
 
 .group:hover .dynamic-image {
-  transform: scale(1.08);
+  transform: scale(1.08) translateZ(0);
+  /* ✅ Keep translateZ */
 }
 
 .pb-safe {
@@ -195,16 +296,60 @@ a:hover {
 .gold-gradient-text {
   background: linear-gradient(to bottom, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
   -webkit-background-clip: text;
+  background-clip: text;
+  /* ✅ Standard property */
   -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* ✅ Fallback */
 }
 
-/* Target specific accent text to use the CSS variable */
 .text-skin-accent {
   color: var(--color-text-accent) !important;
 }
 
+/* ✅ NEW: Safe area insets for notched devices (iPhone, Android) */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
+/* ✅ NEW: iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+
+  /* iOS Safari */
+  body {
+    -webkit-text-size-adjust: 100%;
+    /* Prevent zoom on orientation change */
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+    /* Prevent zoom on focus */
+  }
+}
+
+/* ✅ NEW: Android-specific fixes */
+@supports (-webkit-appearance: none) {
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"] {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+/* Print Styles */
 @media print {
-  .no-print {
+
+  .no-print,
+  button,
+  [role="button"],
+  .download-button {
     display: none !important;
   }
 
@@ -214,12 +359,24 @@ a:hover {
     margin: 0 !important;
   }
 
+  .section-container {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   @page {
     size: A4;
     margin: 0;
   }
+
+  /* ✅ NEW: Ensure images print */
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
 }
 
+/* Animations */
 @keyframes fadeOut {
   0% {
     opacity: 1;
@@ -241,7 +398,45 @@ a:hover {
   animation: fadeOut 5s ease-in-out forwards;
 }
 
-/* --- PRICING SECTION ALIGNMENT FIXES --- */
+@keyframes spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-spin-reverse {
+  animation: spin-reverse 1.5s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-in-out;
+}
+
+@keyframes highlight-fade {
+  0% {
+    background-color: rgba(251, 191, 36, 0.2);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Pricing Section */
 .pricing-section-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -265,87 +460,84 @@ a:hover {
   margin-top: auto;
 }
 
-@keyframes spin-reverse {
-  from {
-    transform: rotate(360deg);
-  }
-
-  to {
-    transform: rotate(0deg);
-  }
-}
-
-.animate-spin-reverse {
-  animation: spin-reverse 1.5s linear infinite;
-}
-
-/* PDF Styles */
-@media print {
-
-  button,
-  .no-print,
-  [role="button"],
-  .download-button {
-    display: none !important;
-  }
-
-  .section-container {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-}
-
-/* Smooth scroll behavior */
+/* Smooth Scrolling */
 html {
   scroll-behavior: smooth;
 }
 
-/* Add some breathing room when scrolling to sections */
 .report-preview,
 .payment-section {
   scroll-margin-top: 100px;
-  /* Space from top of viewport */
 }
 
-/* Highlight section when scrolled to */
 .report-preview:target,
 .payment-section:target {
   animation: highlight-fade 2s ease;
 }
 
-@keyframes highlight-fade {
-  0% {
-    background-color: rgba(251, 191, 36, 0.2);
-  }
-
-  100% {
-    background-color: transparent;
-  }
-}
-
-/* Add to your global CSS or component CSS */
 .animate-fade-in-up {
   scroll-margin-top: 120px;
-  /* Adjust based on your header height */
 }
 
-/* Automatically add scroll
-/* Smooth fade-in animation */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.3s ease-in-out;
-}
-
-/* Prevent body scroll when modal is open */
+/* Modal */
 body.modal-open {
   overflow: hidden;
+}
+
+/* ✅ NEW: PWA/APK specific styles */
+@media (display-mode: standalone) {
+
+  /* App is installed as PWA */
+  body {
+    padding-top: var(--safe-top);
+  }
+}
+
+/* ✅ NEW: Landscape mode handling */
+@media (orientation: landscape) and (max-height: 500px) {
+  .pb-safe {
+    padding-bottom: 2rem;
+    /* Reduce padding in landscape */
+  }
+}
+
+/* ✅ NEW: High contrast mode support (accessibility) */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: rgba(212, 165, 116, 0.6);
+  }
+}
+
+/* ✅ NEW: Reduced motion support (accessibility) */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ✅ NEW: Dark mode support (system preference) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-bg-base: #0B0F1F;
+    --color-text-base: #E8D7BA;
+  }
+}
+
+/* ✅ NEW: Touch target sizes (accessibility - minimum 44x44px) */
+@media (pointer: coarse) {
+
+  button,
+  a,
+  [role="button"],
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
