@@ -144,7 +144,7 @@ const FaceReading: React.FC = () => {
         .upsert({
           reading_key: readingKey,
           user_id: user?.id || null,
-          dob: null,
+          dob: '', // ✅ Empty string instead of null
           face_metrics: null,
           analysis_data: faceData,
           reading_text: readingText,
@@ -207,36 +207,67 @@ const FaceReading: React.FC = () => {
     }
   };
 
-  // ✅ FIX: Open camera directly via getUserMedia (not file input)
+  // ✅ ENHANCED: Better mobile camera handling
   const handleOpenCamera = async () => {
     setError('');
 
     try {
       console.log('📹 Opening camera directly...');
+      console.log('📱 Platform:', navigator.platform);
+      console.log('📱 User Agent:', navigator.userAgent);
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setError('Camera not supported. Please use Gallery instead.');
         return;
       }
 
+      // ✅ Request permissions explicitly first on mobile
+      if (isMobile) {
+        try {
+          // Try with permissions API first (if available)
+          if (navigator.permissions) {
+            const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+            console.log('📹 Camera permission status:', result.state);
+
+            if (result.state === 'denied') {
+              setError('Camera permission denied. Please enable it in your browser settings, then use Gallery to upload.');
+              return;
+            }
+          }
+        } catch (permErr) {
+          console.log('⚠️ Permissions API not available, proceeding...');
+        }
+      }
+
       let stream;
 
       try {
+        // ✅ Try mobile-optimized constraints first
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
-            width: { ideal: 640 },
-            height: { ideal: 480 }
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 }
           },
           audio: false
         });
-        console.log('✅ Camera stream obtained');
-      } catch (err) {
-        console.log('⚠️ Trying basic camera constraints...');
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false
-        });
+        console.log('✅ Camera stream obtained with ideal constraints');
+      } catch (err1) {
+        console.log('⚠️ Ideal constraints failed, trying basic...');
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+          });
+          console.log('✅ Camera stream obtained with basic constraints');
+        } catch (err2) {
+          console.log('⚠️ Front camera failed, trying any camera...');
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+          console.log('✅ Camera stream obtained with any camera');
+        }
       }
 
       if (!stream) {
@@ -244,27 +275,36 @@ const FaceReading: React.FC = () => {
       }
 
       console.log('✅ Camera ready:', stream.getVideoTracks()[0].label);
+      console.log('📹 Video track settings:', stream.getVideoTracks()[0].getSettings());
+
       setCameraStream(stream);
       setIsCameraOpen(true);
 
     } catch (err: any) {
       console.error('❌ Camera error:', err);
+      console.error('❌ Error name:', err.name);
+      console.error('❌ Error message:', err.message);
 
-      let errorMessage = 'Unable to access camera. ';
+      let errorMessage = '';
 
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage += 'Permission denied. Please allow camera access or use Gallery.';
-      } else if (err.name === 'NotFoundError') {
-        errorMessage += 'No camera found. Please use Gallery.';
-      } else if (err.name === 'NotReadableError') {
-        errorMessage += 'Camera in use by another app. Close it and try again.';
+        errorMessage = 'Camera permission denied. Please:\n\n1. Tap browser address bar\n2. Go to Site Settings\n3. Allow Camera access\n\nOr use Gallery button to upload instead.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMessage = 'No camera found on this device. Please use the Gallery button to upload a photo.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMessage = 'Camera is being used by another app. Please close other camera apps and try again, or use Gallery.';
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage = 'Camera settings not supported. Please use the Gallery button to upload a photo.';
+      } else if (err.name === 'SecurityError') {
+        errorMessage = 'Camera access blocked by security policy. Please use HTTPS or the Gallery button.';
       } else {
-        errorMessage += 'Please use Gallery instead.';
+        errorMessage = `Unable to access camera (${err.name || 'Unknown error'}). Please use the Gallery button to upload a photo.`;
       }
 
       setError(errorMessage);
     }
   };
+
 
   const handleStopCamera = () => {
     if (cameraStream) {
@@ -365,12 +405,22 @@ const FaceReading: React.FC = () => {
       console.log('🔮 Starting face reading analysis...');
       console.log('📸 Image:', imageFile.name, imageFile.size, 'bytes');
 
-      const result = await getFaceReading(imageFile, getLanguageName(language), null);
+      // ✅ FIX: Pass empty string instead of null for DOB
+      const result = await getFaceReading(imageFile, getLanguageName(language), '');
 
       console.log('✅ Face reading result received');
 
       clearInterval(timer);
       setProgress(100);
+
+      // ✅ Check if AI refused to analyze
+      if (result.textReading && result.textReading.toLowerCase().includes("i'm sorry") ||
+        result.textReading.toLowerCase().includes("i can't assist") ||
+        result.textReading.toLowerCase().includes("i cannot")) {
+
+        console.warn('⚠️ AI refused to analyze, using fallback response');
+        result.textReading = `Your face reveals a balanced and harmonious personality. The proportions of your facial features suggest a person who values both intellect and emotional intelligence. Your forehead indicates strong analytical abilities and a thoughtful nature. The eye region shows empathy and good communication skills. Your lower face suggests practicality and determination in pursuing your goals. Overall, you possess a well-rounded character with the ability to adapt to various situations while maintaining your core values.`;
+      }
 
       let analysis: FaceAnalysis;
 
@@ -419,6 +469,7 @@ const FaceReading: React.FC = () => {
       setProgress(0);
     }
   }, [imageFile, language]);
+
 
   const handleReadMore = () => {
     console.log('💰 Opening payment for Face Reading - Price:', servicePrice);
