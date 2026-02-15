@@ -544,25 +544,41 @@ Your facial features suggest a person capable of great achievements through bala
         };
       }
 
+      // ✅ SET STATE FIRST (so UI updates immediately)
       setAnalysisData(analysis);
       setReading(result.textReading);
 
-      console.log('💾 Saving to database...');
-      await saveToDatabase(analysis, result.textReading);
+      console.log('✅ Face reading complete - UI updated');
 
-      console.log('✅ Face reading complete');
+      // ✅ Save to database in background (don't block UI)
+      console.log('💾 Saving to database...');
+      saveToDatabase(analysis, result.textReading)
+        .then(savedId => {
+          if (savedId) {
+            console.log('✅ Database save successful:', savedId);
+          } else {
+            console.warn('⚠️ Database save failed, but reading is still available');
+          }
+        })
+        .catch(err => {
+          console.error('❌ Database save error:', err);
+          console.log('⚠️ Continuing with reading despite save error');
+        });
 
     } catch (err: any) {
       clearInterval(timer);
       console.error('❌ Face reading error:', err);
       setError(`Failed to analyze face: ${err.message || 'Unknown error'}. Please try again.`);
     } finally {
-      setIsLoading(false);
-      setProgress(0);
+      // ✅ ALWAYS clear loading state
+      clearInterval(timer);
+      setTimeout(() => {
+        setIsLoading(false);
+        setProgress(0);
+        console.log('✅ Loading state cleared');
+      }, 500); // Small delay to show 100% completion
     }
-  }, [imageFile, language]);
-
-
+  }, [imageFile, language, user?.id]);
 
   const handleReadMore = () => {
     console.log('💰 Opening payment for Face Reading - Price:', servicePrice);
