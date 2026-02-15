@@ -30,12 +30,14 @@ const FaceReading: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const analyzeButtonRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const { t, language } = useTranslation();
   const { openPayment } = usePayment();
   const { user } = useAuth();
   const { db } = useDb();
-  const { isMobile } = useDevice(); // ✅ Use proper hook
+  const { isMobile } = useDevice();
 
   const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_face')?.path ||
     "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800";
@@ -92,7 +94,6 @@ const FaceReading: React.FC = () => {
     };
   }, [cameraStream]);
 
-  // ✅ NEW: Auto-scroll to analyze button after capture
   useEffect(() => {
     if (imageFile && analyzeButtonRef.current && isMobile) {
       setTimeout(() => {
@@ -343,6 +344,20 @@ const FaceReading: React.FC = () => {
     }
   };
 
+  // ✅ NEW: Separate handler for camera capture on mobile
+  const handleMobileCameraClick = () => {
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+    }
+  };
+
+  // ✅ NEW: Separate handler for gallery upload on mobile
+  const handleGalleryClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   const getLanguageName = (code: string) => {
     const map: Record<string, string> = {
       en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu',
@@ -567,26 +582,26 @@ const FaceReading: React.FC = () => {
                 </div>
               ) : (
                 <div className="w-full">
-                  <label htmlFor="face-upload" className="w-full">
-                    <div className="w-full h-64 border-2 border-dashed border-amber-400 rounded-lg flex flex-col justify-center items-center cursor-pointer hover:bg-amber-900/20 transition-colors bg-gray-900/50 active:scale-95">
-                      {imagePreview ? (
-                        <img src={imagePreview} alt="Face preview" className="object-contain h-full w-full rounded-lg" />
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-amber-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                          </svg>
-                          <span className="text-amber-200 text-center px-4 text-sm">
-                            {isMobile
-                              ? '📸 Tap to take photo or upload'
-                              : 'Click to upload or drag and drop'}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </label>
+                  {/* Image Preview */}
+                  <div className="w-full h-64 border-2 border-dashed border-amber-400 rounded-lg flex flex-col justify-center items-center bg-gray-900/50 mb-4">
+                    {imagePreview ? (
+                      <img src={imagePreview} alt="Face preview" className="object-contain h-full w-full rounded-lg" />
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-amber-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span className="text-amber-200 text-center px-4 text-sm">
+                          Use buttons below to {isMobile ? 'take photo or upload' : 'upload or capture'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* ✅ TWO SEPARATE INPUTS */}
+                  {/* Camera input (with capture attribute) */}
                   <input
-                    id="face-upload"
+                    ref={cameraInputRef}
                     type="file"
                     accept="image/*"
                     capture="user"
@@ -594,8 +609,38 @@ const FaceReading: React.FC = () => {
                     onChange={handleFileChange}
                   />
 
-                  {!isMobile && (
-                    <div className="mt-4">
+                  {/* Gallery input (without capture attribute) */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+
+                  {/* ✅ TWO SEPARATE BUTTONS FOR MOBILE */}
+                  {isMobile ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        onClick={handleMobileCameraClick}
+                        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-500 text-sm py-3 flex items-center justify-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <span>📸 Camera</span>
+                      </Button>
+                      <Button
+                        onClick={handleGalleryClick}
+                        className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-500 text-sm py-3 flex items-center justify-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span>🖼️ Gallery</span>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Button onClick={handleGalleryClick} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> Upload Photo
+                      </Button>
                       <Button onClick={handleStartCamera} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Use Webcam
                       </Button>
@@ -607,11 +652,10 @@ const FaceReading: React.FC = () => {
               {error && error.includes('Camera') && (
                 <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
                   <p className="text-blue-400 text-xs font-bold mb-2">💡 Tip:</p>
-                  <p className="text-xs text-blue-200">Tap the upload box above to use your phone's camera or gallery</p>
+                  <p className="text-xs text-blue-200">Use the Gallery button to upload from your phone</p>
                 </div>
               )}
 
-              {/* ✅ Analyze button with ref for auto-scroll */}
               <div ref={analyzeButtonRef}>
                 {imageFile && !isCameraOpen && (
                   <Button
