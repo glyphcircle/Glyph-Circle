@@ -8,6 +8,7 @@ import { cloudManager } from '../services/cloudManager';
 import { generatePDF } from '../utils/pdfGenerator';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Download, Home, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface FullReportProps {
   reading: string;
@@ -86,8 +87,6 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
   const markdownComponents = useMemo(() => ({
     img: ({ node, src, alt, ...props }: any) => {
       let imageSrc = src || '';
-
-      // Use cloudManager to resolve the URL (includes Google Drive conversion)
       const resolvedSrc = cloudManager.resolveImage(imageSrc);
 
       return (
@@ -184,12 +183,10 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
   const renderSegment = (line: string, index: number) => {
     let trimmed = line.trim();
 
-    // Check if this line contains markdown syntax that should be parsed with ReactMarkdown
     const hasMarkdownImage = trimmed.includes('![');
     const hasMarkdownLink = trimmed.includes('[') && trimmed.includes('](');
     const hasMarkdownHeading = trimmed.startsWith('#');
 
-    // If it has complex markdown syntax, render with ReactMarkdown
     if (hasMarkdownImage || hasMarkdownLink || hasMarkdownHeading) {
       return (
         <div key={index} className="w-full">
@@ -203,7 +200,6 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
       );
     }
 
-    // Otherwise use your existing custom rendering logic for special formatting
     const isPositive = trimmed.includes('[POSITIVE]');
     const isNegative = trimmed.includes('[NEGATIVE]');
 
@@ -291,10 +287,27 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
     <div className="animate-fade-in-up w-full flex flex-col items-center min-h-screen pb-40">
       <SageChat context={reading} type={title} />
 
-      <div className="fixed bottom-24 right-8 z-[100] no-print flex flex-col gap-3 bg-black/80 backdrop-blur-xl border border-amber-500/30 p-2 rounded-2xl shadow-2xl">
-        <button onClick={() => setZoom(Math.min(1.5, zoom + 0.1))} className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 text-amber-500 font-bold text-2xl transition-all">+</button>
-        <div className="text-[10px] font-mono text-center text-amber-200 uppercase font-black">{(zoom * 100).toFixed(0)}%</div>
-        <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 text-amber-500 font-bold text-2xl transition-all">−</button>
+      {/* ✅ FIXED: Sticky Zoom Controls that follow scroll */}
+      <div className="sticky top-24 right-4 z-[100] no-print flex justify-end w-full max-w-[210mm] mb-4 px-4">
+        <div className="bg-gradient-to-br from-amber-900/90 to-orange-900/90 backdrop-blur-md rounded-2xl shadow-2xl border border-amber-500/30 flex items-center gap-2 px-4 py-3">
+          <button
+            onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
+            className="p-2 hover:bg-amber-500/20 rounded-xl transition-all"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-5 h-5 text-amber-300" />
+          </button>
+          <span className="text-amber-100 font-bold text-sm min-w-[70px] text-center font-mono">
+            {(zoom * 100).toFixed(0)}%
+          </span>
+          <button
+            onClick={() => setZoom(Math.min(1.5, zoom + 0.1))}
+            className="p-2 hover:bg-amber-500/20 rounded-xl transition-all"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-5 h-5 text-amber-300" />
+          </button>
+        </div>
       </div>
 
       <div
@@ -361,22 +374,60 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
         ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-8 justify-center w-full max-w-4xl mt-10 no-print px-6">
-        <Button
-          onClick={handleDownloadPDF}
-          disabled={isDownloading}
-          className="flex-1 h-16 bg-[#2d0a18] hover:bg-[#4a0404] text-white rounded-2xl shadow-xl font-cinzel tracking-widest text-lg"
-          data-report-download="true"
-        >
-          {isDownloading ? "ENGRAVING..." : "📜 ARCHIVE DECREE (PDF)"}
-        </Button>
-        <Link to="/home" className=" flex-1 h-16">
-          <button className="w-full h-full bg-white text-[#2d0a18] border-2 border-[#2d0a18] font-cinzel font-black uppercase tracking-widest rounded-2xl hover:bg-gray-50 transition-all shadow-xl">
-            RETURN HOME
-          </button>
-        </Link>
+      {/* ✅ ENHANCED: End of Report Section with better styling */}
+      <div className="mt-16 w-full max-w-4xl px-6 no-print">
+        <div className="bg-gradient-to-br from-purple-900/40 via-amber-900/40 to-orange-900/40 rounded-2xl p-8 shadow-2xl border border-amber-500/30 backdrop-blur-md">
+          <div className="text-center mb-6">
+            <h3 className="text-3xl font-cinzel font-bold text-amber-300 mb-2">
+              Your Report is Complete
+            </h3>
+            <p className="text-amber-100/70 font-lora italic text-lg">
+              May this wisdom guide you on your journey
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <Button
+              onClick={handleDownloadPDF}
+              disabled={isDownloading}
+              className="bg-gradient-to-r from-purple-600 to-pink-700 hover:from-purple-500 hover:to-pink-600 border-purple-500 shadow-lg px-8 py-4 font-cinzel tracking-wider text-base flex items-center gap-2 transition-all"
+            >
+              <Download className="w-5 h-5" />
+              {isDownloading ? 'ENGRAVING...' : '📜 ARCHIVE DECREE (PDF)'}
+            </Button>
+
+            <Link to="/home" className="w-full sm:w-auto">
+              <Button className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 border-amber-500 shadow-lg px-8 py-4 font-cinzel tracking-wider text-base flex items-center gap-2 justify-center transition-all">
+                <Home className="w-5 h-5" />
+                RETURN HOME
+              </Button>
+            </Link>
+          </div>
+
+          <div className="mt-8 text-center text-xs text-amber-300/50 font-mono">
+            <p>Report generated: {new Date().toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}</p>
+          </div>
+        </div>
       </div>
-    </div >
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          .no-print {
+            display: none !important;
+          }
+          .sticky {
+            position: relative !important;
+          }
+        }
+      `}</style>
+    </div>
   );
 };
 
