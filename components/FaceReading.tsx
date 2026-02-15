@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { getFaceReading } from '../services/aiService';
 import { calculateFaceReading, FaceAnalysis } from '../services/faceReadingEngine';
 import Button from './shared/Button';
@@ -38,6 +37,8 @@ const FaceReading: React.FC = () => {
   const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_face')?.path ||
     "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800";
 
+  const isMobileDevice = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
+
   // Fetch service price
   useEffect(() => {
     fetchServicePrice();
@@ -73,20 +74,18 @@ const FaceReading: React.FC = () => {
     }
   }, [isPaid]);
 
-  // ✅ FIX: Properly connect camera stream to video element
+  // Connect camera stream to video element
   useEffect(() => {
     if (cameraStream && videoRef.current) {
       console.log('📹 Connecting camera stream to video element');
       videoRef.current.srcObject = cameraStream;
 
-      // Ensure video plays
       videoRef.current.play().catch(err => {
         console.error('❌ Video play error:', err);
         setError('Failed to start video preview. Please try again.');
       });
     }
 
-    // Cleanup on unmount
     return () => {
       if (cameraStream) {
         console.log('🛑 Stopping camera stream');
@@ -107,21 +106,21 @@ const FaceReading: React.FC = () => {
 
       const readingKey = generateReadingKey();
 
-      // 1. Create reading record
       const { data: readingRecord, error: readingError } = await supabase
         .from('readings')
-        .insert([{
+        .insert({
           user_id: user?.id || null,
           type: 'face-reading',
           title: 'Face Reading Analysis',
           subtitle: `Dominant: ${faceData.zones.dominance}`,
           content: readingText,
-          is_paid: isPaid,
+          is_paid: false,
           meta_data: {
             reading_key: readingKey,
-            personality: faceData.personality
+            personality: faceData.personality,
+            timestamp: new Date().toISOString()
           }
-        }])
+        })
         .select()
         .single();
 
@@ -130,20 +129,19 @@ const FaceReading: React.FC = () => {
         return null;
       }
 
-      // 2. Save to face_reading_cache
       const { data: cache, error: cacheError } = await supabase
         .from('face_reading_cache')
-        .upsert([{
+        .upsert({
           reading_key: readingKey,
           user_id: user?.id || null,
-          dob: null, // No longer required
+          dob: null,
           face_metrics: null,
           analysis_data: faceData,
           reading_text: readingText,
           reading_id: readingRecord.id,
-          is_paid: isPaid,
+          is_paid: false,
           language: language
-        }], { onConflict: 'reading_key' })
+        }, { onConflict: 'reading_key' })
         .select()
         .single();
 
@@ -167,7 +165,7 @@ const FaceReading: React.FC = () => {
     try {
       const { data: txn, error: txnError } = await supabase
         .from('transactions')
-        .insert([{
+        .insert({
           user_id: user?.id || null,
           service_type: 'face-reading',
           service_title: 'Face Reading Analysis',
@@ -181,7 +179,7 @@ const FaceReading: React.FC = () => {
           metadata: {
             dominant_zone: analysisData?.zones.dominance
           }
-        }])
+        })
         .select()
         .single();
 
@@ -201,30 +199,63 @@ const FaceReading: React.FC = () => {
     }
   };
 
-  // ✅ FIX: Better camera initialization with fallback constraints
   const handleStartCamera = async () => {
     setError('');
+
     try {
       console.log('📹 Requesting camera access...');
+      console.log('📱 User Agent:', navigator.userAgent);
+      console.log('📱 Is Mobile:', isMobileDevice);
 
-      // Try with ideal constraints first
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError('Camera not supported on this browser. Please use file upload instead.');
+        return;
+      }
+
       let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
-      } catch (err) {
-        // Fallback to basic constraints
-        console.log('⚠️ Ideal constraints failed, trying basic...');
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false
-        });
+
+      if (isMobileDevice) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            },
+            audio: false
+          });
+          console.log('✅ Mobile camera stream obtained');
+        } catch (mobileErr) {
+          console.log('⚠️ Mobile constraints failed, trying environment camera...');
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { exact: 'environment' }
+            },
+            audio: false
+          });
+        }
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+          console.log('✅ Desktop camera stream obtained');
+        } catch (err) {
+          console.log('⚠️ Ideal constraints failed, trying basic...');
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Failed to get camera stream');
       }
 
       console.log('✅ Camera stream obtained:', stream.getVideoTracks()[0].label);
@@ -233,7 +264,24 @@ const FaceReading: React.FC = () => {
 
     } catch (err: any) {
       console.error('❌ Camera error:', err);
-      setError(`Unable to access camera: ${err.message}. Please check permissions.`);
+
+      let errorMessage = 'Unable to access camera. ';
+
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMessage += 'Camera permission denied. Please allow camera access in browser settings or use file upload.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMessage += 'No camera found on this device. Please use file upload.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMessage += 'Camera is being used by another app. Please close other apps and try again.';
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage += 'Camera constraints not supported. Please use file upload.';
+      } else if (err.name === 'SecurityError') {
+        errorMessage += 'Camera access blocked by security policy. Please use file upload or try HTTPS.';
+      } else {
+        errorMessage += `${err.message || 'Unknown error'}. Please use file upload instead.`;
+      }
+
+      setError(errorMessage);
     }
   };
 
@@ -303,7 +351,6 @@ const FaceReading: React.FC = () => {
     return map[code] || 'English';
   };
 
-  // ✅ FIX: Removed DOB requirement
   const handleGetReading = useCallback(async () => {
     if (!imageFile) {
       setError('Please upload an image of your face first.');
@@ -325,7 +372,7 @@ const FaceReading: React.FC = () => {
     }, 400);
 
     try {
-      const result = await getFaceReading(imageFile, getLanguageName(language), null); // ✅ No DOB
+      const result = await getFaceReading(imageFile, getLanguageName(language), null);
       clearInterval(timer);
       setProgress(100);
 
@@ -334,7 +381,6 @@ const FaceReading: React.FC = () => {
       if (result.rawMetrics && result.rawMetrics.width && result.rawMetrics.height) {
         analysis = calculateFaceReading(result.rawMetrics);
       } else {
-        // Fallback analysis
         analysis = {
           zones: {
             upper: 33,
@@ -361,7 +407,6 @@ const FaceReading: React.FC = () => {
       setAnalysisData(analysis);
       setReading(result.textReading);
 
-      // Save to database
       await saveToDatabase(analysis, result.textReading);
 
     } catch (err: any) {
@@ -370,7 +415,7 @@ const FaceReading: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [imageFile, language]); // ✅ Removed dob dependency
+  }, [imageFile, language]);
 
   const handleReadMore = () => {
     console.log('💰 Opening payment for Face Reading - Price:', servicePrice);
@@ -481,14 +526,13 @@ const FaceReading: React.FC = () => {
           <p className="text-amber-100/70">{t('uploadFacePrompt')}</p>
         </div>
 
-        {/* INPUT SECTION */}
         <div className="max-w-4xl mx-auto p-6 bg-gradient-to-br from-amber-900/40 via-orange-900/40 to-black/60 rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md">
           <div className="grid md:grid-cols-2 gap-8 items-start">
+
             {/* LEFT: Image Upload/Camera */}
             <div className="space-y-4">
               {isCameraOpen ? (
                 <div className="w-full relative bg-black rounded-lg overflow-hidden border-2 border-amber-500 shadow-xl">
-                  {/* ✅ FIX: Added proper video element attributes */}
                   <video
                     ref={videoRef}
                     autoPlay
@@ -518,21 +562,43 @@ const FaceReading: React.FC = () => {
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-amber-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
-                          <span className="text-amber-200">{t('uploadInstruction')}</span>
+                          <span className="text-amber-200 text-center px-4">
+                            {isMobileDevice
+                              ? '📸 Tap to upload from gallery or take photo'
+                              : 'Click to upload or drag and drop your photo'}
+                          </span>
                         </>
                       )}
                     </div>
                   </label>
-                  <input id="face-upload" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                  <div className="mt-4">
-                    <Button onClick={handleStartCamera} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Take Selfie
-                    </Button>
-                  </div>
+                  <input
+                    id="face-upload"
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+
+                  {!isMobileDevice && (
+                    <div className="mt-4">
+                      <Button onClick={handleStartCamera} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Use Webcam
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* ✅ REMOVED DOB INPUT - No longer needed */}
+              {error && error.includes('Camera permission') && (
+                <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                  <p className="text-blue-400 text-xs font-bold mb-2">💡 On Mobile:</p>
+                  <ul className="text-xs text-blue-200 space-y-1">
+                    <li>• Tap the upload box above to use your gallery</li>
+                    <li>• Or enable camera in browser settings</li>
+                  </ul>
+                </div>
+              )}
 
               {imageFile && !isCameraOpen && (
                 <Button onClick={handleGetReading} disabled={isLoading} className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600">
@@ -540,7 +606,7 @@ const FaceReading: React.FC = () => {
                 </Button>
               )}
 
-              {error && (
+              {error && !error.includes('Camera permission') && (
                 <p className="text-red-400 text-center text-sm bg-red-900/20 p-2 rounded border border-red-500/20">
                   {error}
                 </p>
@@ -616,10 +682,8 @@ const FaceReading: React.FC = () => {
                 </p>
               </div>
 
-              {/* Full Vedic Dashboard */}
               {renderVedicDashboard()}
 
-              {/* Full Report */}
               <div className="bg-black/20 rounded-2xl p-8 border border-amber-500/20 mt-8">
                 <FullReport
                   reading={reading}
