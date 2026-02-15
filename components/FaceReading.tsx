@@ -11,13 +11,11 @@ import { useAuth } from '../context/AuthContext';
 import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
 import SmartBackButton from './shared/SmartBackButton';
-import { SmartDatePicker } from './SmartAstroInputs';
 import { supabase } from '../services/supabaseClient';
 
 const FaceReading: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [dob, setDob] = useState<string>('');
   const [reading, setReading] = useState<string>('');
   const [analysisData, setAnalysisData] = useState<FaceAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -75,17 +73,31 @@ const FaceReading: React.FC = () => {
     }
   }, [isPaid]);
 
-  // Cleanup camera
+  // ✅ FIX: Properly connect camera stream to video element
   useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      console.log('📹 Connecting camera stream to video element');
+      videoRef.current.srcObject = cameraStream;
+
+      // Ensure video plays
+      videoRef.current.play().catch(err => {
+        console.error('❌ Video play error:', err);
+        setError('Failed to start video preview. Please try again.');
+      });
+    }
+
+    // Cleanup on unmount
     return () => {
       if (cameraStream) {
+        console.log('🛑 Stopping camera stream');
         cameraStream.getTracks().forEach(track => track.stop());
       }
     };
   }, [cameraStream]);
 
-  const generateReadingKey = (userDob: string): string => {
-    const key = `face_${user?.id || 'anon'}_${userDob}`;
+  const generateReadingKey = (): string => {
+    const timestamp = Date.now();
+    const key = `face_${user?.id || 'anon'}_${timestamp}`;
     return key.toLowerCase().replace(/[^a-z0-9]/g, '_');
   };
 
@@ -93,7 +105,7 @@ const FaceReading: React.FC = () => {
     try {
       if (!supabase) return null;
 
-      const readingKey = generateReadingKey(dob);
+      const readingKey = generateReadingKey();
 
       // 1. Create reading record
       const { data: readingRecord, error: readingError } = await supabase
@@ -107,7 +119,6 @@ const FaceReading: React.FC = () => {
           is_paid: isPaid,
           meta_data: {
             reading_key: readingKey,
-            dob: dob,
             personality: faceData.personality
           }
         }])
@@ -125,8 +136,8 @@ const FaceReading: React.FC = () => {
         .upsert([{
           reading_key: readingKey,
           user_id: user?.id || null,
-          dob: dob,
-          face_metrics: null, // You can add raw metrics here
+          dob: null, // No longer required
+          face_metrics: null,
           analysis_data: faceData,
           reading_text: readingText,
           reading_id: readingRecord.id,
@@ -168,7 +179,6 @@ const FaceReading: React.FC = () => {
           reading_id: readId,
           order_id: `FACE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           metadata: {
-            dob: dob,
             dominant_zone: analysisData?.zones.dominance
           }
         }])
@@ -191,24 +201,52 @@ const FaceReading: React.FC = () => {
     }
   };
 
+  // ✅ FIX: Better camera initialization with fallback constraints
   const handleStartCamera = async () => {
     setError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' }
-      });
+      console.log('📹 Requesting camera access...');
+
+      // Try with ideal constraints first
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+      } catch (err) {
+        // Fallback to basic constraints
+        console.log('⚠️ Ideal constraints failed, trying basic...');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      }
+
+      console.log('✅ Camera stream obtained:', stream.getVideoTracks()[0].label);
       setCameraStream(stream);
       setIsCameraOpen(true);
-    } catch (err) {
-      console.error(err);
-      setError("Unable to access camera. Please check permissions or upload a file.");
+
+    } catch (err: any) {
+      console.error('❌ Camera error:', err);
+      setError(`Unable to access camera: ${err.message}. Please check permissions.`);
     }
   };
 
   const handleStopCamera = () => {
     if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('🛑 Stopped track:', track.label);
+      });
       setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsCameraOpen(false);
   };
@@ -233,8 +271,9 @@ const FaceReading: React.FC = () => {
             setAnalysisData(null);
             setError('');
             setIsPaid(false);
+            console.log('✅ Face captured:', file.size, 'bytes');
           }
-        }, 'image/jpeg');
+        }, 'image/jpeg', 0.95);
       }
     }
   };
@@ -264,13 +303,10 @@ const FaceReading: React.FC = () => {
     return map[code] || 'English';
   };
 
+  // ✅ FIX: Removed DOB requirement
   const handleGetReading = useCallback(async () => {
     if (!imageFile) {
       setError('Please upload an image of your face first.');
-      return;
-    }
-    if (!dob) {
-      setError('Please provide your Date of Birth for age alignment.');
       return;
     }
 
@@ -289,17 +325,16 @@ const FaceReading: React.FC = () => {
     }, 400);
 
     try {
-      const result = await getFaceReading(imageFile, getLanguageName(language), dob);
+      const result = await getFaceReading(imageFile, getLanguageName(language), null); // ✅ No DOB
       clearInterval(timer);
       setProgress(100);
 
-      // ✅ FIX: Check if rawMetrics exists and has valid data
       let analysis: FaceAnalysis;
 
       if (result.rawMetrics && result.rawMetrics.width && result.rawMetrics.height) {
         analysis = calculateFaceReading(result.rawMetrics);
       } else {
-        // Create fallback analysis data
+        // Fallback analysis
         analysis = {
           zones: {
             upper: 33,
@@ -335,7 +370,7 @@ const FaceReading: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [imageFile, dob, language]);
+  }, [imageFile, language]); // ✅ Removed dob dependency
 
   const handleReadMore = () => {
     console.log('💰 Opening payment for Face Reading - Price:', servicePrice);
@@ -453,7 +488,16 @@ const FaceReading: React.FC = () => {
             <div className="space-y-4">
               {isCameraOpen ? (
                 <div className="w-full relative bg-black rounded-lg overflow-hidden border-2 border-amber-500 shadow-xl">
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-64 object-cover transform scale-x-[-1]" />
+                  {/* ✅ FIX: Added proper video element attributes */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-64 object-cover transform scale-x-[-1]"
+                    onLoadedMetadata={() => console.log('📹 Video metadata loaded')}
+                    onCanPlay={() => console.log('✅ Video can play')}
+                  />
                   <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-10">
                     <button onClick={handleStopCamera} className="bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-sm">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -488,12 +532,7 @@ const FaceReading: React.FC = () => {
                 </div>
               )}
 
-              <div className="bg-gray-900/40 p-6 rounded-2xl border border-amber-500/10 shadow-inner">
-                <SmartDatePicker value={dob} onChange={setDob} />
-                <p className="text-[10px] text-amber-500/50 mt-2 font-lora italic text-center">
-                  Birth date aligns facial evolution with your life stages (Mukha Samudrika).
-                </p>
-              </div>
+              {/* ✅ REMOVED DOB INPUT - No longer needed */}
 
               {imageFile && !isCameraOpen && (
                 <Button onClick={handleGetReading} disabled={isLoading} className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600">
@@ -521,7 +560,7 @@ const FaceReading: React.FC = () => {
               {!analysisData && !isLoading && (
                 <div className="flex-grow flex flex-col items-center justify-center text-amber-300/40 text-center">
                   <span className="text-7xl mb-4 animate-float opacity-50">😐</span>
-                  <p className="font-lora italic">Upload your photo and DOB to begin your face reading analysis.</p>
+                  <p className="font-lora italic">Upload your photo to begin your face reading analysis.</p>
                 </div>
               )}
 
