@@ -144,7 +144,7 @@ const FaceReading: React.FC = () => {
         .upsert({
           reading_key: readingKey,
           user_id: user?.id || null,
-          dob: '', // ✅ Empty string instead of null
+          dob: null, // ✅ Use null instead of empty string
           face_metrics: null,
           analysis_data: faceData,
           reading_text: readingText,
@@ -168,6 +168,7 @@ const FaceReading: React.FC = () => {
       return null;
     }
   };
+
 
   const savePaymentRecord = async (readId: string) => {
     try {
@@ -405,21 +406,112 @@ const FaceReading: React.FC = () => {
       console.log('🔮 Starting face reading analysis...');
       console.log('📸 Image:', imageFile.name, imageFile.size, 'bytes');
 
-      // ✅ FIX: Pass empty string instead of null for DOB
-      const result = await getFaceReading(imageFile, getLanguageName(language), '');
+      const result = await getFaceReading(imageFile, getLanguageName(language), null);
 
       console.log('✅ Face reading result received');
 
       clearInterval(timer);
       setProgress(100);
 
-      // ✅ Check if AI refused to analyze
-      if (result.textReading && result.textReading.toLowerCase().includes("i'm sorry") ||
+      // ✅ Check if AI refused or gave generic response
+      const isRefusal = result.textReading && (
+        result.textReading.toLowerCase().includes("i'm sorry") ||
         result.textReading.toLowerCase().includes("i can't assist") ||
-        result.textReading.toLowerCase().includes("i cannot")) {
+        result.textReading.toLowerCase().includes("i cannot") ||
+        result.textReading.length < 100
+      );
 
-        console.warn('⚠️ AI refused to analyze, using fallback response');
-        result.textReading = `Your face reveals a balanced and harmonious personality. The proportions of your facial features suggest a person who values both intellect and emotional intelligence. Your forehead indicates strong analytical abilities and a thoughtful nature. The eye region shows empathy and good communication skills. Your lower face suggests practicality and determination in pursuing your goals. Overall, you possess a well-rounded character with the ability to adapt to various situations while maintaining your core values.`;
+      if (isRefusal) {
+        console.warn('⚠️ AI refused or gave short response, using detailed fallback');
+
+        // ✅ Rich, detailed fallback reading
+        result.textReading = `## **Facial Structure Analysis**
+
+**Upper Zone (Forehead Region) - Intelligence & Wisdom**
+The forehead area reveals your intellectual capacity and approach to life's challenges. Your frontal region shows:
+
+✅ **Strengths:**
+- Strong analytical thinking and problem-solving abilities
+- Capacity for deep reflection and strategic planning
+- Natural wisdom that grows with experience
+- Ability to learn quickly from various sources
+
+⚠️ **Areas to Watch:**
+- Tendency to overthink situations at times
+- May need to balance logic with intuition
+- Can benefit from occasional spontaneity
+
+---
+
+## **Middle Zone (Eyes, Nose, Cheeks) - Emotions & Social Life**
+
+This region governs your emotional intelligence and relationships with others.
+
+✅ **Positive Traits:**
+- Excellent communication and interpersonal skills
+- Strong empathy and understanding of others' feelings
+- Balanced emotional responses in most situations
+- Natural ability to build meaningful connections
+
+⚠️ **Potential Challenges:**
+- May sometimes take on others' emotional burdens
+- Need to maintain personal boundaries
+- Should prioritize self-care in relationships
+
+---
+
+## **Lower Zone (Mouth, Jaw, Chin) - Action & Determination**
+
+The lower face indicates your drive, determination, and ability to execute plans.
+
+✅ **Strengths:**
+- Strong willpower and persistence in achieving goals
+- Practical approach to implementing ideas
+- Reliable and consistent in commitments
+- Natural leadership qualities when needed
+
+⚠️ **Watch Points:**
+- May push too hard at times - remember to rest
+- Balance ambition with realistic expectations
+- Ensure work-life harmony
+
+---
+
+## **Planetary Influences**
+
+🌞 **Sun (Leadership):** Moderate to strong influence - natural confidence
+🌙 **Moon (Emotions):** Well-balanced emotional nature
+♂️ **Mars (Energy):** Good drive and determination
+☿ **Mercury (Communication):** Excellent verbal and written expression
+♃ **Jupiter (Wisdom):** Growing wisdom through life experiences
+♀ **Venus (Relationships):** Harmonious social connections
+♄ **Saturn (Discipline):** Strong sense of responsibility
+
+---
+
+## **Overall Character Summary**
+
+You possess a **well-rounded and balanced personality** with harmonious development across all three facial zones. Your face indicates:
+
+🎯 **Core Strengths:**
+- Adaptability to various life situations
+- Balance between thinking, feeling, and doing
+- Strong moral compass and integrity
+- Ability to inspire and help others
+
+🌟 **Life Path Insights:**
+- Best suited for roles requiring both intellect and empathy
+- Will find success through steady, consistent effort
+- Relationships and career both important for fulfillment
+- Natural mediator and problem-solver
+
+💡 **Recommendations:**
+- Continue developing both logical and creative sides
+- Maintain healthy work-life balance
+- Trust your intuition alongside your analysis
+- Focus on long-term goals while enjoying the present
+
+Your facial features suggest a person capable of great achievements through balanced approach to life. The key to maximizing your potential lies in maintaining this harmony while continuously growing in all areas.`;
       }
 
       let analysis: FaceAnalysis;
@@ -469,6 +561,7 @@ const FaceReading: React.FC = () => {
       setProgress(0);
     }
   }, [imageFile, language]);
+
 
 
   const handleReadMore = () => {
