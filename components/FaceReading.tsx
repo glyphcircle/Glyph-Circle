@@ -11,6 +11,7 @@ import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
 import SmartBackButton from './shared/SmartBackButton';
 import { supabase } from '../services/supabaseClient';
+import { useDevice } from '../hooks/useDevice';
 
 const FaceReading: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -28,18 +29,17 @@ const FaceReading: React.FC = () => {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
+  const analyzeButtonRef = useRef<HTMLDivElement>(null);
 
   const { t, language } = useTranslation();
   const { openPayment } = usePayment();
   const { user } = useAuth();
   const { db } = useDb();
+  const { isMobile } = useDevice(); // ✅ Use proper hook
 
   const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_face')?.path ||
     "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800";
 
-  const isMobileDevice = /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
-
-  // Fetch service price
   useEffect(() => {
     fetchServicePrice();
   }, []);
@@ -62,7 +62,6 @@ const FaceReading: React.FC = () => {
     }
   };
 
-  // Auto-scroll when paid
   useEffect(() => {
     if (isPaid && reportRef.current) {
       setTimeout(() => {
@@ -74,7 +73,6 @@ const FaceReading: React.FC = () => {
     }
   }, [isPaid]);
 
-  // Connect camera stream to video element
   useEffect(() => {
     if (cameraStream && videoRef.current) {
       console.log('📹 Connecting camera stream to video element');
@@ -93,6 +91,18 @@ const FaceReading: React.FC = () => {
       }
     };
   }, [cameraStream]);
+
+  // ✅ NEW: Auto-scroll to analyze button after capture
+  useEffect(() => {
+    if (imageFile && analyzeButtonRef.current && isMobile) {
+      setTimeout(() => {
+        analyzeButtonRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }, 300);
+    }
+  }, [imageFile, isMobile]);
 
   const generateReadingKey = (): string => {
     const timestamp = Date.now();
@@ -147,8 +157,6 @@ const FaceReading: React.FC = () => {
 
       if (cacheError) {
         console.error('❌ Cache save error:', cacheError);
-      } else {
-        console.log('✅ Face reading cache saved:', cache);
       }
 
       console.log('✅ Face reading saved:', readingRecord.id);
@@ -204,8 +212,6 @@ const FaceReading: React.FC = () => {
 
     try {
       console.log('📹 Requesting camera access...');
-      console.log('📱 User Agent:', navigator.userAgent);
-      console.log('📱 Is Mobile:', isMobileDevice);
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setError('Camera not supported on this browser. Please use file upload instead.');
@@ -214,7 +220,7 @@ const FaceReading: React.FC = () => {
 
       let stream;
 
-      if (isMobileDevice) {
+      if (isMobile) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -226,11 +232,9 @@ const FaceReading: React.FC = () => {
           });
           console.log('✅ Mobile camera stream obtained');
         } catch (mobileErr) {
-          console.log('⚠️ Mobile constraints failed, trying environment camera...');
+          console.log('⚠️ Mobile constraints failed, trying basic...');
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { exact: 'environment' }
-            },
+            video: true,
             audio: false
           });
         }
@@ -268,17 +272,13 @@ const FaceReading: React.FC = () => {
       let errorMessage = 'Unable to access camera. ';
 
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage += 'Camera permission denied. Please allow camera access in browser settings or use file upload.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMessage += 'No camera found on this device. Please use file upload.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMessage += 'Camera is being used by another app. Please close other apps and try again.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMessage += 'Camera constraints not supported. Please use file upload.';
-      } else if (err.name === 'SecurityError') {
-        errorMessage += 'Camera access blocked by security policy. Please use file upload or try HTTPS.';
+        errorMessage += 'Camera permission denied. Please allow camera access or use file upload.';
+      } else if (err.name === 'NotFoundError') {
+        errorMessage += 'No camera found. Please use file upload.';
+      } else if (err.name === 'NotReadableError') {
+        errorMessage += 'Camera is in use by another app. Please close it and try again.';
       } else {
-        errorMessage += `${err.message || 'Unknown error'}. Please use file upload instead.`;
+        errorMessage += 'Please use file upload instead.';
       }
 
       setError(errorMessage);
@@ -329,6 +329,7 @@ const FaceReading: React.FC = () => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      console.log('📸 File selected:', file.name, file.type, file.size);
       setImageFile(file);
       setReading('');
       setAnalysisData(null);
@@ -372,15 +373,23 @@ const FaceReading: React.FC = () => {
     }, 400);
 
     try {
+      console.log('🔮 Starting face reading analysis...');
+      console.log('📸 Image:', imageFile.name, imageFile.size, 'bytes');
+
       const result = await getFaceReading(imageFile, getLanguageName(language), null);
+
+      console.log('✅ Face reading result received');
+
       clearInterval(timer);
       setProgress(100);
 
       let analysis: FaceAnalysis;
 
       if (result.rawMetrics && result.rawMetrics.width && result.rawMetrics.height) {
+        console.log('📊 Using real face metrics');
         analysis = calculateFaceReading(result.rawMetrics);
       } else {
+        console.log('⚠️ Using fallback analysis data');
         analysis = {
           zones: {
             upper: 33,
@@ -407,13 +416,18 @@ const FaceReading: React.FC = () => {
       setAnalysisData(analysis);
       setReading(result.textReading);
 
+      console.log('💾 Saving to database...');
       await saveToDatabase(analysis, result.textReading);
+
+      console.log('✅ Face reading complete');
 
     } catch (err: any) {
       clearInterval(timer);
-      setError(`Failed to get reading: ${err.message}. Please try again.`);
+      console.error('❌ Face reading error:', err);
+      setError(`Failed to analyze face: ${err.message || 'Unknown error'}. Please try again.`);
     } finally {
       setIsLoading(false);
+      setProgress(0);
     }
   }, [imageFile, language]);
 
@@ -554,7 +568,7 @@ const FaceReading: React.FC = () => {
               ) : (
                 <div className="w-full">
                   <label htmlFor="face-upload" className="w-full">
-                    <div className="w-full h-64 border-2 border-dashed border-amber-400 rounded-lg flex flex-col justify-center items-center cursor-pointer hover:bg-amber-900/20 transition-colors bg-gray-900/50">
+                    <div className="w-full h-64 border-2 border-dashed border-amber-400 rounded-lg flex flex-col justify-center items-center cursor-pointer hover:bg-amber-900/20 transition-colors bg-gray-900/50 active:scale-95">
                       {imagePreview ? (
                         <img src={imagePreview} alt="Face preview" className="object-contain h-full w-full rounded-lg" />
                       ) : (
@@ -562,10 +576,10 @@ const FaceReading: React.FC = () => {
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-amber-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
-                          <span className="text-amber-200 text-center px-4">
-                            {isMobileDevice
-                              ? '📸 Tap to upload from gallery or take photo'
-                              : 'Click to upload or drag and drop your photo'}
+                          <span className="text-amber-200 text-center px-4 text-sm">
+                            {isMobile
+                              ? '📸 Tap to take photo or upload'
+                              : 'Click to upload or drag and drop'}
                           </span>
                         </>
                       )}
@@ -580,7 +594,7 @@ const FaceReading: React.FC = () => {
                     onChange={handleFileChange}
                   />
 
-                  {!isMobileDevice && (
+                  {!isMobile && (
                     <div className="mt-4">
                       <Button onClick={handleStartCamera} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Use Webcam
@@ -590,23 +604,27 @@ const FaceReading: React.FC = () => {
                 </div>
               )}
 
-              {error && error.includes('Camera permission') && (
+              {error && error.includes('Camera') && (
                 <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                  <p className="text-blue-400 text-xs font-bold mb-2">💡 On Mobile:</p>
-                  <ul className="text-xs text-blue-200 space-y-1">
-                    <li>• Tap the upload box above to use your gallery</li>
-                    <li>• Or enable camera in browser settings</li>
-                  </ul>
+                  <p className="text-blue-400 text-xs font-bold mb-2">💡 Tip:</p>
+                  <p className="text-xs text-blue-200">Tap the upload box above to use your phone's camera or gallery</p>
                 </div>
               )}
 
-              {imageFile && !isCameraOpen && (
-                <Button onClick={handleGetReading} disabled={isLoading} className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600">
-                  {isLoading ? t('analyzing') : t('getYourReading')}
-                </Button>
-              )}
+              {/* ✅ Analyze button with ref for auto-scroll */}
+              <div ref={analyzeButtonRef}>
+                {imageFile && !isCameraOpen && (
+                  <Button
+                    onClick={handleGetReading}
+                    disabled={isLoading}
+                    className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600"
+                  >
+                    {isLoading ? t('analyzing') : t('getYourReading')}
+                  </Button>
+                )}
+              </div>
 
-              {error && !error.includes('Camera permission') && (
+              {error && !error.includes('Camera') && (
                 <p className="text-red-400 text-center text-sm bg-red-900/20 p-2 rounded border border-red-500/20">
                   {error}
                 </p>
@@ -626,7 +644,7 @@ const FaceReading: React.FC = () => {
               {!analysisData && !isLoading && (
                 <div className="flex-grow flex flex-col items-center justify-center text-amber-300/40 text-center">
                   <span className="text-7xl mb-4 animate-float opacity-50">😐</span>
-                  <p className="font-lora italic">Upload your photo to begin your face reading analysis.</p>
+                  <p className="font-lora italic">Upload your photo to begin analysis.</p>
                 </div>
               )}
 
