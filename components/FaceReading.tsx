@@ -30,8 +30,7 @@ const FaceReading: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const analyzeButtonRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const { t, language } = useTranslation();
   const { openPayment } = usePayment();
@@ -208,62 +207,43 @@ const FaceReading: React.FC = () => {
     }
   };
 
-  const handleStartCamera = async () => {
+  // ✅ FIX: Open camera directly via getUserMedia (not file input)
+  const handleOpenCamera = async () => {
     setError('');
 
     try {
-      console.log('📹 Requesting camera access...');
+      console.log('📹 Opening camera directly...');
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError('Camera not supported on this browser. Please use file upload instead.');
+        setError('Camera not supported. Please use Gallery instead.');
         return;
       }
 
       let stream;
 
-      if (isMobile) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'user',
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-            },
-            audio: false
-          });
-          console.log('✅ Mobile camera stream obtained');
-        } catch (mobileErr) {
-          console.log('⚠️ Mobile constraints failed, trying basic...');
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-        }
-      } else {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: false
-          });
-          console.log('✅ Desktop camera stream obtained');
-        } catch (err) {
-          console.log('⚠️ Ideal constraints failed, trying basic...');
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false
-          });
-        }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          },
+          audio: false
+        });
+        console.log('✅ Camera stream obtained');
+      } catch (err) {
+        console.log('⚠️ Trying basic camera constraints...');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
       }
 
       if (!stream) {
         throw new Error('Failed to get camera stream');
       }
 
-      console.log('✅ Camera stream obtained:', stream.getVideoTracks()[0].label);
+      console.log('✅ Camera ready:', stream.getVideoTracks()[0].label);
       setCameraStream(stream);
       setIsCameraOpen(true);
 
@@ -273,13 +253,13 @@ const FaceReading: React.FC = () => {
       let errorMessage = 'Unable to access camera. ';
 
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage += 'Camera permission denied. Please allow camera access or use file upload.';
+        errorMessage += 'Permission denied. Please allow camera access or use Gallery.';
       } else if (err.name === 'NotFoundError') {
-        errorMessage += 'No camera found. Please use file upload.';
+        errorMessage += 'No camera found. Please use Gallery.';
       } else if (err.name === 'NotReadableError') {
-        errorMessage += 'Camera is in use by another app. Please close it and try again.';
+        errorMessage += 'Camera in use by another app. Close it and try again.';
       } else {
-        errorMessage += 'Please use file upload instead.';
+        errorMessage += 'Please use Gallery instead.';
       }
 
       setError(errorMessage);
@@ -344,17 +324,11 @@ const FaceReading: React.FC = () => {
     }
   };
 
-  // ✅ NEW: Separate handler for camera capture on mobile
-  const handleMobileCameraClick = () => {
-    if (cameraInputRef.current) {
-      cameraInputRef.current.click();
-    }
-  };
-
-  // ✅ NEW: Separate handler for gallery upload on mobile
+  // ✅ FIX: Only trigger file input for gallery
   const handleGalleryClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
+    console.log('🖼️ Opening gallery...');
+    if (galleryInputRef.current) {
+      galleryInputRef.current.click();
     }
   };
 
@@ -592,60 +566,38 @@ const FaceReading: React.FC = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                         </svg>
                         <span className="text-amber-200 text-center px-4 text-sm">
-                          Use buttons below to {isMobile ? 'take photo or upload' : 'upload or capture'}
+                          {isMobile ? 'Use buttons below to capture or upload' : 'Use webcam or upload file'}
                         </span>
                       </>
                     )}
                   </div>
 
-                  {/* ✅ TWO SEPARATE INPUTS */}
-                  {/* Camera input (with capture attribute) */}
+                  {/* ✅ ONLY ONE FILE INPUT (for gallery only) */}
                   <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="user"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-
-                  {/* Gallery input (without capture attribute) */}
-                  <input
-                    ref={fileInputRef}
+                    ref={galleryInputRef}
                     type="file"
                     accept="image/*"
                     className="hidden"
                     onChange={handleFileChange}
                   />
 
-                  {/* ✅ TWO SEPARATE BUTTONS FOR MOBILE */}
-                  {isMobile ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        onClick={handleMobileCameraClick}
-                        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-500 text-sm py-3 flex items-center justify-center gap-2"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        <span>📸 Camera</span>
-                      </Button>
-                      <Button
-                        onClick={handleGalleryClick}
-                        className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-500 text-sm py-3 flex items-center justify-center gap-2"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                        <span>🖼️ Gallery</span>
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <Button onClick={handleGalleryClick} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg> Upload Photo
-                      </Button>
-                      <Button onClick={handleStartCamera} className="w-full bg-gray-800 hover:bg-gray-700 border-gray-600 text-sm py-2 flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Use Webcam
-                      </Button>
-                    </div>
-                  )}
+                  {/* ✅ TWO SEPARATE BUTTONS */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={handleOpenCamera}
+                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-500 text-sm py-3 flex items-center justify-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      <span>📸 Camera</span>
+                    </Button>
+                    <Button
+                      onClick={handleGalleryClick}
+                      className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-500 text-sm py-3 flex items-center justify-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <span>🖼️ Gallery</span>
+                    </Button>
+                  </div>
                 </div>
               )}
 
