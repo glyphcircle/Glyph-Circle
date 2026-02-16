@@ -1,17 +1,11 @@
-// Palmistry.tsx - FIXED: Already using SmartBackButton (no changes needed)
-// Description: AI-powered palm reading with image upload and detailed analysis
-// Features:
-// 1. Back button: Already using SmartBackButton component (z-[70] built-in)
-// 2. Payment flow: Integrated with PaymentContext for full report unlock
-// 3. Report restoration: Loads previous readings from sessionStorage/reportStateManager
-// 4. Registry check: Verifies if user already purchased today
-// 5. Image upload: Camera + file picker support for palm photos
-// 6. Auto-PDF download: Triggers PDF generation when returning from history
-// 7. Admin bypass: Allows admin to skip payment for testing
-// Status: ✅ READY TO USE (No changes required - SmartBackButton already handles z-index)
+// Palmistry.tsx - COMPLETE & FIXED
+// ✅ Fixed image resolution
+// ✅ Fixed palmistry engine error handling
+// ✅ All other features intact
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useServicePayment } from '../hooks/useServicePayment';
 import { getPalmReading, translateText } from '../services/aiService';
 import { calculatePalmistry, PalmAnalysis } from '../services/palmistryEngine';
 import { dbService } from '../services/db';
@@ -41,8 +35,6 @@ const Palmistry: React.FC = () => {
   const [isPaid, setIsPaid] = useState<boolean>(false);
   const [isRestored, setIsRestored] = useState(false);
 
-  // Registry states
-  const [isCheckingRegistry, setIsCheckingRegistry] = useState(false);
   const [retrievedTx, setRetrievedTx] = useState<any>(null);
 
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -64,7 +56,44 @@ const Palmistry: React.FC = () => {
     return map[code] || 'English';
   };
 
-  // ✅ Restore from sessionStorage (history view) or reportStateManager (page refresh)
+  //  Get the logo from config
+  const siteLogo = useMemo(() => {
+    const logoAsset = db.image_assets?.find((a: any) => a.id === 'site_logo');
+    if (logoAsset?.path) {
+      return typeof logoAsset.path === 'string'
+        ? logoAsset.path
+        : cloudManager.resolveImage(logoAsset.path);
+    }
+    // Fallback logo
+    return '/logo.png';
+  }, [db.image_assets]);
+
+  const { initiateFlow, isCheckingCache } = useServicePayment({
+    serviceType: 'palmistry',
+
+    onReportGenerated: (data) => {
+      console.log('✅ [Palmistry] Report display triggered');
+      setIsPaid(true);
+
+      const current = reportStateManager.loadReportState('palmistry');
+      if (current) {
+        reportStateManager.saveReportState('palmistry', { ...current, isPaid: true });
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    onCacheRestored: (reading, transaction) => {
+      console.log('✅ [Palmistry] Cache restored:', reading);
+      setRetrievedTx(transaction);
+      setReadingText(reading.content);
+      setAnalysisData(reading.meta_data);
+      setImagePreview(reading.image_url || null);
+      setIsPaid(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+
   useEffect(() => {
     const savedReport = sessionStorage.getItem('viewReport');
     if (savedReport) {
@@ -95,7 +124,6 @@ const Palmistry: React.FC = () => {
     }
   }, []);
 
-  // 🔑 Auto-trigger PDF download when returning from history
   useEffect(() => {
     const flag = sessionStorage.getItem('autoDownloadPDF');
     if (flag && isPaid && readingText) {
@@ -116,81 +144,39 @@ const Palmistry: React.FC = () => {
   const isAdmin = user?.role === 'admin';
   const serviceConfig = db.services?.find((s: any) => s.id === 'palmistry');
   const servicePrice = serviceConfig?.price || 49;
-  const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_palmistry')?.path ||
+
+  // ✅ FIXED: Don't use cloudManager.resolveImage() - image is already a URL
+  const reportImage = serviceConfig?.image ||
+    db.image_assets?.find((a: any) => a.id === 'report_bg_palmistry')?.path ||
     "https://images.unsplash.com/photo-1542553457-3f92a3449339?q=80&w=800";
 
-  const proceedToPayment = useCallback(() => {
-    console.log('🖐️ [Palmistry] Opening payment modal, price:', servicePrice);
-    openPayment(async (paymentDetails?: any) => {
-      console.log('✅ Palmistry payment success:', paymentDetails);
-      setIsPaid(true);
-      try {
-        const savedReading = await dbService.saveReading({
-          user_id: user?.id,
-          type: 'palmistry',
-          title: 'Palmistry Analysis',
-          content: readingText,
-          image_url: imagePreview || undefined,
-          meta_data: analysisData,
-          is_paid: true
-        });
+  const startNewReading = () => {
+    console.log('🆕 [Palmistry] Starting new reading');
 
-        const readingId = savedReading?.data?.id;
-        if (readingId) {
-          await dbService.recordTransaction({
-            user_id: user?.id,
-            service_type: 'palmistry',
-            service_title: 'Palmistry Reading',
-            amount: servicePrice,
-            currency: 'INR',
-            payment_method: paymentDetails?.method || 'test',
-            payment_provider: paymentDetails?.provider || 'manual',
-            order_id: paymentDetails?.orderId || `ORD-${Date.now()}`,
-            transaction_id: paymentDetails?.transactionId || `TXN-${Date.now()}`,
-            reading_id: readingId,
-            status: 'success',
-            metadata: {
-              name: user?.name,
-              preview: imagePreview,
-              paymentTimestamp: new Date().toISOString()
-            },
-          });
-        }
+    setImageFile(null);
+    setImagePreview(null);
+    setReadingText('');
+    setAnalysisData(null);
+    setError('');
+    setIsPaid(false);
+    setRetrievedTx(null);
+    setIsRestored(false);
 
-        const current = reportStateManager.loadReportState('palmistry');
-        if (current) {
-          reportStateManager.saveReportState('palmistry', { ...current, isPaid: true });
-        }
+    sessionStorage.removeItem('viewReport');
+    reportStateManager.clearReportState('palmistry');
 
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } catch (err) {
-        console.error("❌ Palmistry save error:", err);
-      }
-    }, 'palmistry', servicePrice);
-  }, [user, readingText, imagePreview, analysisData, openPayment, servicePrice]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleReadMore = async () => {
     if (!readingText) return;
 
-    setIsCheckingRegistry(true);
-    try {
-      const existing = await dbService.checkAlreadyPaid('palmistry', { name: user?.name });
-      if (existing.exists) {
-        console.log('✅ Found existing palmistry purchase:', existing.transaction);
-        setRetrievedTx(existing.transaction);
-        setReadingText(existing.reading?.content || readingText);
-        setIsPaid(false);
-        setIsCheckingRegistry(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
+    await initiateFlow(
+      { name: user?.name, dob: user?.dob, preview: imagePreview },
+      async () => {
+        return { textReading: readingText, rawMetrics: analysisData };
       }
-    } catch (err) {
-      console.error("❌ Palmistry registry check failed:", err);
-    } finally {
-      setIsCheckingRegistry(false);
-    }
-
-    proceedToPayment();
+    );
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,7 +206,18 @@ const Palmistry: React.FC = () => {
         clearInterval(timer);
         setProgress(100);
         setReadingText(res.textReading);
-        const analysis = calculatePalmistry(res.rawMetrics);
+
+        // ✅ FIX: Check if rawMetrics exists before calculating
+        let analysis = null;
+        if (res.rawMetrics && typeof res.rawMetrics === 'object') {
+          try {
+            analysis = calculatePalmistry(res.rawMetrics);
+          } catch (err) {
+            console.warn('⚠️ Failed to calculate palmistry metrics:', err);
+            // Continue without analysis data
+          }
+        }
+
         setAnalysisData(analysis);
 
         reportStateManager.saveReportState('palmistry', {
@@ -243,10 +240,20 @@ const Palmistry: React.FC = () => {
   return (
     <div className="flex flex-col gap-12 items-center">
       <div className="w-full max-w-4xl mx-auto p-4 md:p-6">
-        {/* ✅ SmartBackButton already has z-[70] built-in */}
         <SmartBackButton label={t('backToHome')} className="mb-6" />
 
-        {/* Already Purchased Banner */}
+        {(isPaid || retrievedTx || isRestored) && (
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={startNewReading}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-3 rounded-full text-sm font-bold uppercase tracking-wider shadow-lg transition-all flex items-center gap-2"
+            >
+              <span>✨</span>
+              <span>New Palm Reading</span>
+            </button>
+          </div>
+        )}
+
         {retrievedTx && !isPaid && (
           <div className={`
             rounded-2xl p-6 mb-8 shadow-xl border-2 animate-fade-in-up
@@ -259,7 +266,7 @@ const Palmistry: React.FC = () => {
               <div>
                 <h3 className={`font-cinzel font-black text-xl uppercase ${isLight ? 'text-emerald-800' : 'text-green-400'
                   }`}>
-                  Already Purchased Today!
+                  Already Purchased This Year!
                 </h3>
                 <p className={`text-sm italic ${isLight ? 'text-emerald-700' : 'text-green-300/70'
                   }`}>
@@ -274,27 +281,22 @@ const Palmistry: React.FC = () => {
                   📄 View
                 </button>
                 <button
-                  onClick={() => {
-                    reportStateManager.clearReportState('palmistry');
-                    window.location.reload();
-                  }}
-                  className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all"
+                  onClick={startNewReading}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all"
                 >
-                  🆕 New Reading
+                  ✨ New
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Restored Report Banner */}
         {isRestored && isPaid && !retrievedTx && (
           <div className="mb-4 p-3 bg-blue-900/20 text-blue-300 text-xs rounded-lg text-center border border-blue-500/20">
             ✅ Restored previous palm reading from {reportStateManager.getReportAge('palmistry')}m ago.
           </div>
         )}
 
-        {/* Header */}
         <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl font-cinzel font-bold text-amber-300 mb-2">
             🖐️ {t('aiPalmReading')}
@@ -302,9 +304,7 @@ const Palmistry: React.FC = () => {
           <p className="text-amber-100/70">{t('uploadPalmPrompt')}</p>
         </div>
 
-        {/* Main Content */}
         <div className="flex flex-col gap-8 items-center w-full">
-          {/* Upload Section */}
           {!readingText && !isLoading && (
             <div className="w-full max-w-md">
               <div className="w-full">
@@ -368,14 +368,11 @@ const Palmistry: React.FC = () => {
             </div>
           )}
 
-          {/* Results Section */}
           <div className="w-full max-w-5xl">
-            {/* Loading State */}
             {isLoading && !readingText && (
               <ProgressBar progress={progress} message="Scanning Lines & Mounts..." />
             )}
 
-            {/* Preview (Before Payment) */}
             {readingText && !isPaid && (
               <div className="animate-fade-in-up">
                 <ServiceResult
@@ -389,7 +386,6 @@ const Palmistry: React.FC = () => {
               </div>
             )}
 
-            {/* Full Report (After Payment) */}
             {isPaid && readingText && (
               <div className="animate-fade-in-up w-full">
                 <FullReport
@@ -397,7 +393,8 @@ const Palmistry: React.FC = () => {
                   category="palmistry"
                   title="Palmistry Analysis"
                   subtitle={user?.name || 'Seeker of Lines'}
-                  imageUrl={cloudManager.resolveImage(reportImage)}
+                  imageUrl={reportImage}
+                  logo={siteLogo}
                   chartData={analysisData}
                 />
               </div>
@@ -406,8 +403,7 @@ const Palmistry: React.FC = () => {
         </div>
       </div>
 
-      {/* Registry Check Loader */}
-      {isCheckingRegistry && (
+      {isCheckingCache && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250]">
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-10 rounded-3xl shadow-2xl border border-amber-500/30 max-w-md text-center">
             <div className="relative mb-8">

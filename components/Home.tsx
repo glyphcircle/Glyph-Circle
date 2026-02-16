@@ -1,3 +1,4 @@
+// Home.tsx - FIXED: Proper image resolution
 import React, { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SERVICE_OPTIONS } from '../constants';
@@ -5,16 +6,15 @@ import { useDb } from '../hooks/useDb';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
 import { cloudManager } from '../services/cloudManager';
-import { useDevice } from '../hooks/useDevice'; // ✅ Add mobile detection
+import { useDevice } from '../hooks/useDevice';
 
 const Home: React.FC = () => {
     const { db } = useDb();
     const { t, getRegionalPrice } = useTranslation();
     const { isAdminVerified } = useAuth();
-    const { isMobile } = useDevice(); // ✅ Detect mobile
+    const { isMobile } = useDevice();
     const navigate = useNavigate();
 
-    // 🛠️ ADMIN CONFIGURABLE OPACITY
     const hoverOpacity = useMemo(() => {
         const configVal = db.config?.find((c: any) => c.key === 'hover_opacity')?.value;
         return configVal ? parseFloat(configVal) : 0.85;
@@ -34,11 +34,29 @@ const Home: React.FC = () => {
                 </svg>
             );
 
-            const resolvedImageUrl = service.image ? cloudManager.resolveImage(service.image) : null;
+            // ✅ FIXED: Smart image resolution
+            let resolvedImageUrl = null;
 
             if (service.image) {
+                // Check if it's a string URL or an object
+                if (typeof service.image === 'string') {
+                    // Already a URL - use cloudManager to resolve it
+                    resolvedImageUrl = cloudManager.resolveImage(service.image);
+                } else if (typeof service.image === 'object' && service.image !== null) {
+                    // It's an object - check for common properties
+                    if (service.image.url) {
+                        resolvedImageUrl = cloudManager.resolveImage(service.image.url);
+                    } else if (service.image.id) {
+                        // Google Drive ID object
+                        resolvedImageUrl = cloudManager.resolveImage(`https://drive.google.com/file/d/${service.image.id}/view`);
+                    } else if (service.image.path) {
+                        resolvedImageUrl = cloudManager.resolveImage(service.image.path);
+                    }
+                }
+
                 console.log('🖼️ Service:', service.name, {
                     original: service.image,
+                    type: typeof service.image,
                     resolved: resolvedImageUrl
                 });
             }
@@ -75,7 +93,6 @@ const Home: React.FC = () => {
                     </div>
                 )}
 
-                {/* ✅ Mobile-optimized title */}
                 <div className={`text-center ${isMobile ? 'mb-8' : 'mb-16'} max-w-5xl mx-auto px-4`}>
                     <h1 className={`${isMobile ? 'text-4xl' : 'text-6xl md:text-8xl'} font-cinzel font-black text-skin-text mb-6 tracking-tighter uppercase drop-shadow-2xl`}>
                         {t('glyphCircle')}
@@ -95,7 +112,6 @@ const Home: React.FC = () => {
                         <p className="text-skin-text opacity-40 font-lora italic">The Registry is being prepared...</p>
                     </div>
                 ) : (
-                    /* ✅ RESPONSIVE GRID: Mobile 2 cols, Tablet 3 cols, Desktop 4 cols */
                     <div className={`grid ${isMobile ? 'grid-cols-2 gap-3' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8'} max-w-[95rem] mx-auto w-full ${isMobile ? 'px-2' : 'px-4'}`}>
                         {displayServices.map((service: any) => {
                             const dbPath = (service.path || '').trim();
@@ -115,7 +131,6 @@ const Home: React.FC = () => {
 
                             return (
                                 <Link to={targetPath} key={service.id} className="group relative block h-full z-20">
-                                    {/* ✅ Mobile-optimized card */}
                                     <div className={`imperial-card h-full ${isMobile ? 'rounded-2xl p-4' : 'rounded-[2.5rem] p-10'} text-center flex flex-col items-center relative overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:shadow-[0_20px_50px_rgba(0,0,0,0.3)]`}>
 
                                         {service.resolvedImageUrl && (
@@ -125,30 +140,30 @@ const Home: React.FC = () => {
                                                     alt={service.name}
                                                     className="w-full h-full object-cover opacity-30 transition-all duration-700 transform scale-100 group-hover:scale-110 group-hover:opacity-[var(--hover-opacity)] group-hover:brightness-110"
                                                     loading="lazy"
+                                                    onError={(e) => {
+                                                        console.error('❌ Image failed to load:', service.resolvedImageUrl);
+                                                        e.currentTarget.style.display = 'none';
+                                                    }}
                                                 />
                                                 <div className="absolute inset-0 bg-gradient-to-b from-skin-base via-transparent to-skin-base opacity-40 group-hover:opacity-10 transition-opacity duration-700"></div>
                                             </div>
                                         )}
 
-                                        {/* ✅ Mobile-optimized icon */}
                                         <div className={`relative z-10 ${isMobile ? 'mb-3 w-14 h-14' : 'mb-8 w-28 h-28'} rounded-full sacred-circle-icon flex items-center justify-center transform group-hover:scale-110 transition-all duration-700 shadow-xl group-hover:shadow-[0_0_25px_rgba(245,158,11,0.4)]`}>
                                             <div className={`text-white drop-shadow-lg ${isMobile ? 'scale-75' : ''}`}>{service.icon}</div>
                                         </div>
 
                                         <div className="relative z-10 flex flex-col items-center h-full w-full">
-                                            {/* ✅ Mobile-optimized title */}
                                             <h3 className={`${isMobile ? 'text-sm mb-2' : 'text-3xl mb-4'} font-cinzel font-black text-skin-text uppercase tracking-wider group-hover:text-skin-accent transition-colors drop-shadow-xl leading-tight`}>
                                                 {service.name}
                                             </h3>
 
-                                            {/* ✅ Hide description on mobile to save space */}
                                             {!isMobile && (
                                                 <p className="text-skin-text opacity-60 font-lora text-sm leading-relaxed mb-10 italic group-hover:opacity-90 transition-colors">
                                                     {service.description || "Divine details currently masked."}
                                                 </p>
                                             )}
 
-                                            {/* ✅ Mobile-optimized footer */}
                                             <div className={`mt-auto w-full ${isMobile ? 'pt-3' : 'pt-8'} border-t border-skin-border/20 flex flex-col items-center gap-2`}>
                                                 <div className={`text-skin-accent font-mono font-black ${isMobile ? 'text-sm' : 'text-xl'} tracking-tighter group-hover:scale-110 transition-transform`}>
                                                     {service.price > 0 ? getRegionalPrice(service.price).display : 'FREE'}

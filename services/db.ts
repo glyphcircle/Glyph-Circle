@@ -251,6 +251,212 @@ export class SupabaseDatabase {
     }
   }
 
+  async checkAlreadyPaidYearly(
+    serviceType: string,
+    formInputs: Record<string, any>
+  ): Promise<{ exists: boolean; reading?: any; transaction?: any }> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { exists: false };
+
+      const inputs = this.normalizeInputs(serviceType, formInputs);
+
+      // ✅ Start of current year
+      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+
+      console.log(`🔍 [DB] Checking yearly cache from: ${yearStart}`);
+
+      const { data: txs, error } = await supabase
+        .from('v_recent_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('service_type', serviceType)
+        .eq('status', 'success')
+        .gte('transaction_date', yearStart) // ✅ This year only
+        .order('transaction_date', { ascending: false });
+
+      if (error || !txs) {
+        console.warn('⚠️ [DB] Query failed:', error);
+        return { exists: false };
+      }
+
+      console.log(`📊 [DB] Found ${txs.length} transactions this year`);
+
+      // Check each transaction for matching inputs
+      for (const tx of txs) {
+        const storedInputs = this.normalizeInputs(serviceType, tx.metadata || {});
+
+        let isMatch = false;
+
+        // Service-specific matching logic
+        if (serviceType === 'astrology') {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            storedInputs.dob === inputs.dob &&
+            storedInputs.tob === inputs.tob &&
+            storedInputs.pob === inputs.pob
+          );
+        } else if (['numerology', 'palmistry', 'face-reading'].includes(serviceType)) {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            storedInputs.dob === inputs.dob
+          );
+        } else if (serviceType === 'tarot') {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            (storedInputs.card_name === inputs.card_name || storedInputs.question === inputs.question)
+          );
+        } else if (serviceType === 'dream-analysis') {
+          isMatch = (storedInputs.dream_text === inputs.dream_text);
+        } else {
+          // Generic match for other services
+          isMatch = (storedInputs.name === inputs.name);
+        }
+
+        if (isMatch) {
+          console.log('✅ [DB] Match found! Transaction ID:', tx.id);
+
+          // Fetch the reading
+          let readingData = null;
+          if (tx.reading_id) {
+            const { data } = await supabase
+              .from('v_user_readings_history')
+              .select('*')
+              .eq('reading_id', tx.reading_id)
+              .single();
+
+            if (data) {
+              readingData = {
+                id: data.reading_id,
+                ...data,
+                timestamp: data.reading_date
+              };
+            }
+          }
+
+          return {
+            exists: true,
+            transaction: tx,
+            reading: readingData
+          };
+        }
+      }
+
+      console.log('ℹ️ [DB] No matching transaction found');
+      return { exists: false };
+
+    } catch (err: any) {
+      console.error('❌ [DB] checkAlreadyPaidYearly failed:', err);
+      return { exists: false };
+    }
+  }
+  /**
+   * 🆕 Check if user already paid THIS YEAR (not just 24h)
+   * ✅ FIXED: Now checks entire calendar year
+   * 
+   * ADD THIS METHOD INSIDE THE SupabaseDatabase CLASS
+   * (After the existing checkAlreadyPaid method, before the closing brace)
+   */
+  async checkAlreadyPaidYearly(
+    serviceType: string,
+    formInputs: Record<string, any>
+  ): Promise<{ exists: boolean; reading?: any; transaction?: any }> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { exists: false };
+
+      const inputs = this.normalizeInputs(serviceType, formInputs);
+
+      // ✅ Start of current year
+      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+
+      console.log(`🔍 [DB] Checking yearly cache from: ${yearStart}`);
+
+      const { data: txs, error } = await supabase
+        .from('v_recent_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('service_type', serviceType)
+        .eq('status', 'success')
+        .gte('transaction_date', yearStart) // ✅ This year only
+        .order('transaction_date', { ascending: false });
+
+      if (error || !txs) {
+        console.warn('⚠️ [DB] Query failed:', error);
+        return { exists: false };
+      }
+
+      console.log(`📊 [DB] Found ${txs.length} transactions this year`);
+
+      // Check each transaction for matching inputs
+      for (const tx of txs) {
+        const storedInputs = this.normalizeInputs(serviceType, tx.metadata || {});
+
+        let isMatch = false;
+
+        // Service-specific matching logic
+        if (serviceType === 'astrology') {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            storedInputs.dob === inputs.dob &&
+            storedInputs.tob === inputs.tob &&
+            storedInputs.pob === inputs.pob
+          );
+        } else if (['numerology', 'palmistry', 'face-reading'].includes(serviceType)) {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            storedInputs.dob === inputs.dob
+          );
+        } else if (serviceType === 'tarot') {
+          isMatch = (
+            storedInputs.name === inputs.name &&
+            (storedInputs.card_name === inputs.card_name || storedInputs.question === inputs.question)
+          );
+        } else if (serviceType === 'dream-analysis') {
+          isMatch = (storedInputs.dream_text === inputs.dream_text);
+        } else {
+          // Generic match for other services
+          isMatch = (storedInputs.name === inputs.name);
+        }
+
+        if (isMatch) {
+          console.log('✅ [DB] Match found! Transaction ID:', tx.id);
+
+          // Fetch the reading
+          let readingData = null;
+          if (tx.reading_id) {
+            const { data } = await supabase
+              .from('v_user_readings_history')
+              .select('*')
+              .eq('reading_id', tx.reading_id)
+              .single();
+
+            if (data) {
+              readingData = {
+                id: data.reading_id,
+                ...data,
+                timestamp: data.reading_date
+              };
+            }
+          }
+
+          return {
+            exists: true,
+            transaction: tx,
+            reading: readingData
+          };
+        }
+      }
+
+      console.log('ℹ️ [DB] No matching transaction found');
+      return { exists: false };
+
+    } catch (err: any) {
+      console.error('❌ [DB] checkAlreadyPaidYearly failed:', err);
+      return { exists: false };
+    }
+  }
+
   /**
  * Create entry - NOW WORKS FOR ALL TABLES
  */

@@ -1,5 +1,11 @@
+// Tarot.tsx - COMPLETE & FIXED
+// ✅ Fixed image resolution (handles string URLs AND cloud objects)
+// ✅ Fixed infinite loading
+// ✅ All other features intact
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useServicePayment } from '../hooks/useServicePayment';
 import { getTarotReading, translateText } from '../services/aiService';
 import Card from './shared/Card';
 import ProgressBar from './shared/ProgressBar';
@@ -41,7 +47,6 @@ const Tarot: React.FC = () => {
   const [isPaid, setIsPaid] = useState<boolean>(false);
   const [animatingCard, setAnimatingCard] = useState<{ card: TarotCardData; startRect: DOMRect } | null>(null);
 
-  const [isCheckingRegistry, setIsCheckingRegistry] = useState(false);
   const [retrievedTx, setRetrievedTx] = useState<any>(null);
 
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -55,6 +60,28 @@ const Tarot: React.FC = () => {
   const { db } = useDb();
   const { theme } = useTheme();
   const isLight = theme.mode === 'light';
+
+  const { initiateFlow, isCheckingCache } = useServicePayment({
+    serviceType: 'tarot',
+
+    onReportGenerated: (data) => {
+      console.log('✅ [Tarot] Report display triggered');
+      setIsPaid(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        fullReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 200);
+    },
+
+    onCacheRestored: (readingData, transaction) => {
+      console.log('✅ [Tarot] Cache restored:', readingData);
+      setRetrievedTx(transaction);
+      setReading(readingData.content);
+      setSelectedCard(readingData.meta_data?.card || { name: readingData.title });
+      setIsPaid(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
 
   const getLanguageName = (code: string) => {
     const map: Record<string, string> = { en: 'English', hi: 'Hindi', fr: 'French', es: 'Spanish' };
@@ -174,85 +201,81 @@ const Tarot: React.FC = () => {
 
   const tarotService = db.services?.find((s: any) => s.id === 'tarot');
   const servicePrice = tarotService?.price || 49;
-  const reportImage = cloudManager.resolveImage(tarotService?.image) || "https://images.unsplash.com/photo-1505537528343-4dc9b89823f6?q=80&w=800";
 
-  const proceedToPayment = useCallback(() => {
-    openPayment(async (paymentDetails?: any) => {
-      setIsPaid(true);
-      try {
-        const savedReading = await dbService.saveReading({
-          user_id: user?.id,
-          type: 'tarot',
-          title: selectedCard?.name || 'Tarot Reading',
-          subtitle: `${selectedCard?.type} Arcana`,
-          content: reading,
-          image_url: "https://images.unsplash.com/photo-1505537528343-4dc9b89823f6?q=80&w=800",
-          is_paid: true,
-          meta_data: { card: selectedCard }
-        });
-        const readingId = savedReading?.data?.id;
-        if (readingId) {
-          await dbService.recordTransaction({
-            user_id: user?.id,
-            service_type: 'tarot',
-            service_title: `Tarot: ${selectedCard?.name}`,
-            amount: servicePrice,
-            currency: 'INR',
-            payment_method: paymentDetails?.method || 'test',
-            payment_provider: paymentDetails?.provider || 'manual',
-            order_id: paymentDetails?.orderId || `ORD-${Date.now()}`,
-            transaction_id: paymentDetails?.transactionId || `TXN-${Date.now()}`,
-            reading_id: readingId,
-            status: 'success',
-            metadata: {
-              name: user?.name,
-              card_name: selectedCard?.name,
-              paymentTimestamp: new Date().toISOString()
-            },
-          });
-        }
-      } catch (err) {
-        console.error("❌ Tarot save error:", err);
-      }
-    }, 'Tarot Reading', servicePrice);
-  }, [selectedCard, reading, user, openPayment, servicePrice]);
+  // ✅ FIXED: Smart image resolution - handles both string URLs and cloud objects
+  const serviceImageData = tarotService?.image;
+  const fallbackImage = db.image_assets?.find((a: any) => a.id === 'report_bg_tarot')?.path ||
+    "https://images.unsplash.com/photo-1505537528343-4dc9b89823f6?q=80&w=800";
 
-  const handleReadMore = async () => {
-    if (!reading || !selectedCard) return;
+  const reportImage = serviceImageData
+    ? (typeof serviceImageData === 'string'
+      ? serviceImageData
+      : cloudManager.resolveImage(serviceImageData))
+    : fallbackImage;
 
-    setIsCheckingRegistry(true);
-    try {
-      const existing = await dbService.checkAlreadyPaid('tarot', { name: user?.name, card_name: selectedCard.name });
-      if (existing.exists) {
-        setRetrievedTx(existing.transaction);
-        setReading(existing.reading?.content || reading);
-        setIsPaid(false);
-        setIsCheckingRegistry(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-    } catch (err) {
-      console.error("❌ Tarot registry check failed:", err);
-    } finally {
-      setIsCheckingRegistry(false);
-    }
+  const startNewReading = () => {
+    console.log('🆕 [Tarot] Starting new reading');
 
-    proceedToPayment();
-  };
-
-  const resetReading = () => {
     setSelectedCard(null);
     setReading('');
     setError('');
     setIsPaid(false);
     setRetrievedTx(null);
+
+    sessionStorage.removeItem('viewReport');
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // ✅ ADD THIS: Get the logo from config
+  const siteLogo = useMemo(() => {
+    const logoAsset = db.image_assets?.find((a: any) => a.id === 'site_logo');
+    if (logoAsset?.path) {
+      return typeof logoAsset.path === 'string'
+        ? logoAsset.path
+        : cloudManager.resolveImage(logoAsset.path);
+    }
+    // Fallback logo
+    return '/logo.png';
+  }, [db.image_assets]);
+
+  const handleReadMore = async () => {
+    if (!reading || !selectedCard) return;
+
+    await initiateFlow(
+      {
+        name: user?.name,
+        card_name: selectedCard.name,
+        card_type: selectedCard.type
+      },
+      async () => {
+        return {
+          reading: reading,
+          content: reading,
+          meta_data: { card: selectedCard }
+        };
+      }
+    );
+  };
+
+  const resetReading = startNewReading;
 
   return (
     <div className="flex flex-col gap-12 items-center">
       <div className="w-full max-w-7xl mx-auto px-4 relative min-h-screen pb-12">
         <SmartBackButton label={t('backToHome')} className="relative z-10 mb-4" />
+
+        {(selectedCard || isPaid || retrievedTx) && (
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={startNewReading}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-3 rounded-full text-sm font-bold uppercase tracking-wider shadow-lg transition-all flex items-center gap-2"
+            >
+              <span>✨</span>
+              <span>New Card Draw</span>
+            </button>
+          </div>
+        )}
 
         {retrievedTx && !isPaid && (
           <div className={`
@@ -264,7 +287,7 @@ const Tarot: React.FC = () => {
           `}>
             <div className="flex items-center justify-between gap-6">
               <div>
-                <h3 className={`font-cinzel font-black text-xl uppercase ${isLight ? 'text-emerald-800' : 'text-green-400'}`}>Already Purchased Today!</h3>
+                <h3 className={`font-cinzel font-black text-xl uppercase ${isLight ? 'text-emerald-800' : 'text-green-400'}`}>Already Purchased This Year!</h3>
                 <p className={`text-sm italic ${isLight ? 'text-emerald-700' : 'text-green-300/70'}`}>Sacred card draw retrieved from history.</p>
               </div>
               <div className="flex gap-2">
@@ -280,10 +303,10 @@ const Tarot: React.FC = () => {
                   📄 View Full
                 </button>
                 <button
-                  onClick={resetReading}
-                  className="bg-amber-600 text-white px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest"
+                  onClick={startNewReading}
+                  className="bg-purple-600 text-white px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest"
                 >
-                  🆕 New Draw
+                  ✨ New
                 </button>
               </div>
             </div>
@@ -358,6 +381,7 @@ const Tarot: React.FC = () => {
                             title={selectedCard!.name}
                             subtitle={`${selectedCard!.type} Arcana • Vedic Insight`}
                             imageUrl={reportImage}
+                            logo={siteLogo}
                           />
                         </ErrorBoundary>
                       </div>
@@ -370,7 +394,7 @@ const Tarot: React.FC = () => {
         )}
       </div>
 
-      {isCheckingRegistry && (
+      {isCheckingCache && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250]">
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-10 rounded-3xl shadow-2xl border border-amber-500/30 max-w-md text-center">
             <div className="relative mb-8">

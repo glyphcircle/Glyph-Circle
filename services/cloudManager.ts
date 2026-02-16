@@ -1,8 +1,5 @@
-// src/services/cloudManager.ts - FIXED: Google Drive direct download format
-// Changes:
-// 1. Use /uc?export=download instead of lh3.googleusercontent.com
-// 2. This bypasses Google's preview and serves images directly
-// Status: ✅ PRODUCTION READY
+// src/services/cloudManager.ts - UPDATED TO 2024 METHOD
+// Uses Google Drive Thumbnail API (more reliable)
 
 import { dbService } from './db';
 
@@ -69,27 +66,42 @@ class CloudManager {
   }
 
   /**
-   * Enhanced resolveImage with Google Drive direct download support
-   * FIXED: Use /uc?export=download format for better compatibility
+   * ✅ UPDATED: Uses Google Drive Thumbnail API (2024 method)
+   * This is more reliable than lh3.googleusercontent.com
    */
   resolveImage(url: string | undefined): string {
     if (!url) return this.getFallbackImage();
 
     const trimmed = url.trim();
 
-    // Already in lh3 format - return as is
+    // ✅ ImgBB URLs - return as is
+    if (trimmed.includes('i.ibb.co') || trimmed.includes('ibb.co')) {
+      return trimmed;
+    }
+
+    // Already using thumbnail API - return as is
+    if (trimmed.includes('drive.google.com/thumbnail')) {
+      return trimmed;
+    }
+
+    // Already in lh3 format - return as is (legacy support)
     if (trimmed.includes('lh3.googleusercontent.com')) {
       return trimmed;
     }
 
-    // Extract file ID from ANY Google Drive format
-    const fileIdMatch = trimmed.match(/[\/=]([a-zA-Z0-9_-]{25,})/);
+    // Already a direct URL (Unsplash, etc) - return as is
+    if (trimmed.startsWith('http') && !trimmed.includes('drive.google')) {
+      return trimmed;
+    }
+
+    // Extract Google Drive file ID
+    const fileIdMatch = trimmed.match(/[\\/=]([a-zA-Z0-9_-]{25,})/);
     if (fileIdMatch && fileIdMatch[1]) {
       const fileId = fileIdMatch[1];
-      console.log('🖼️ [CloudManager] Converting to lh3 format, ID:', fileId);
+      console.log('🖼️ [CloudManager] Using Google Drive Thumbnail API, ID:', fileId);
 
-      // ✅ Use lh3.googleusercontent.com format (works best for embedding)
-      return `https://lh3.googleusercontent.com/d/${fileId}`;
+      // ✅ USE 2024 METHOD: Google Drive Thumbnail API
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
     }
 
     console.warn('⚠️ [CloudManager] Could not parse URL:', url);
@@ -99,7 +111,6 @@ class CloudManager {
   private getFallbackImage(): string {
     return 'https://placehold.co/400x400/0a0a14/d97706?text=No+Image';
   }
-
 }
 
 // Export single instance
