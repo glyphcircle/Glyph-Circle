@@ -3,7 +3,7 @@
 // ✅ Fixed palmistry engine error handling
 // ✅ All other features intact
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useServicePayment } from '../hooks/useServicePayment';
 import { getPalmReading, translateText } from '../services/aiService';
@@ -13,7 +13,7 @@ import Button from './shared/Button';
 import ProgressBar from './shared/ProgressBar';
 import { useTranslation } from '../hooks/useTranslation';
 import { usePayment } from '../context/PaymentContext';
-import FullReport from './FullReport';
+import ReportRenderer from './reports/ReportRenderer';
 import { useAuth } from '../context/AuthContext';
 import { useDb } from '../hooks/useDb';
 import { cloudManager } from '../services/cloudManager';
@@ -47,7 +47,9 @@ const Palmistry: React.FC = () => {
   const { db } = useDb();
   const { theme } = (useDb() as any).theme || { theme: { mode: 'dark' } };
   const isLight = theme.mode === 'light';
-
+  const reportAge = useMemo(() => {
+    return reportStateManager.getReportAge('palmistry');
+  }, []);
   const getLanguageName = (code: string) => {
     const map: Record<string, string> = {
       en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali',
@@ -188,6 +190,57 @@ const Palmistry: React.FC = () => {
       reader.readAsDataURL(file);
     }
   };
+  // utils: parse and render colored bullet points
+  const renderBulletReport = (text: string, isLight: boolean) => {
+    if (!text) return null;
+
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.startsWith('✅') || l.startsWith('❌'));
+
+    if (lines.length === 0) {
+      // Fallback: render as plain paragraph if model didn't follow format
+      return (
+        <p className={`text-sm leading-relaxed ${isLight ? 'text-gray-700' : 'text-gray-300'}`}>
+          {text}
+        </p>
+      );
+    }
+
+    return (
+      <ul className="space-y-2">
+        {lines.map((line, idx) => {
+          const isPositive = line.startsWith('✅');
+          const content = line.replace(/^[✅❌]\s*/, '');
+
+          return (
+            <li
+              key={idx}
+              className={`flex items-start gap-2 text-sm leading-relaxed px-3 py-2 rounded-lg border ${isPositive
+                  ? isLight
+                    ? 'bg-green-50 border-green-200 text-green-800'
+                    : 'bg-green-950/30 border-green-800/50 text-green-300'
+                  : isLight
+                    ? 'bg-red-50 border-red-200 text-red-800'
+                    : 'bg-red-950/30 border-red-800/50 text-red-300'
+                }`}
+            >
+              <span className="text-base shrink-0 mt-0.5">
+                {isPositive ? '✅' : '❌'}
+              </span>
+              {/* Render **bold** markdown inline */}
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
+                }}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    );
+  };
 
   const handleAnalyzePalm = () => {
     if (!imageFile) return;
@@ -293,9 +346,10 @@ const Palmistry: React.FC = () => {
 
         {isRestored && isPaid && !retrievedTx && (
           <div className="mb-4 p-3 bg-blue-900/20 text-blue-300 text-xs rounded-lg text-center border border-blue-500/20">
-            ✅ Restored previous palm reading from {reportStateManager.getReportAge('palmistry')}m ago.
+            ✅ Restored previous palm reading from {reportAge}m ago.
           </div>
         )}
+
 
         <div className="text-center mb-8">
           <h2 className="text-3xl md:text-4xl font-cinzel font-bold text-amber-300 mb-2">
@@ -388,17 +442,16 @@ const Palmistry: React.FC = () => {
 
             {isPaid && readingText && (
               <div className="animate-fade-in-up w-full">
-                <FullReport
+                <ReportRenderer
                   reading={readingText}
                   category="palmistry"
                   title="Palmistry Analysis"
-                  subtitle={user?.name || 'Seeker of Lines'}
-                  imageUrl={reportImage}
-                  logo={siteLogo}
+                  subtitle={user?.name || 'Seeker'}
                   chartData={analysisData}
                 />
               </div>
             )}
+
           </div>
         </div>
       </div>

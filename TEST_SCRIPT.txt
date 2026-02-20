@@ -2,5 +2,5 @@ If successful, push to GitHub:
 
 powershell
 git add .
-git commit -m  "Report format changes for mobile display"
+git commit -m  "modify few function"
 git push origin main

@@ -124,8 +124,8 @@ export class SupabaseDatabase {
   }
 
   /**
- * 🆕 AUTO-CONVERT all image fields in ANY payload (improved)
- */
+   * 🆕 AUTO-CONVERT all image fields in ANY payload (improved)
+   */
   private convertImageFieldsInPayload(data: any): any {
     if (!data || typeof data !== 'object') return data;
 
@@ -155,20 +155,18 @@ export class SupabaseDatabase {
   }
 
   /**
- * DEPRECATED - Use updateEntry() directly (it auto-converts now)
- */
+   * DEPRECATED - Use updateEntry() directly (it auto-converts now)
+   */
   async updateService(id: string, data: any): Promise<any> {
     return this.updateEntry('services', id, data);
   }
 
   /**
-  * DEPRECATED - Use createEntry() directly (it auto-converts now)
-  */
+   * DEPRECATED - Use createEntry() directly (it auto-converts now)
+   */
   async createService(data: any): Promise<any> {
     return this.createEntry('services', data);
   }
-
-
 
   /**
    * Optimized Template Fetching using v_report_templates_with_format
@@ -202,8 +200,8 @@ export class SupabaseDatabase {
   }
 
   /**
- * Update entry - NOW WORKS FOR ALL TABLES (with timeout protection)
- */
+   * Update entry - NOW WORKS FOR ALL TABLES (with timeout protection)
+   */
   async updateEntry(table: string, id: string | number, updates: any) {
     const convertedUpdates = this.convertImageFieldsInPayload(updates);
     console.log('💾 [dbService] UPDATE START:', { table, id, updates: convertedUpdates });
@@ -251,111 +249,9 @@ export class SupabaseDatabase {
     }
   }
 
-  async checkAlreadyPaidYearly(
-    serviceType: string,
-    formInputs: Record<string, any>
-  ): Promise<{ exists: boolean; reading?: any; transaction?: any }> {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { exists: false };
-
-      const inputs = this.normalizeInputs(serviceType, formInputs);
-
-      // ✅ Start of current year
-      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
-
-      console.log(`🔍 [DB] Checking yearly cache from: ${yearStart}`);
-
-      const { data: txs, error } = await supabase
-        .from('v_recent_transactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('service_type', serviceType)
-        .eq('status', 'success')
-        .gte('transaction_date', yearStart) // ✅ This year only
-        .order('transaction_date', { ascending: false });
-
-      if (error || !txs) {
-        console.warn('⚠️ [DB] Query failed:', error);
-        return { exists: false };
-      }
-
-      console.log(`📊 [DB] Found ${txs.length} transactions this year`);
-
-      // Check each transaction for matching inputs
-      for (const tx of txs) {
-        const storedInputs = this.normalizeInputs(serviceType, tx.metadata || {});
-
-        let isMatch = false;
-
-        // Service-specific matching logic
-        if (serviceType === 'astrology') {
-          isMatch = (
-            storedInputs.name === inputs.name &&
-            storedInputs.dob === inputs.dob &&
-            storedInputs.tob === inputs.tob &&
-            storedInputs.pob === inputs.pob
-          );
-        } else if (['numerology', 'palmistry', 'face-reading'].includes(serviceType)) {
-          isMatch = (
-            storedInputs.name === inputs.name &&
-            storedInputs.dob === inputs.dob
-          );
-        } else if (serviceType === 'tarot') {
-          isMatch = (
-            storedInputs.name === inputs.name &&
-            (storedInputs.card_name === inputs.card_name || storedInputs.question === inputs.question)
-          );
-        } else if (serviceType === 'dream-analysis') {
-          isMatch = (storedInputs.dream_text === inputs.dream_text);
-        } else {
-          // Generic match for other services
-          isMatch = (storedInputs.name === inputs.name);
-        }
-
-        if (isMatch) {
-          console.log('✅ [DB] Match found! Transaction ID:', tx.id);
-
-          // Fetch the reading
-          let readingData = null;
-          if (tx.reading_id) {
-            const { data } = await supabase
-              .from('v_user_readings_history')
-              .select('*')
-              .eq('reading_id', tx.reading_id)
-              .single();
-
-            if (data) {
-              readingData = {
-                id: data.reading_id,
-                ...data,
-                timestamp: data.reading_date
-              };
-            }
-          }
-
-          return {
-            exists: true,
-            transaction: tx,
-            reading: readingData
-          };
-        }
-      }
-
-      console.log('ℹ️ [DB] No matching transaction found');
-      return { exists: false };
-
-    } catch (err: any) {
-      console.error('❌ [DB] checkAlreadyPaidYearly failed:', err);
-      return { exists: false };
-    }
-  }
   /**
-   * 🆕 Check if user already paid THIS YEAR (not just 24h)
-   * ✅ FIXED: Now checks entire calendar year
-   * 
-   * ADD THIS METHOD INSIDE THE SupabaseDatabase CLASS
-   * (After the existing checkAlreadyPaid method, before the closing brace)
+   * ✅ Check if user already paid THIS YEAR (not just 24h)
+   * Checks entire calendar year for matching transactions
    */
   async checkAlreadyPaidYearly(
     serviceType: string,
@@ -458,8 +354,8 @@ export class SupabaseDatabase {
   }
 
   /**
- * Create entry - NOW WORKS FOR ALL TABLES
- */
+   * Create entry - NOW WORKS FOR ALL TABLES
+   */
   async createEntry(table: string, payload: any) {
     const convertedPayload = this.convertImageFieldsInPayload(payload);
     console.log('🆕 [dbService] CREATE START:', { table, payload: convertedPayload });
@@ -496,7 +392,6 @@ export class SupabaseDatabase {
       throw error;
     }
   }
-
 
   async deleteEntry(table: string, id: any) {
     if (!supabase) throw new Error("Supabase client not initialized.");
@@ -602,27 +497,27 @@ export class SupabaseDatabase {
       if (error) throw error;
       return { data, error: null };
     } catch (err: any) {
-      console.error('💥 [DB] Save Reading ERROR:', err.message)
+      console.error('💥 [DB] Save Reading ERROR:', err.message);
       return { data: { ...readingData, id: `fb_${Date.now()}` }, error: err };
     }
   }
 
   normalizeInputs(serviceType: string, rawInputs: any) {
-    const normalized = { ...rawInputs }
+    const normalized = { ...rawInputs };
     if (normalized.dob) {
-      const dateStr = normalized.dob.toString()
-      let parsed: Date | null = null
-      const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/)
-      if (ddmmyyyy) parsed = new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`)
-      const mmddyyyy = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-      if (mmddyyyy) parsed = new Date(`${mmddyyyy[3]}-${mmddyyyy[1]}-${mmddyyyy[2]}`)
-      if (!parsed && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) parsed = new Date(dateStr)
-      if (parsed && !isNaN(parsed.getTime())) normalized.dob = parsed.toISOString().split('T')[0]
+      const dateStr = normalized.dob.toString();
+      let parsed: Date | null = null;
+      const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (ddmmyyyy) parsed = new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`);
+      const mmddyyyy = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (mmddyyyy) parsed = new Date(`${mmddyyyy[3]}-${mmddyyyy[1]}-${mmddyyyy[2]}`);
+      if (!parsed && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) parsed = new Date(dateStr);
+      if (parsed && !isNaN(parsed.getTime())) normalized.dob = parsed.toISOString().split('T')[0];
     }
-    if (normalized.name) normalized.name = normalized.name.trim().toLowerCase()
-    if (normalized.pob) normalized.pob = normalized.pob.trim().toLowerCase()
-    if (normalized.tob) normalized.tob = normalized.tob.replace(/\s+/g, '')
-    return normalized
+    if (normalized.name) normalized.name = normalized.name.trim().toLowerCase();
+    if (normalized.pob) normalized.pob = normalized.pob.trim().toLowerCase();
+    if (normalized.tob) normalized.tob = normalized.tob.replace(/\s+/g, '');
+    return normalized;
   }
 
   async checkAlreadyPaid(serviceType: string, formInputs: Record<string, any>) {
