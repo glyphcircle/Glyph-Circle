@@ -4,7 +4,7 @@
 
 import { dbService } from './db';
 import { supabase } from './supabaseClient';
-
+import { resolveService } from './serviceRegistry';
 export interface ServiceConfig {
     serviceType: string;
     serviceName: string;
@@ -79,36 +79,25 @@ export const getServiceConfig = async (serviceType: string): Promise<ServiceConf
     console.log(`🔍 [ServiceOrchestrator] Fetching config for: ${serviceType}`);
 
     try {
-        const config = await withTimeout(
-            withRetry(async () => {
-                const { data, error } = await supabase
-                    .from('services')
-                    .select('*')
-                    .eq('id', serviceType)
-                    .maybeSingle();
-
-                if (error) throw error;
-                if (!data) throw new Error(`Service "${serviceType}" not found`);
-
-                return {
-                    serviceType,
-                    serviceName: data.name || serviceType,
-                    price: data.price || 0,
-                    requiresPayment: (data.price || 0) > 0
-                };
-            }, 2, 'getServiceConfig'),
+        const record = await withTimeout(
+            resolveService(serviceType),   // ✅ handles UUID, slug, or name
             5000,
-            {
-                serviceType,
-                serviceName: serviceType,
-                price: 0,
-                requiresPayment: false
-            },
+            null,
             'getServiceConfig'
         );
 
-        console.log(`✅ [ServiceOrchestrator] Service config:`, config);
-        return config;
+        if (record) {
+            const config: ServiceConfig = {
+                serviceType,
+                serviceName: record.name,
+                price: record.price || 0,
+                requiresPayment: (record.price || 0) > 0,
+            };
+            console.log(`✅ [ServiceOrchestrator] Service config:`, config);
+            return config;
+        }
+
+        throw new Error(`Service "${serviceType}" not found in registry`);
 
     } catch (err: any) {
         console.error(`❌ [ServiceOrchestrator] Config fetch failed, using free fallback:`, err);
@@ -116,7 +105,7 @@ export const getServiceConfig = async (serviceType: string): Promise<ServiceConf
             serviceType,
             serviceName: serviceType,
             price: 0,
-            requiresPayment: false
+            requiresPayment: false,
         };
     }
 };

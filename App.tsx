@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 
 // Component imports - using relative paths for stability
+import { preloadServiceRegistry } from './services/serviceRegistry';
 import Home from './components/Home';
 import Palmistry from './components/Palmistry';
 import Login from './components/Login';
@@ -61,6 +62,10 @@ import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
 import { DebugConsole } from './components/DebugConsole';
 import AuthCallback from './components/AuthCallback';
+
+// Call once at top level — warms the cache before any service is used
+preloadServiceRegistry();
+
 // Idle Cursor Component
 const IdleCursor: React.FC = () => {
   const [isIdle, setIsIdle] = useState(false);
