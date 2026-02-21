@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import Card from './shared/Card';
 import Button from './shared/Button';
 import { getCosmicSync } from '../services/aiService';
@@ -20,7 +19,8 @@ const CosmicSync: React.FC = () => {
     const { user } = useAuth();
     const isLight = theme.mode === 'light';
     const resultRef = useRef<HTMLDivElement>(null);
-
+    const readingIdRef = useRef<string | null>(null);
+    const isPaymentOpenRef = useRef(false);
     const [p1, setP1] = useState({ name: '', dob: '', tob: '', pob: '' });
     const [p2, setP2] = useState({ name: '', dob: '', tob: '', pob: '' });
     const [result, setResult] = useState<any>(null);
@@ -145,6 +145,7 @@ const CosmicSync: React.FC = () => {
                 } else {
                     currentReadingId = reading.id;
                     setReadingId(reading.id);
+                    readingIdRef.current = reading.id;
                     console.log('✅ Reading saved:', reading.id);
                 }
             }
@@ -289,6 +290,7 @@ const CosmicSync: React.FC = () => {
             const savedReadingId = await saveToDatabase(reportKey, normalizedResult);
             if (savedReadingId) {
                 setReadingId(savedReadingId);
+                readingIdRef.current = savedReadingId;
             }
 
             // Check if already paid
@@ -323,33 +325,41 @@ const CosmicSync: React.FC = () => {
     };
 
     const handlePayment = () => {
-        if (isLoading) {
-            console.warn('⚠️ Already processing');
+        if (isPaymentOpenRef.current) {
+            console.warn('⚠️ Payment already open');
             return;
         }
+        isPaymentOpenRef.current = true;
 
         const reportKey = cachedReportKey || generateReportKey(p1, p2);
 
-        console.log('💰 Opening payment for:', reportKey);
-
         openPayment(
             async () => {
-                console.log('✅ Payment success callback triggered');
+                isPaymentOpenRef.current = false; // reset on success
 
-                // Save payment record
-                const currentReadingId = readingId || await saveToDatabase(reportKey, result);
+                let currentReadingId = readingIdRef.current;
+                if (!currentReadingId) {
+                    currentReadingId = await saveToDatabase(reportKey, result);
+                    if (currentReadingId) {
+                        readingIdRef.current = currentReadingId;
+                        setReadingId(currentReadingId);
+                    }
+                }
 
                 if (currentReadingId) {
                     await savePaymentRecord(reportKey, currentReadingId);
-                    setIsPaid(true);
-                    console.log('✅ Payment completed and saved');
-                } else {
-                    console.error('❌ No reading ID available for payment');
                 }
+                setIsPaid(true);
+                console.log('✅ Payment completed');
             },
             `Cosmic Sync: ${p1.name} & ${p2.name}`,
             servicePrice
         );
+
+        // Reset if user cancels payment popup
+        setTimeout(() => {
+            isPaymentOpenRef.current = false;
+        }, 30000); // 30s timeout fallback
     };
 
     const getCompatibilityColor = (score: number) => {
@@ -367,49 +377,53 @@ const CosmicSync: React.FC = () => {
     };
 
     return (
-        <div className={`min-h-screen py-8 px-4 ${isLight
+        <div className={`min-h-screen py-6 px-4 ${isLight
             ? 'bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50'
             : 'bg-gradient-to-br from-gray-900 via-purple-950 to-black'
             }`}>
-            <SmartBackButton className="mb-6" />
+            <SmartBackButton className="mb-4" />
 
             <div className="max-w-5xl mx-auto">
-                {/* Header */}
-                <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center gap-2 mb-4">
-                        <Heart className={`w-8 h-8 ${isLight ? 'text-pink-600' : 'text-pink-400'}`} />
-                        <h1 className={`text-4xl font-cinzel font-bold ${isLight
+
+                {/* ── HEADER ── */}
+                <div className="text-center mb-6 md:mb-8">
+                    <div className="inline-flex items-center justify-center gap-2 mb-3 flex-wrap">
+                        <Heart className={`w-6 h-6 md:w-8 md:h-8 ${isLight ? 'text-pink-600' : 'text-pink-400'
+                            }`} />
+                        <h1 className={`text-2xl md:text-4xl font-cinzel font-bold ${isLight
                             ? 'text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-purple-600'
                             : 'text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400'
                             }`}>
                             Cosmic Sync
                         </h1>
-                        <Sparkles className={`w-8 h-8 ${isLight ? 'text-purple-600' : 'text-purple-400'}`} />
+                        <Sparkles className={`w-6 h-6 md:w-8 md:h-8 ${isLight ? 'text-purple-600' : 'text-purple-400'
+                            }`} />
                     </div>
-                    <p className={`text-lg ${isLight ? 'text-gray-600' : 'text-gray-400'}`}>
+                    <p className={`text-sm md:text-lg ${isLight ? 'text-gray-600' : 'text-gray-400'
+                        }`}>
                         Discover Your Soul Connection Through The Stars
                     </p>
                 </div>
 
-                {/* Input Cards */}
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
+                {/* ── INPUT CARDS ── */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6 md:mb-8">
+
                     {/* Person A */}
-                    <Card className={`p-6 border-l-4 ${isLight
+                    <Card className={`p-4 md:p-6 border-l-4 ${isLight
                         ? 'border-pink-500 bg-white shadow-lg'
                         : 'border-pink-500 bg-gray-900/80'
                         }`}>
-                        <h3 className={`font-bold mb-4 flex items-center gap-2 ${isLight ? 'text-pink-600' : 'text-pink-400'
+                        <h3 className={`font-bold mb-4 flex items-center gap-2 text-sm md:text-base ${isLight ? 'text-pink-600' : 'text-pink-400'
                             }`}>
-                            <div className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+                            <div className="w-2 h-2 rounded-full bg-pink-500 animate-pulse shrink-0" />
                             Person A
                         </h3>
-                        <div className="space-y-4">
-                            {/* ✅ FIXED: Theme-aware input field */}
+                        <div className="space-y-3 md:space-y-4">
                             <input
                                 value={p1.name}
                                 onChange={e => setP1({ ...p1, name: e.target.value })}
                                 placeholder="Name *"
-                                className={`w-full p-3 rounded border-2 focus:outline-none transition-colors ${isLight
+                                className={`w-full p-3 rounded border-2 focus:outline-none transition-colors text-sm md:text-base ${isLight
                                     ? 'bg-white border-pink-200 focus:border-pink-500 text-gray-900 placeholder-gray-400'
                                     : 'bg-gray-800 border-pink-500/30 focus:border-pink-500 text-white placeholder-gray-500'
                                     }`}
@@ -420,25 +434,25 @@ const CosmicSync: React.FC = () => {
                         </div>
                     </Card>
 
-                    {/* Person B */}
-                    <Card className={`p-6 border-r-4 ${isLight
+                    {/* Person B — border-l-4 on mobile, border-r-4 on md+ */}
+                    <Card className={`p-4 md:p-6 border-l-4 md:border-l-0 md:border-r-4 ${isLight
                         ? 'border-purple-500 bg-white shadow-lg'
                         : 'border-purple-500 bg-gray-900/80'
                         }`}>
-                        <h3 className={`font-bold mb-4 text-right flex items-center justify-end gap-2 ${isLight ? 'text-purple-600' : 'text-purple-400'
+                        <h3 className={`font-bold mb-4 flex items-center justify-start md:justify-end gap-2 text-sm md:text-base ${isLight ? 'text-purple-600' : 'text-purple-400'
                             }`}>
                             Person B
-                            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse shrink-0" />
                         </h3>
-                        <div className="space-y-4">
-                            {/* ✅ FIXED: Theme-aware input field */}
+                        <div className="space-y-3 md:space-y-4">
                             <input
                                 value={p2.name}
                                 onChange={e => setP2({ ...p2, name: e.target.value })}
                                 placeholder="Name *"
-                                className={`w-full p-3 rounded border-2 text-right focus:outline-none transition-colors ${isLight
-                                    ? 'bg-white border-purple-200 focus:border-purple-500 text-gray-900 placeholder-gray-400'
-                                    : 'bg-gray-800 border-purple-500/30 focus:border-purple-500 text-white placeholder-gray-500'
+                                className={`w-full p-3 rounded border-2 focus:outline-none transition-colors text-sm md:text-base
+                                md:text-right ${isLight
+                                        ? 'bg-white border-purple-200 focus:border-purple-500 text-gray-900 placeholder-gray-400'
+                                        : 'bg-gray-800 border-purple-500/30 focus:border-purple-500 text-white placeholder-gray-500'
                                     }`}
                             />
                             <SmartDatePicker value={p2.dob} onChange={d => setP2({ ...p2, dob: d })} />
@@ -448,26 +462,27 @@ const CosmicSync: React.FC = () => {
                     </Card>
                 </div>
 
-                {/* Analyze Button */}
-                <div className="text-center mb-12">
+                {/* ── ANALYZE BUTTON ── */}
+                <div className="text-center mb-8 md:mb-12">
                     <Button
                         onClick={handleSync}
                         disabled={isLoading || !p1.name || !p1.dob || !p2.name || !p2.dob}
-                        className={`px-12 py-4 text-lg rounded-full transition-all transform hover:scale-105 ${isLight
-                            ? 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700'
-                            : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600'
+                        className={`w-full md:w-auto px-8 md:px-12 py-4 text-base md:text-lg 
+                        rounded-full transition-all transform hover:scale-105 ${isLight
+                                ? 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700'
+                                : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600'
                             } text-white font-semibold shadow-lg ${(isLoading || !p1.name || !p1.dob || !p2.name || !p2.dob)
                                 ? 'opacity-50 cursor-not-allowed'
                                 : 'hover:shadow-xl'
                             }`}
                     >
                         {isLoading ? (
-                            <span className="flex items-center gap-3">
+                            <span className="flex items-center justify-center gap-3">
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 Aligning Stars...
                             </span>
                         ) : (
-                            <span className="flex items-center gap-2">
+                            <span className="flex items-center justify-center gap-2">
                                 <Sparkles className="w-5 h-5" />
                                 Analyze Synergy
                                 <Sparkles className="w-5 h-5" />
@@ -476,48 +491,54 @@ const CosmicSync: React.FC = () => {
                     </Button>
                 </div>
 
-                {/* Results Section - stays exactly the same */}
+                {/* ── RESULTS ── */}
                 {result && (
                     <div ref={resultRef} className="animate-fade-in-up scroll-mt-24">
-                        <Card className={`p-8 ${isLight
+                        <Card className={`p-5 md:p-8 ${isLight
                             ? 'bg-white shadow-2xl border-2 border-purple-200'
                             : 'bg-black/80 border-2 border-purple-500/30'
                             }`}>
+
                             {/* Compatibility Score */}
-                            <div className="text-center mb-8">
-                                <div className={`text-8xl font-black mb-3 ${getCompatibilityColor(result.compatibilityScore)}`}>
+                            <div className="text-center mb-6 md:mb-8">
+                                <div className={`text-6xl md:text-8xl font-black mb-3 ${getCompatibilityColor(result.compatibilityScore)
+                                    }`}>
                                     {result.compatibilityScore}%
                                 </div>
-                                <div className={`text-2xl font-semibold mb-4 ${isLight ? 'text-gray-800' : 'text-gray-200'
+                                <div className={`text-lg md:text-2xl font-semibold mb-4 ${isLight ? 'text-gray-800' : 'text-gray-200'
                                     }`}>
                                     {result.relationshipType}
                                 </div>
-
-                                {/* Progress Bar */}
-                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-6">
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 md:h-4 mb-4 md:mb-6">
                                     <div
-                                        className={`h-4 rounded-full bg-gradient-to-r ${getScoreGradient(result.compatibilityScore)} transition-all duration-1000`}
+                                        className={`h-full rounded-full bg-gradient-to-r ${getScoreGradient(result.compatibilityScore)
+                                            } transition-all duration-1000`}
                                         style={{ width: `${result.compatibilityScore}%` }}
                                     />
                                 </div>
                             </div>
 
-                            {/* Strengths & Challenges Preview */}
-                            <div className="grid md:grid-cols-2 gap-6 mb-8">
+                            {/* Strengths & Challenges */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-6 md:mb-8">
+
                                 {/* Strengths */}
-                                <div className={`p-6 rounded-lg ${isLight ? 'bg-green-50 border-2 border-green-200' : 'bg-green-900/20 border-2 border-green-500/30'
+                                <div className={`p-4 md:p-6 rounded-lg ${isLight
+                                    ? 'bg-green-50 border-2 border-green-200'
+                                    : 'bg-green-900/20 border-2 border-green-500/30'
                                     }`}>
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <TrendingUp className={`w-6 h-6 ${isLight ? 'text-green-600' : 'text-green-400'}`} />
-                                        <h3 className={`text-xl font-bold ${isLight ? 'text-green-800' : 'text-green-300'}`}>
+                                    <div className="flex items-center gap-2 mb-3 md:mb-4">
+                                        <TrendingUp className={`w-5 h-5 md:w-6 md:h-6 shrink-0 ${isLight ? 'text-green-600' : 'text-green-400'
+                                            }`} />
+                                        <h3 className={`text-base md:text-xl font-bold ${isLight ? 'text-green-800' : 'text-green-300'
+                                            }`}>
                                             Strengths
                                         </h3>
                                     </div>
                                     <ul className="space-y-2">
                                         {result.strengths.slice(0, 3).map((strength: string, idx: number) => (
-                                            <li key={idx} className={`flex items-start gap-2 ${isLight ? 'text-green-700' : 'text-green-300'
+                                            <li key={idx} className={`flex items-start gap-2 text-sm md:text-base ${isLight ? 'text-green-700' : 'text-green-300'
                                                 }`}>
-                                                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                                <CheckCircle className="w-4 h-4 md:w-5 md:h-5 shrink-0 mt-0.5" />
                                                 <span>{strength}</span>
                                             </li>
                                         ))}
@@ -525,19 +546,23 @@ const CosmicSync: React.FC = () => {
                                 </div>
 
                                 {/* Challenges */}
-                                <div className={`p-6 rounded-lg ${isLight ? 'bg-orange-50 border-2 border-orange-200' : 'bg-orange-900/20 border-2 border-orange-500/30'
+                                <div className={`p-4 md:p-6 rounded-lg ${isLight
+                                    ? 'bg-orange-50 border-2 border-orange-200'
+                                    : 'bg-orange-900/20 border-2 border-orange-500/30'
                                     }`}>
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <AlertTriangle className={`w-6 h-6 ${isLight ? 'text-orange-600' : 'text-orange-400'}`} />
-                                        <h3 className={`text-xl font-bold ${isLight ? 'text-orange-800' : 'text-orange-300'}`}>
+                                    <div className="flex items-center gap-2 mb-3 md:mb-4">
+                                        <AlertTriangle className={`w-5 h-5 md:w-6 md:h-6 shrink-0 ${isLight ? 'text-orange-600' : 'text-orange-400'
+                                            }`} />
+                                        <h3 className={`text-base md:text-xl font-bold ${isLight ? 'text-orange-800' : 'text-orange-300'
+                                            }`}>
                                             Challenges
                                         </h3>
                                     </div>
                                     <ul className="space-y-2">
                                         {result.challenges.slice(0, 3).map((challenge: string, idx: number) => (
-                                            <li key={idx} className={`flex items-start gap-2 ${isLight ? 'text-orange-700' : 'text-orange-300'
+                                            <li key={idx} className={`flex items-start gap-2 text-sm md:text-base ${isLight ? 'text-orange-700' : 'text-orange-300'
                                                 }`}>
-                                                <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                                <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 shrink-0 mt-0.5" />
                                                 <span>{challenge}</span>
                                             </li>
                                         ))}
@@ -545,25 +570,31 @@ const CosmicSync: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Unlock/View Full Report */}
+                            {/* Unlock / Full Report */}
                             {!isPaid ? (
-                                <div className={`text-center p-8 rounded-lg ${isLight ? 'bg-gradient-to-r from-purple-100 to-pink-100' : 'bg-gradient-to-r from-purple-900/30 to-pink-900/30'
+                                <div className={`text-center p-5 md:p-8 rounded-lg ${isLight
+                                    ? 'bg-gradient-to-r from-purple-100 to-pink-100'
+                                    : 'bg-gradient-to-r from-purple-900/30 to-pink-900/30'
                                     }`}>
-                                    <Lock className={`w-12 h-12 mx-auto mb-4 ${isLight ? 'text-purple-600' : 'text-purple-400'}`} />
-                                    <h3 className={`text-2xl font-bold mb-2 ${isLight ? 'text-gray-800' : 'text-white'}`}>
+                                    <Lock className={`w-10 h-10 md:w-12 md:h-12 mx-auto mb-3 md:mb-4 ${isLight ? 'text-purple-600' : 'text-purple-400'
+                                        }`} />
+                                    <h3 className={`text-lg md:text-2xl font-bold mb-2 ${isLight ? 'text-gray-800' : 'text-white'
+                                        }`}>
                                         Unlock Your Complete Cosmic Analysis
                                     </h3>
-                                    <p className={`mb-6 ${isLight ? 'text-gray-600' : 'text-gray-300'}`}>
+                                    <p className={`text-sm md:text-base mb-5 md:mb-6 ${isLight ? 'text-gray-600' : 'text-gray-300'
+                                        }`}>
                                         Get detailed insights, personalized guidance, and the full compatibility report
                                     </p>
                                     <Button
                                         onClick={handlePayment}
-                                        className={`w-full md:w-auto px-12 py-4 text-lg font-semibold rounded-full ${isLight
-                                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
-                                            : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600'
+                                        className={`w-full md:w-auto px-8 md:px-12 py-4 text-base md:text-lg 
+                                        font-semibold rounded-full ${isLight
+                                                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
+                                                : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600'
                                             } text-white shadow-xl hover:shadow-2xl transition-all transform hover:scale-105`}
                                     >
-                                        <span className="flex items-center gap-2">
+                                        <span className="flex items-center justify-center gap-2">
                                             <Sparkles className="w-5 h-5" />
                                             Unlock Full Report - ₹{servicePrice}
                                         </span>
@@ -571,10 +602,12 @@ const CosmicSync: React.FC = () => {
                                 </div>
                             ) : (
                                 <div>
-                                    <div className={`flex items-center justify-center gap-2 mb-6 p-4 rounded-lg ${isLight ? 'bg-green-100' : 'bg-green-900/30'
+                                    <div className={`flex items-center justify-center gap-2 mb-5 md:mb-6 p-3 md:p-4 rounded-lg ${isLight ? 'bg-green-100' : 'bg-green-900/30'
                                         }`}>
-                                        <CheckCircle className={`w-6 h-6 ${isLight ? 'text-green-600' : 'text-green-400'}`} />
-                                        <span className={`font-semibold ${isLight ? 'text-green-800' : 'text-green-300'}`}>
+                                        <CheckCircle className={`w-5 h-5 md:w-6 md:h-6 ${isLight ? 'text-green-600' : 'text-green-400'
+                                            }`} />
+                                        <span className={`font-semibold text-sm md:text-base ${isLight ? 'text-green-800' : 'text-green-300'
+                                            }`}>
                                             Full Report Unlocked
                                         </span>
                                     </div>
@@ -592,5 +625,4 @@ const CosmicSync: React.FC = () => {
         </div>
     );
 };
-
 export default CosmicSync;

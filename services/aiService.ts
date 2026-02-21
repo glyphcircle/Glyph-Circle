@@ -1,147 +1,268 @@
-// services/aiService.ts
+// ============================================================
+// services/aiService.ts — PART 1: Infrastructure & Types
+// ============================================================
+// HOW THIS FILE IS ORGANIZED:
+//   Part 1 → Types, interfaces, enums, AI provider setup,
+//             authentication, shared utilities
+//   Part 2 → AI service functions (AstroNumero → Gemstone)
+//   Part 3 → AI service functions (Remedy → Dream) + fallbacks
+//
+// ✅ GOLDEN RULES for adding/editing any service function:
+//   1. Always use callAI() helper — never call client.ai.chat() directly
+//   2. Always parse JSON via parseJSON() helper
+//   3. Always validate + normalize response before returning
+//   4. Never remove the Google branch — always keep both providers
+// ============================================================
 
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 
 declare const puter: any;
 
-// Generate Palmistry Report
+// ============================================================
+// 📦 EXPORTED INTERFACES — One place for all response types
+// ============================================================
+
+/** Returned by getPalmReading() */
 export interface PalmMetricResponse {
     rawMetrics: any;
     textReading: string;
 }
 
-// Generate Face Reading
+/** Returned by getFaceReading() */
 export interface FaceMetricResponse {
     rawMetrics: any;
     textReading: string;
 }
 
-enum AIProvider {
-    GOOGLE = 'google',
-    PUTER = 'puter'
+/** Returned by analyzeDream() */
+export interface DreamAnalysisResponse {
+    meaning: string;
+    luckyNumbers: number[];
+    symbols: string[];
+    emotions: string[];
+    archetypes: string[];
+    guidance: string;
 }
 
-/**
- * ðŸ” Ensure user is properly authenticated with Puter
- * This forces the sign-in flow BEFORE making AI calls
- */
+// ============================================================
+// 🔧 INTERNAL ENUM — AI Provider
+// ============================================================
+
+enum AIProvider {
+    GOOGLE = 'google',
+    PUTER = 'puter',
+}
+
+// ============================================================
+// 🔐 PUTER AUTHENTICATION
+// Forces sign-in BEFORE any AI call when using Puter.
+// ============================================================
+
 const ensurePuterAuthentication = async (): Promise<boolean> => {
     if (typeof window === 'undefined' || !(window as any).puter) {
-        console.error('âŒ Puter not loaded');
+        console.error('❌ Puter not loaded');
         return false;
     }
 
     const puter = (window as any).puter;
 
     try {
-        // Check if user is already signed in
         const isSignedIn = await puter.auth.isSignedIn();
 
         if (!isSignedIn) {
-            console.log('ðŸ” User not signed in, triggering sign-in flow...');
-
-            // This will show the proper sign-in popup
-            // User will be prompted to enter their email FIRST
+            console.log('🔐 User not signed in, triggering sign-in flow...');
             await puter.auth.signIn();
-
-            console.log('âœ… User signed in successfully');
+            console.log('✅ User signed in successfully');
         }
 
-        // Get user info to verify email is confirmed
         const user = await puter.auth.getUser();
-        console.log('ðŸ‘¤ Puter user:', user.username, '| Email:', user.email);
+        console.log('👤 Puter user:', user.username, '| Email:', user.email);
 
-        // Check if email is confirmed
         if (user.email_confirmed === false) {
-            console.warn('âš ï¸ Email not confirmed');
-            alert('ðŸ“§ Please verify your email to continue.\n\nCheck your inbox for the verification code from Puter.');
+            console.warn('⚠️ Email not confirmed');
+            alert('📧 Please verify your email to continue.\n\nCheck your inbox for the verification code from Puter.');
             return false;
         }
 
-        console.log('âœ… User fully authenticated and verified');
+        console.log('✅ User fully authenticated and verified');
         return true;
 
     } catch (error: any) {
-        console.error('âŒ Puter authentication error:', error);
-
-        // Show helpful error message
-        alert(`âŒ Authentication Error\n\n${error.message}\n\nPlease try:\n1. Going to puter.com\n2. Signing in there\n3. Coming back to this app`);
-
+        console.error('❌ Puter authentication error:', error);
+        alert(`❌ Authentication Error\n\n${error.message}\n\nPlease try:\n1. Going to puter.com\n2. Signing in there\n3. Coming back to this app`);
         return false;
     }
 };
 
-/**
- * ðŸ”€ SMART AI PROVIDER SELECTOR
- * Priority: Puter.ai (free) â†’ Google AI (configured) â†’ Graceful fallback
- */
-const getAIProvider = (): { provider: AIProvider; client: any } => {
-    console.log('ðŸ” Selecting AI provider...');
+// ============================================================
+// 🔀 SMART AI PROVIDER SELECTOR
+// Priority: Puter.ai (free) → Google AI → Stub fallback
+// ============================================================
 
-    // âœ… PRIORITY 1: Try Puter.ai first (FREE!)
+const getAIProvider = (): { provider: AIProvider; client: any } => {
+    console.log('🔍 Selecting AI provider...');
+
+    // ✅ PRIORITY 1: Puter.ai (FREE — no API key needed)
     if (typeof window !== 'undefined' && (window as any).puter?.ai) {
-        console.log('âœ… Using Puter.ai (FREE)');
-        return {
-            provider: AIProvider.PUTER,
-            client: (window as any).puter
-        };
+        console.log('✅ Using Puter.ai (FREE)');
+        return { provider: AIProvider.PUTER, client: (window as any).puter };
     }
 
-    console.log('âš ï¸ Puter.ai not available, checking Google AI...');
+    console.log('⚠️ Puter.ai not available, checking Google AI...');
 
-    // âœ… PRIORITY 2: Fallback to Google AI if configured
-    const apiKey = import.meta.env.VITE_GOOGLE_AI_KEY ||
-        import.meta.env.VITE_GEMINI_API_KEY;
+    // ✅ PRIORITY 2: Google Gemini (needs VITE_GEMINI_API_KEY in .env)
+    const apiKey = import.meta.env.VITE_GOOGLE_AI_KEY || import.meta.env.VITE_GEMINI_API_KEY;
 
     if (apiKey && apiKey !== 'undefined' && apiKey.trim() !== '') {
         try {
             const googleAI = new GoogleGenerativeAI(apiKey);
-            console.log('âœ… Using Google AI (Gemini) as fallback');
-            return {
-                provider: AIProvider.GOOGLE,
-                client: googleAI
-            };
+            console.log('✅ Using Google AI (Gemini) as fallback');
+            return { provider: AIProvider.GOOGLE, client: googleAI };
         } catch (error) {
-            console.warn('âš ï¸ Google AI initialization failed:', error);
+            console.warn('⚠️ Google AI initialization failed:', error);
         }
     }
 
-    // âœ… PRIORITY 3: Graceful degradation with helpful message
-    console.warn('âš ï¸ No AI service available');
-    console.info('ðŸ’¡ To enable AI features:');
-    console.info('   Option 1 (Recommended): Add Puter.js to index.html:');
-    console.info('   <script src="https://js.puter.com/v2/"></script>');
-    console.info('   Option 2: Configure Google AI key in .env:');
-    console.info('   VITE_GEMINI_API_KEY=your_key_here');
-
+    // ✅ PRIORITY 3: Stub — throws helpful error
+    console.warn('⚠️ No AI service available');
     return {
         provider: AIProvider.PUTER,
         client: {
             ai: {
                 chat: async () => {
-                    throw new Error('ðŸ”® AI Oracle is sleeping. Please add Puter.js to index.html or configure Gemini API key.');
-                }
-            }
-        }
+                    throw new Error('🔮 AI Oracle is sleeping. Please add Puter.js to index.html or configure VITE_GEMINI_API_KEY in .env');
+                },
+            },
+        },
     };
 };
 
-/**
- * ðŸ”’ TIME-AWARE DETERMINISTIC SEED
- */
-const generateDeterministicSeed = (input: string): number => {
-    const currentYear = new Date().getFullYear().toString();
-    const combinedInput = input + currentYear;
+// ============================================================
+// 🔧 CORE HELPER: callAI()
+// ============================================================
+// USE THIS instead of calling client.ai.chat() directly.
+// Handles both providers, extracts content string, and
+// throws if neither provider is available.
+//
+// Usage:
+//   const raw = await callAI(prompt);           // text prompt
+//   const raw = await callAI(prompt, imageUrl); // vision prompt
+// ============================================================
+
+const callAI = async (
+    prompt: string,
+    imageDataUrl?: string,  // optional: pass for vision/image requests
+    temperature = 0.7
+): Promise<string> => {
+    const { provider, client } = getAIProvider();
+
+    // ── GOOGLE GEMINI ────────────────────────────────────────
+    if (provider === AIProvider.GOOGLE) {
+        const model = client.getGenerativeModel({
+            model: 'gemini-1.5-flash',
+            generationConfig: { temperature },
+        });
+
+        let result;
+        if (imageDataUrl) {
+            // Vision call: strip data URL prefix, send as inline image
+            const base64 = imageDataUrl.split(',')[1];
+            const mimeType = imageDataUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
+            result = await model.generateContent([
+                { inlineData: { data: base64, mimeType } },
+                { text: prompt },
+            ]);
+        } else {
+            result = await model.generateContent(prompt);
+        }
+
+        return result.response.text() || '';
+    }
+
+    // ── PUTER.AI ─────────────────────────────────────────────
+    const isAuth = await ensurePuterAuthentication();
+    if (!isAuth) throw new Error('Authentication required');
+
+    let response;
+    if (imageDataUrl) {
+        // Puter vision: pass image as second argument
+        response = await client.ai.chat(prompt, imageDataUrl, {
+            model: 'gpt-4o-mini',
+            temperature,
+        });
+    } else {
+        response = await client.ai.chat(prompt, {
+            model: 'gpt-4o-mini',
+            temperature,
+        });
+    }
+
+    return typeof response === 'string'
+        ? response
+        : response?.message?.content || '';
+};
+
+// ============================================================
+// 🔧 CORE HELPER: parseJSON()
+// ============================================================
+// Safely extracts and parses the first JSON object from a
+// string. Returns null if no valid JSON found.
+// Always prefer this over direct JSON.parse().
+// ============================================================
+
+const parseJSON = <T = any>(raw: string): T | null => {
+    try {
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) return JSON.parse(match[0]) as T;
+        return JSON.parse(raw) as T;
+    } catch {
+        return null;
+    }
+};
+
+// ============================================================
+// 🔧 FILE UTILITIES (used by Palm & Face reading)
+// ============================================================
+
+/** Converts a File to a base64 data URL (e.g. "data:image/jpeg;base64,...") */
+export const fileToDataURL = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+/** Converts a File to raw base64 string (without the data URL prefix) */
+export const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+    });
+
+// ============================================================
+// 🔢 DETERMINISTIC SEED (used in fallbacks for consistency)
+// Changes once per year, so "random" outputs stay stable
+// for the same input within the same year.
+// ============================================================
+
+export const generateDeterministicSeed = (input: string): number => {
+    const combined = input + new Date().getFullYear().toString();
     let hash = 0;
-    for (let i = 0; i < combinedInput.length; i++) {
-        const char = combinedInput.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
+    for (let i = 0; i < combined.length; i++) {
+        hash = ((hash << 5) - hash) + combined.charCodeAt(i);
         hash = hash & hash;
     }
     return Math.abs(hash);
 };
 
-const DETAIL_SYSTEM_PROMPT = `
+// ============================================================
+// 📜 SHARED SYSTEM PROMPT (used by most text-only services)
+// ============================================================
+
+export const DETAIL_SYSTEM_PROMPT = `
 ACT AS: A High Priest of Vedic Sciences with 50 years of experience.
 TASK: Generate an IMPERIAL REPORT that is comprehensive, deeply detailed, and spans multiple sections.
 
@@ -159,70 +280,27 @@ FORMATTING RULES (STRICT):
 7. Language must be authoritative, ancient, and deeply mystical.
 8. Ensure the text length is substantial (at least 600-800 words total).
 `;
+// ============================================================
+// services/aiService.ts — PART 2: Service Functions 1–6
+// ============================================================
+// Services in this file:
+//   1. getAstroNumeroReading   — Main astrology/numerology
+//   2. getPalmReading          — Palm image analysis (vision)
+//   3. getCosmicSync           — Compatibility analysis
+//   4. getFaceReading          — Face image analysis (vision)
+//   5. getGemstoneGuidance     — Gemstone recommendations
+//   6. generateMantraAudio     — TTS audio (Google only)
+// ============================================================
 
-// --- AUDIO HELPERS ---
-function decodeBase64ToUint8(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-}
+// ─────────────────────────────────────────────────────────────
+// 1. 📖 ASTRO-NUMERO READING
+// Used by: AstroNumerology page
+// Returns: { reading: string } — long markdown report
+// ─────────────────────────────────────────────────────────────
 
-async function decodePcmToAudioBuffer(
-    data: Uint8Array,
-    ctx: AudioContext,
-    sampleRate: number = 24000,
-    numChannels: number = 1,
-): Promise<AudioBuffer> {
-    const dataInt16 = new Int16Array(data.buffer);
-    const frameCount = dataInt16.length / numChannels;
-    const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
-    for (let channel = 0; channel < numChannels; channel++) {
-        const channelData = buffer.getChannelData(channel);
-        for (let i = 0; i < frameCount; i++) {
-            channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
-        }
-    }
-    return buffer;
-}
-
-const fileToDataURL = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-};
-
-const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-    });
-};
-
-// ============================================
-// ðŸ“– MAIN READING FUNCTION
-// ============================================
-
-export const getAstroNumeroReading = async (details: any): Promise<{ reading: string }> => {
-    const { provider, client } = getAIProvider();
-
-    // âœ… Authenticate if using Puter
-    if (provider === AIProvider.PUTER) {
-        const isAuth = await ensurePuterAuthentication();
-        if (!isAuth) {
-            return { reading: "ðŸ” Please sign in to access AI features." };
-        }
-    }
-
+export const getAstroNumeroReading = async (
+    details: any
+): Promise<{ reading: string }> => {
     const prompt = `${DETAIL_SYSTEM_PROMPT}
 
 **User Details:**
@@ -231,162 +309,72 @@ export const getAstroNumeroReading = async (details: any): Promise<{ reading: st
 - Reading Type: ${details.mode}
 - Language: ${details.language || 'English'}
 
-Generate a comprehensive 4-part ${details.mode} reading. Focus deeply on the Temporal Forecast section for ${new Date().getFullYear()}.`;
+Generate a comprehensive 4-part ${details.mode} reading.
+Focus deeply on the Temporal Forecast section for ${new Date().getFullYear()}.`;
 
     try {
-        if (provider === AIProvider.GOOGLE) {
-            const model = client.getGenerativeModel({
-                model: 'gemini-1.5-flash',
-                generationConfig: {
-                    temperature: 0.7
-                }
-            });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-
-            return { reading: text || "The stars are currently silent." };
-        } else {
-            const response = await client.ai.chat(prompt, {
-                model: 'gpt-4o-mini',
-                temperature: 0.7,
-                max_tokens: 2000
-            });
-            return { reading: response.message?.content || response || "The stars are currently silent." };
-        }
+        const raw = await callAI(prompt, undefined, 0.7);
+        return { reading: raw || 'The stars are currently silent.' };
     } catch (error: any) {
-        console.error('âŒ AI Reading Error:', error);
+        console.error('❌ AstroNumero Reading Error:', error);
         throw new Error('The Oracle is busy. Please try again.');
     }
 };
 
-// ============================================
-// ðŸ–ï¸ PALM READING
-// ============================================
+// ─────────────────────────────────────────────────────────────
+// 2. 🖐️ PALM READING (Vision — requires image)
+// Used by: PalmReading page
+// Returns: PalmMetricResponse { rawMetrics, textReading }
+// ─────────────────────────────────────────────────────────────
 
-// PALM READING
-export async function getPalmReading(
+export const getPalmReading = async (
     imageFile: File,
     language: string = 'English'
-): Promise<any> {
-    console.log('🔍 Selecting AI provider...');
+): Promise<PalmMetricResponse> => {
+    const prompt = `You are an expert palmist. Analyze the palm in this image and provide a detailed reading in ${language}.
+
+IMPORTANT: You MUST analyze the actual palm image provided.
+
+Return ONLY valid JSON with no extra text:
+{
+  "textReading": "FORMATTED_READING_HERE",
+  "rawMetrics": {
+    "lines": {
+      "heart":  { "clarity": 75, "length": 80, "depth": 70 },
+      "head":   { "clarity": 85, "length": 75, "depth": 80 },
+      "life":   { "clarity": 90, "length": 85, "depth": 85 },
+      "fate":   { "clarity": 65, "length": 70, "depth": 60 }
+    },
+    "mounts": {
+      "jupiter": 75, "saturn": 70, "apollo": 80,
+      "mercury": 65, "venus": 85, "moon": 70,
+      "mars_positive": 75, "mars_negative": 60
+    }
+  }
+}
+
+STRICT FORMATTING RULES for textReading:
+- NEVER write paragraphs. Every single insight must be a bullet point.
+- Start POSITIVE/auspicious points with: ✅
+- Start NEGATIVE/warning points with: ❌
+- Cover: Life Line, Head Line, Heart Line, Fate Line, all Mounts, Hand Shape, Fingers
+- Minimum 12 bullet points total
+
+Example:
+✅ **Life Line** is deep and long, indicating strong vitality and excellent physical health.
+❌ **Fate Line** is faint, suggesting the life path may be influenced by external circumstances.
+✅ **Mount of Venus** is well-developed, reflecting warmth and loving relationships.`;
 
     try {
-        const { provider, client } = getAIProvider();
-
-        // ── GOOGLE GEMINI BRANCH ──────────────────────────────────────────
-        if (provider === AIProvider.GOOGLE) {
-            const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
-            const base64Data = await fileToBase64(imageFile);
-            const imagePart = {
-                inlineData: { data: base64Data, mimeType: imageFile.type },
-            };
-
-            const prompt = `You are an expert palmist. Analyze the palm in this image and provide a detailed reading in ${language}.
-
-IMPORTANT: You MUST analyze the actual palm image provided.
-
-Return ONLY valid JSON with no extra text:
-{
-  "textReading": "FORMATTED_READING_HERE",
-  "rawMetrics": {
-    "lines": {
-      "heart":  { "clarity": 75, "length": 80, "depth": 70 },
-      "head":   { "clarity": 85, "length": 75, "depth": 80 },
-      "life":   { "clarity": 90, "length": 85, "depth": 85 },
-      "fate":   { "clarity": 65, "length": 70, "depth": 60 }
-    },
-    "mounts": {
-      "jupiter": 75, "saturn": 70, "apollo": 80,
-      "mercury": 65, "venus": 85, "moon": 70,
-      "mars_positive": 75, "mars_negative": 60
-    }
-  }
-}
-
-STRICT FORMATTING RULES for textReading:
-- NEVER write paragraphs. Every single insight must be a bullet point on its own line.
-- Start POSITIVE/auspicious points with: ✅ 
-- Start NEGATIVE/warning points with: ❌ 
-- Cover: Life Line, Head Line, Heart Line, Fate Line, all Mounts, Hand Shape, Fingers
-- Minimum 12 bullet points total
-
-Example format:
-✅ **Life Line** is deep and long, indicating strong vitality and excellent physical health.
-❌ **Fate Line** is faint, suggesting the life path may be influenced by external circumstances.
-✅ **Mount of Venus** is well-developed, reflecting warmth and loving relationships.`;
-
-            const result = await model.generateContent([prompt, imagePart]);
-            const responseText = result.response.text();
-
-            try {
-                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                if (jsonMatch) return JSON.parse(jsonMatch[0]);
-                return JSON.parse(responseText);
-            } catch {
-                return { textReading: responseText, rawMetrics: null };
-            }
-        }
-
-        // ── PUTER.AI BRANCH ───────────────────────────────────────────────
-        const isAuth = await ensurePuterAuthentication();
-        if (!isAuth) {
-            return { textReading: 'Please sign in to access AI features.', rawMetrics: null };
-        }
-
         const dataUrl = await fileToDataURL(imageFile);
+        const raw = await callAI(prompt, dataUrl, 0.7);
+        const parsed = parseJSON<PalmMetricResponse>(raw);
 
-        const prompt = `You are an expert palmist. Analyze the palm in this image and provide a detailed reading in ${language}.
+        if (parsed?.textReading) return parsed;
 
-IMPORTANT: You MUST analyze the actual palm image provided.
-
-Return ONLY valid JSON with no extra text:
-{
-  "textReading": "FORMATTED_READING_HERE",
-  "rawMetrics": {
-    "lines": {
-      "heart":  { "clarity": 75, "length": 80, "depth": 70 },
-      "head":   { "clarity": 85, "length": 75, "depth": 80 },
-      "life":   { "clarity": 90, "length": 85, "depth": 85 },
-      "fate":   { "clarity": 65, "length": 70, "depth": 60 }
-    },
-    "mounts": {
-      "jupiter": 75, "saturn": 70, "apollo": 80,
-      "mercury": 65, "venus": 85, "moon": 70,
-      "mars_positive": 75, "mars_negative": 60
-    }
-  }
-}
-
-STRICT FORMATTING RULES for textReading:
-- NEVER write paragraphs. Every single insight must be a bullet point on its own line.
-- Start POSITIVE/auspicious points with: ✅ 
-- Start NEGATIVE/warning points with: ❌ 
-- Cover: Life Line, Head Line, Heart Line, Fate Line, all Mounts, Hand Shape, Fingers
-- Minimum 12 bullet points total
-
-Example format:
-✅ **Life Line** is deep and long, indicating strong vitality and excellent physical health.
-❌ **Fate Line** is faint, suggesting the life path may be influenced by external circumstances.
-✅ **Mount of Venus** is well-developed, reflecting warmth and loving relationships.`;
-
-        const response = await client.ai.chat(prompt, dataUrl, {
-            model: 'gpt-4o-mini',
-            temperature: 0.7,
-        });
-
-        const content =
-            typeof response === 'string' ? response : response.message?.content || '';
-
-        try {
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) return JSON.parse(jsonMatch[0]);
-        } catch (e) {
-            console.warn('⚠️ Failed to parse palm JSON, returning raw text');
-        }
-
+        // Fallback: return raw text with default metrics
         return {
-            textReading: content || 'Palm analysis complete.',
+            textReading: raw || 'Palm analysis complete.',
             rawMetrics: {
                 lines: {
                     heart: { clarity: 75, length: 80, depth: 70 },
@@ -407,16 +395,17 @@ Example format:
     }
 };
 
+// ─────────────────────────────────────────────────────────────
+// 3. 💞 COSMIC SYNC (Compatibility)
+// Used by: CosmicSync page
+// Returns: { compatibilityScore, relationshipType, strengths,
+//            challenges, fullReading }
+// ─────────────────────────────────────────────────────────────
 
-
-// Cosmic sync
 export const getCosmicSync = async (person1: any, person2: any) => {
-    console.log('ðŸ”® Generating Cosmic Sync for', person1.name, '&', person2.name);
+    console.log('🔮 Generating Cosmic Sync for', person1.name, '&', person2.name);
 
-    try {
-        const { provider, client } = getAIProvider();
-
-        const prompt = `You are an expert Vedic astrologer specializing in relationship compatibility analysis.
+    const prompt = `You are an expert Vedic astrologer specializing in relationship compatibility analysis.
 
 PERSON 1:
 - Name: ${person1.name}
@@ -433,9 +422,9 @@ ${person2.pob ? `- Place of Birth: ${person2.pob}` : ''}
 Create a comprehensive relationship compatibility analysis with:
 1. Compatibility Score (0-100)
 2. Relationship Type (e.g. Soulmates, Twin Flames, Karmic Bond, Growth Partners)
-3. Top 5 Strengths
-4. Top 5 Challenges
-5. Detailed Analysis (800-1200 words) covering:
+3. Top 5 Strengths of the relationship
+4. Top 5 Challenges the couple will face
+5. Detailed 800-1200 word Analysis covering:
    - Emotional Compatibility
    - Communication Styles
    - Physical Chemistry
@@ -451,202 +440,117 @@ Return ONLY valid JSON (no markdown):
 {
   "compatibilityScore": 85,
   "relationshipType": "Soulmates",
-  "strengths": ["strength 1", "strength 2", "strength 3", "strength 4", "strength 5"],
-  "challenges": ["challenge 1", "challenge 2", "challenge 3", "challenge 4", "challenge 5"],
-  "fullReading": "DETAILED MARKDOWN REPORT with headers for each section"
+  "strengths": ["strength 1","strength 2","strength 3","strength 4","strength 5"],
+  "challenges": ["challenge 1","challenge 2","challenge 3","challenge 4","challenge 5"],
+  "fullReading": "DETAILED MARKDOWN REPORT with ### headers for each section"
 }`;
 
-        let rawResponse = '';
+    try {
+        const raw = await callAI(prompt, undefined, 0.7);
+        const parsed = parseJSON<any>(raw);
 
-        // â”€â”€ GOOGLE GEMINI BRANCH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if (provider === AIProvider.GOOGLE) {
-            const model = client.getGenerativeModel({
-                model: 'gemini-1.5-flash',
-                generationConfig: { temperature: 0.7 },
-            });
-            const result = await model.generateContent(prompt);
-            rawResponse = result.response.text();
-        } else {
-            // â”€â”€ PUTER.AI BRANCH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            const isAuth = await ensurePuterAuthentication();
-            if (!isAuth) return generateFallbackReport(person1, person2);
-
-            const response = await client.ai.chat(prompt, {
-                model: 'gpt-4o-mini',
-                temperature: 0.7,
-            });
-            rawResponse =
-                typeof response === 'string'
-                    ? response
-                    : response.message?.content || '';
+        if (!parsed) {
+            console.warn('⚠️ CosmicSync: JSON parse failed, using fallback');
+            return generateFallbackCosmicSync(person1, person2);
         }
 
-        // â”€â”€ Parse response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        let parsed: any;
-        try {
-            const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                parsed = JSON.parse(jsonMatch[0]);
-            } else {
-                throw new Error('No JSON found in response');
-            }
-        } catch (parseError) {
-            console.error('Failed to parse AI response, using fallback');
-            parsed = generateFallbackReport(person1, person2);
-        }
-
-        // â”€â”€ Validate and normalize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Normalize — fill in defaults for any missing fields
         return {
             compatibilityScore: parsed.compatibilityScore ?? 75,
             relationshipType: parsed.relationshipType ?? 'Soul Connection',
-            strengths: Array.isArray(parsed.strengths)
-                ? parsed.strengths
-                : [
-                    'Strong emotional bond',
-                    'Natural understanding',
-                    'Complementary energies',
-                    'Shared life goals',
-                    'Deep spiritual connection',
-                ],
-            challenges: Array.isArray(parsed.challenges)
-                ? parsed.challenges
-                : [
-                    'Communication styles differ',
-                    'Need for personal space',
-                    'Different paces of life',
-                    'Handling conflicts',
-                    'Balancing independence and togetherness',
-                ],
-            fullReading:
-                parsed.fullReading ?? generateDetailedReport(person1, person2, parsed),
+            strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [
+                'Strong emotional bond',
+                'Natural understanding',
+                'Complementary energies',
+                'Shared life goals',
+                'Deep spiritual connection',
+            ],
+            challenges: Array.isArray(parsed.challenges) ? parsed.challenges : [
+                'Communication styles differ',
+                'Need for personal space',
+                'Different paces of life',
+                'Handling conflicts gracefully',
+                'Balancing independence and togetherness',
+            ],
+            fullReading: parsed.fullReading ?? generateDetailedCosmicReport(person1, person2, parsed),
         };
     } catch (error) {
-        console.error('âŒ Error generating Cosmic Sync:', error);
-        return generateFallbackReport(person1, person2);
+        console.error('❌ CosmicSync error:', error);
+        return generateFallbackCosmicSync(person1, person2);
     }
 };
 
+// ─────────────────────────────────────────────────────────────
+// 4. 👁️ FACE READING (Vision — requires image)
+// Used by: FaceReading page
+// Returns: FaceMetricResponse { rawMetrics, textReading }
+// ─────────────────────────────────────────────────────────────
 
-// ============================================
-// ðŸ‘¤ FACE READING
-// ============================================
-
-export const getFaceReading = async (imageFile: File, language: string = 'English', dob?: string): Promise<FaceMetricResponse> => {
-    const { provider, client } = getAIProvider();
-
-    // âœ… Authenticate if using Puter
-    if (provider === AIProvider.PUTER) {
-        const isAuth = await ensurePuterAuthentication();
-        if (!isAuth) {
-            return { rawMetrics: {}, textReading: "ðŸ” Please sign in to access AI features." };
-        }
-    }
-
+export const getFaceReading = async (
+    imageFile: File,
+    language: string = 'English',
+    dob?: string
+): Promise<FaceMetricResponse> => {
     const ageContext = dob ? `User was born on ${dob}.` : '';
+
     const prompt = `${DETAIL_SYSTEM_PROMPT}
 
-${ageContext}Vedic Face reading(Samudrika Shastra) in ${language}. Provide a massive 4 - part physiological profile.`;
+${ageContext}
+Perform a detailed Vedic Face Reading (Samudrika Shastra) in ${language}.
+Analyze facial features: forehead, eyes, eyebrows, nose, lips, chin, ears, face shape.
+Provide a massive 4-part physiological and personality profile.
+
+Return JSON:
+{
+  "textReading": "FORMATTED READING with bullet points per feature"
+}`;
 
     try {
-        if (provider === AIProvider.GOOGLE) {
-            const base64Image = await fileToBase64(imageFile);
+        const dataUrl = await fileToDataURL(imageFile);
+        const raw = await callAI(prompt, dataUrl, 0.7);
 
-            const model = client.getGenerativeModel({
-                model: 'gemini-1.5-flash',
-                generationConfig: {
-                    temperature: 0.2,
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: SchemaType.OBJECT,
-                        properties: {
-                            textReading: { type: SchemaType.STRING }
-                        }
-                    }
-                }
-            });
-
-            const result = await model.generateContent([
-                {
-                    inlineData: {
-                        mimeType: imageFile.type,
-                        data: base64Image
-                    }
-                },
-                { text: prompt }
-            ]);
-
-            const response = await result.response;
-            const text = response.text();
-            const json = JSON.parse(text || "{}");
-
-            return { rawMetrics: json, textReading: json.textReading || "Analysis complete." };
-        } else {
-            const dataUrl = await fileToDataURL(imageFile);
-            const response = await client.ai.chat(prompt, dataUrl, {
-                model: 'gpt-4o-mini',
-                temperature: 0.7
-            });
-            const content = response.message?.content || response;
-            return { rawMetrics: {}, textReading: content || "Analysis complete." };
+        // Try JSON parse first
+        const parsed = parseJSON<{ textReading: string }>(raw);
+        if (parsed?.textReading) {
+            return { rawMetrics: parsed, textReading: parsed.textReading };
         }
+
+        // Fallback: raw text is the reading
+        return { rawMetrics: {}, textReading: raw || 'Analysis complete.' };
     } catch (error: any) {
-        console.error('âŒ Face Reading Error:', error);
+        console.error('❌ Face Reading Error:', error);
         throw error;
     }
 };
 
+// ─────────────────────────────────────────────────────────────
+// 5. 💎 GEMSTONE GUIDANCE
+// Used by: GemstoneGuidance page
+// Returns: { primaryGem, mantra, fullReading }
+// ─────────────────────────────────────────────────────────────
 
+/** Parses gemstone response — handles both string and object inputs */
+const parseGemstoneResponse = (raw: any): any => {
+    const content = typeof raw === 'string' ? raw : raw?.message?.content || '';
+    const parsed = parseJSON<any>(content);
 
-// ============================================
-// ðŸ’Ž GEMSTONE GUIDANCE
-// ============================================
+    if (parsed?.primaryGem) return parsed;
 
-/**
- * Parse gemstone response from AI
- */
-const parseGemstoneResponse = (response: any): any => {
-    try {
-        // Extract content from response
-        const content = response.message?.content || response;
-
-        // Try to find JSON in the response
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]);
-        }
-
-        // Fallback: Return as text reading
-        return {
-            primaryGem: {
-                name: "Ruby",
-                sanskritName: "Manikya",
-                reason: "Based on your birth details",
-                wearingMethod: "Wear on ring finger"
-            },
-            mantra: {
-                sanskrit: "à¥ à¤¸à¥‚à¤°à¥à¤¯à¤¾à¤¯ à¤¨à¤®à¤ƒ",
-                pronunciation: "Om Suryaya Namaha",
-                meaning: "Salutations to the Sun"
-            },
-            fullReading: content
-        };
-    } catch (error) {
-        console.error('âŒ Parse error:', error);
-        return {
-            primaryGem: {
-                name: "Ruby",
-                sanskritName: "Manikya",
-                reason: "Guidance received",
-                wearingMethod: "Consult with expert"
-            },
-            mantra: {
-                sanskrit: "à¥",
-                pronunciation: "Om",
-                meaning: "The universal sound"
-            },
-            fullReading: "Please try again."
-        };
-    }
+    // Fallback structure
+    return {
+        primaryGem: {
+            name: 'Ruby',
+            sanskritName: 'Manikya',
+            reason: 'Based on your birth chart and planetary positions',
+            wearingMethod: 'Wear on ring finger of right hand on Sunday morning',
+        },
+        mantra: {
+            sanskrit: 'ॐ सूर्याय नमः',
+            pronunciation: 'Om Suryaya Namaha',
+            meaning: 'Salutations to the Sun',
+        },
+        fullReading: content || 'Please try again.',
+    };
 };
 
 export const getGemstoneGuidance = async (
@@ -655,210 +559,182 @@ export const getGemstoneGuidance = async (
     intent: string,
     language: string = 'English'
 ): Promise<any> => {
-    try {
-        const { provider, client } = getAIProvider();
+    const prompt = `${DETAIL_SYSTEM_PROMPT}
 
-        // âœ… AUTHENTICATE USER FIRST (if using Puter)
-        if (provider === AIProvider.PUTER) {
-            const isAuthenticated = await ensurePuterAuthentication();
-
-            if (!isAuthenticated) {
-                // Return friendly error response
-                return {
-                    primaryGem: {
-                        name: "Ruby",
-                        sanskritName: "Manikya",
-                        reason: "Authentication required",
-                        wearingMethod: "Please sign in to use AI features"
-                    },
-                    mantra: {
-                        sanskrit: "à¥",
-                        pronunciation: "Om",
-                        meaning: "The universal sound"
-                    },
-                    fullReading: "ðŸ” Please sign in with Puter to access AI-powered gemstone guidance.\n\nThis ensures secure and personalized readings."
-                };
-            }
-        }
-
-        const prompt = `${DETAIL_SYSTEM_PROMPT}
-        
 User Information:
-        Name: ${name}
-Date of Birth: ${dob}
-        Intent: ${intent}
-Preferred Language: ${language}
+- Name: ${name}
+- Date of Birth: ${dob}
+- Intent / Goal: ${intent}
+- Preferred Language: ${language}
 
-Provide detailed gemstone guidance in JSON format with these fields:
-        {
-            "primaryGem": {
-                "name": "gem name in English",
-                    "sanskritName": "gem name in Sanskrit",
-                        "reason": "why this gem",
-                            "wearingMethod": "how to wear"
-            },
-            "mantra": {
-                "sanskrit": "mantra in Sanskrit",
-                    "pronunciation": "pronunciation guide",
-                        "meaning": "meaning in English"
-            },
-            "fullReading": "comprehensive reading with all 4 sections"
-        } `;
+Provide detailed Vedic gemstone guidance. Return ONLY valid JSON:
+{
+  "primaryGem": {
+    "name": "gem name in English",
+    "sanskritName": "gem name in Sanskrit",
+    "reason": "why this gem suits this person",
+    "wearingMethod": "detailed how to wear instructions"
+  },
+  "secondaryGems": ["gem2", "gem3"],
+  "gemsToAvoid": ["gem to avoid"],
+  "mantra": {
+    "sanskrit": "mantra in Sanskrit script",
+    "pronunciation": "pronunciation guide",
+    "meaning": "meaning in English"
+  },
+  "fullReading": "comprehensive 4-section report"
+}`;
 
-        console.log('ðŸ¤– Calling AI for gemstone guidance...');
-
-        if (provider === AIProvider.GOOGLE) {
-            const model = client.getGenerativeModel({
-                model: 'gemini-1.5-flash',
-                generationConfig: { temperature: 0.7 }
-            });
-            const result = await model.generateContent(prompt);
-            const response = await result.response;
-            const text = response.text();
-            console.log('âœ… AI Response received');
-            return parseGemstoneResponse(text);
-        } else {
-            // Puter AI
-            const response = await client.ai.chat(prompt, {
-                model: 'gpt-4o-mini',
-                stream: false
-            });
-            console.log('âœ… AI Response received');
-            return parseGemstoneResponse(response);
-        }
-
+    try {
+        const raw = await callAI(prompt, undefined, 0.7);
+        return parseGemstoneResponse(raw);
     } catch (error: any) {
-        console.error('âŒ Gemstone guidance error:', error);
+        console.error('❌ Gemstone guidance error:', error);
         throw error;
     }
 };
 
-// ============================================
-// ðŸ•‰ï¸ MANTRA AUDIO (Google AI only)
-// ============================================
+// ─────────────────────────────────────────────────────────────
+// 6. 🕉️ MANTRA AUDIO (Google AI only — TTS not in Puter)
+// Used by: MantraPlayer component
+// Returns: AudioBuffer (silent fallback if unavailable)
+// ─────────────────────────────────────────────────────────────
 
 export const generateMantraAudio = async (
     text: string,
-    voiceName: 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir' = 'Charon'
+    _voiceName: 'Charon' | 'Kore' | 'Puck' | 'Zephyr' | 'Fenrir' = 'Charon'
 ): Promise<AudioBuffer> => {
-    const { provider, client } = getAIProvider();
-
-    if (provider === AIProvider.GOOGLE) {
-        try {
-            const model = client.getGenerativeModel({
-                model: "gemini-1.5-flash"
-            });
-
-            const result = await model.generateContent([
-                { text: `Recite this mantra: ${text} ` }
-            ]);
-
-            const response = await result.response;
-            const text_response = response.text();
-
-            // Audio generation with Gemini may not be directly supported
-            // Create a silent buffer as fallback
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            return audioCtx.createBuffer(1, 24000, 24000);
-        } catch (error) {
-            console.error('âŒ Audio generation error:', error);
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            return audioCtx.createBuffer(1, 24000, 24000);
-        }
-    }
-
-    // Puter.ai fallback: Create silent buffer
+    // Always return a silent audio buffer
+    // Gemini TTS is not yet stable — extend here when Google releases it
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     return audioCtx.createBuffer(1, 24000, 24000);
 };
+// ============================================================
+// services/aiService.ts — PART 3: Service Functions 7–end
+//                         + All Fallback Generators
+// ============================================================
+// Services in this file:
+//   7.  getRemedy              — Vedic remedy suggestions
+//   8.  translateText          — Text translation
+//   9.  getTarotReading        — Single card tarot reading
+//   10. createSageSession      — Chat session with Sage AI
+//   11. getAyurvedicAnalysis   — Dosha / Prakriti analysis
+//   12. getMuhurat             — Auspicious timing analysis
+//   13. analyzeDream           — Dream interpretation
+//   14. generateAdvancedAstroReport — Advanced report (stub)
+//   15. processConsultationBooking  — Booking (stub)
+//
+// Fallback generators (private):
+//   - generateFallbackCosmicSync
+//   - generateDetailedCosmicReport
+//   - generateFallbackDreamAnalysis
+//   - generateDetailedDreamReport
+//   - extractSymbolsFromDream
+//   - generateLuckyNumbers
+//   - Muhurat helpers
+// ============================================================
 
-// ============================================
-// ðŸ”® OTHER FUNCTIONS
-// ============================================
+// ─────────────────────────────────────────────────────────────
+// 7. 🌿 VEDIC REMEDY
+// Used by: RemedyPage / chat widgets
+// Returns: string — markdown formatted remedies
+// ─────────────────────────────────────────────────────────────
 
-export const getRemedy = async (concern: string, language: string = 'English'): Promise<string> => {
-    const { provider, client } = getAIProvider();
+export const getRemedy = async (
+    concern: string,
+    language: string = 'English'
+): Promise<string> => {
+    const prompt = `${DETAIL_SYSTEM_PROMPT}
 
-    // âœ… Authenticate if using Puter
-    if (provider === AIProvider.PUTER) {
-        const isAuth = await ensurePuterAuthentication();
-        if (!isAuth) {
-            return "ðŸ” Please sign in to access AI features.";
-        }
-    }
+Provide comprehensive Vedic remedies for the following concern: "${concern}"
+Language: ${language}
 
-    const prompt = `${DETAIL_SYSTEM_PROMPT} \nVedic remedies for: "${concern}" in ${language}.`;
+Include: mantras, gemstones, colors, days, deities, rituals, dietary advice.`;
 
-    if (provider === AIProvider.GOOGLE) {
-        const model = client.getGenerativeModel({
-            model: 'gemini-1.5-flash',
-            generationConfig: { temperature: 0.2 }
-        });
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text() || "";
-    } else {
-        const response = await client.ai.chat(prompt, { model: 'gpt-4o-mini' });
-        return response.message?.content || response || "";
+    try {
+        const raw = await callAI(prompt, undefined, 0.4);
+        return raw || '';
+    } catch (error) {
+        console.error('❌ Remedy error:', error);
+        throw error;
     }
 };
 
-export const translateText = async (text: string, targetLanguage: string): Promise<string> => {
+// ─────────────────────────────────────────────────────────────
+// 8. 🌐 TEXT TRANSLATION
+// Used by: LanguageContext / any service that needs translation
+// Returns: translated string (falls back to original if fails)
+// ─────────────────────────────────────────────────────────────
+
+export const translateText = async (
+    text: string,
+    targetLanguage: string
+): Promise<string> => {
     if (!text || text.trim() === '') return text;
 
-    const { provider, client } = getAIProvider();
-    const prompt = `Translate to ${targetLanguage}.MAINTAIN[POSITIVE], [NEGATIVE], ** bolding **: \n${text} `;
+    const prompt = `Translate the following text to ${targetLanguage}.
+IMPORTANT: MAINTAIN all formatting markers: [POSITIVE], [NEGATIVE], and **bold** text.
+Return ONLY the translated text, nothing else.
 
-    if (provider === AIProvider.GOOGLE) {
-        const model = client.getGenerativeModel({
-            model: 'gemini-1.5-flash'
-        });
+TEXT:
+${text}`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text() || text;
-    } else {
-        const response = await client.ai.chat(prompt, { model: 'gpt-4o-mini', temperature: 0.2 });
-        return response.message?.content || response || text;
+    try {
+        const raw = await callAI(prompt, undefined, 0.2);
+        return raw || text;
+    } catch {
+        return text; // Never throw — always return original as fallback
     }
 };
 
-export const getTarotReading = async (cardName: string, language: string = 'English'): Promise<string> => {
-    const { provider, client } = getAIProvider();
+// ─────────────────────────────────────────────────────────────
+// 9. 🔮 TAROT READING
+// Used by: TarotReading page
+// Returns: string — full markdown tarot interpretation
+// ─────────────────────────────────────────────────────────────
 
-    // âœ… Authenticate if using Puter
-    if (provider === AIProvider.PUTER) {
-        const isAuth = await ensurePuterAuthentication();
-        if (!isAuth) {
-            return "ðŸ” Please sign in to access AI features.";
-        }
-    }
+export const getTarotReading = async (
+    cardName: string,
+    language: string = 'English'
+): Promise<string> => {
+    const prompt = `${DETAIL_SYSTEM_PROMPT}
 
-    const prompt = `${DETAIL_SYSTEM_PROMPT} \nTarot interpretation for "${cardName}" in ${language}.`;
+Provide a comprehensive Tarot card interpretation for: "${cardName}"
+Language: ${language}
 
-    if (provider === AIProvider.GOOGLE) {
-        const model = client.getGenerativeModel({
-            model: 'gemini-1.5-flash',
-            generationConfig: { temperature: 0.4 }
-        });
+Cover: upright meaning, reversed meaning, symbolism, numerology, element,
+astrology connection, Vedic parallel, and practical guidance for today.`;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text() || "";
-    } else {
-        const response = await client.ai.chat(prompt, { model: 'gpt-4o-mini', temperature: 0.8 });
-        return response.message?.content || response || "";
+    try {
+        const raw = await callAI(prompt, undefined, 0.7);
+        return raw || '';
+    } catch (error) {
+        console.error('❌ Tarot error:', error);
+        throw error;
     }
 };
+
+// ─────────────────────────────────────────────────────────────
+// 10. 🧙 SAGE SESSION (Stateful chat)
+// Used by: SageChat component
+// Returns: session object with sendMessage() method
+// NOTE: Google uses native chat session; Puter simulates it
+//       by injecting context into every message.
+// ─────────────────────────────────────────────────────────────
 
 export const createSageSession = (contextReading: string, topic: string) => {
     const { provider, client } = getAIProvider();
+    const systemPrompt = `You are Sage Vashishtha, a wise and compassionate Vedic scholar.
+Topic of consultation: ${topic}
+Context from the reading:
+${contextReading.substring(0, 5000)}
+
+Respond in a wise, helpful, and mystical tone. Give practical advice grounded in Vedic wisdom.`;
 
     if (provider === AIProvider.GOOGLE) {
         const model = client.getGenerativeModel({
             model: 'gemini-1.5-flash',
-            systemInstruction: `You are Sage Vashishtha.Context: ${contextReading.substring(0, 5000)} `
+            systemInstruction: systemPrompt,
         });
 
         return {
@@ -866,237 +742,188 @@ export const createSageSession = (contextReading: string, topic: string) => {
                 const result = await model.generateContent(message);
                 const response = await result.response;
                 return { text: () => response.text() };
-            }
+            },
         };
-    } else {
-        return {
-            sendMessage: async (message: string) => {
-                const response = await client.ai.chat(
-                    `You are Sage Vashishtha.Context: ${contextReading.substring(0, 1000)} \n\nUser: ${message} `,
-                    { model: 'gpt-4o-mini' }
-                );
-                return { text: () => response.message?.content || response };
+    }
+
+    // Puter: simulate session by injecting context into each call
+    return {
+        sendMessage: async (message: string) => {
+            const fullPrompt = `${systemPrompt}\n\nUser: ${message}`;
+            const response = await client.ai.chat(fullPrompt, {
+                model: 'gpt-4o-mini',
+            });
+            const content = typeof response === 'string'
+                ? response
+                : response?.message?.content || '';
+            return { text: () => content };
+        },
+    };
+};
+
+// ─────────────────────────────────────────────────────────────
+// 11. 🌿 AYURVEDIC DOSHA ANALYSIS
+// Used by: AyurvedaDosha page
+// Returns: { dosha, breakdown, diet, fullReading }
+// ─────────────────────────────────────────────────────────────
+
+export const getAyurvedicAnalysis = async (
+    answers: string,
+    language: string = 'English'
+): Promise<any> => {
+    const prompt = `You are an expert Ayurvedic physician with 50 years of experience.
+
+Based on these quiz answers:
+${answers}
+
+Analyze the Prakriti (constitution) and return ONLY valid JSON:
+{
+  "dosha": "Vata-Pitta",
+  "breakdown": { "vata": 40, "pitta": 35, "kapha": 25 },
+  "diet": [
+    "Eat warm, oily, nourishing foods",
+    "Avoid cold, dry, raw foods",
+    "Favor sweet, sour, salty tastes",
+    "Drink warm water and herbal teas",
+    "Include ghee and sesame oil daily",
+    "Eat at regular meal times"
+  ],
+  "fullReading": "A comprehensive 3-4 sentence summary in ${language}"
+}
+
+Rules:
+- breakdown values must add up to exactly 100
+- dosha must be one of: Vata, Pitta, Kapha, Vata-Pitta, Pitta-Kapha, Vata-Kapha, Balanced
+- diet must have exactly 6 items
+- fullReading must be 3-4 sentences in ${language}`;
+
+    try {
+        const raw = await callAI(prompt, undefined, 0.4);
+        const parsed = parseJSON<any>(raw);
+
+        if (!parsed) {
+            console.warn('⚠️ Ayurveda: JSON parse failed');
+            return null;
+        }
+
+        // Normalize breakdown to exactly 100
+        if (parsed.breakdown) {
+            const total = (parsed.breakdown.vata || 0) +
+                (parsed.breakdown.pitta || 0) +
+                (parsed.breakdown.kapha || 0);
+            if (total !== 100) {
+                const factor = 100 / total;
+                parsed.breakdown.vata = Math.round(parsed.breakdown.vata * factor);
+                parsed.breakdown.pitta = Math.round(parsed.breakdown.pitta * factor);
+                parsed.breakdown.kapha = 100 - parsed.breakdown.vata - parsed.breakdown.pitta;
             }
-        };
+        }
+
+        return parsed;
+    } catch (e) {
+        console.error('❌ Ayurvedic analysis error:', e);
+        return null;
     }
 };
 
-// Placeholders for additional functions
-export const getAyurvedicAnalysis = async (answers: string, language: string = 'English'): Promise<any> => {
-    const { provider, client } = getAIProvider();
-    // Implementation similar to above
-    return {};
+// ─────────────────────────────────────────────────────────────
+// 12. ⏰ MUHURAT (Auspicious Timing)
+// Used by: MuhuratFinder page
+// Returns: { rating, bestTime, reason, fullReading }
+// ─────────────────────────────────────────────────────────────
+
+/** Vedic hora lord sequence */
+const HORA_SEQUENCE = ['Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter', 'Mars'];
+
+/** Get hora lord for a given day index and hora slot index */
+const getHoraLord = (dayOfWeek: number, hourIdx: number): string => {
+    return HORA_SEQUENCE[(dayOfWeek + hourIdx) % 7];
 };
 
-// GetMuhurat Report Output from AI
+/** Standard 84-min hora windows (from sunrise ~6am) */
+const BASE_HORAS = [
+    { start: '06:00', end: '07:24' }, { start: '07:24', end: '08:48' },
+    { start: '08:48', end: '10:12' }, { start: '10:12', end: '11:36' },
+    { start: '11:36', end: '13:00' }, { start: '13:00', end: '14:24' },
+    { start: '14:24', end: '15:48' }, { start: '15:48', end: '17:12' },
+    { start: '17:12', end: '18:36' }, { start: '18:36', end: '20:00' },
+    { start: '20:00', end: '21:24' }, { start: '21:24', end: '22:48' },
+];
+
+/** Activity → favorable hora lords mapping */
+const ACTIVITY_LORDS: Record<string, string[]> = {
+    marriage: ['Jupiter', 'Venus'],
+    business: ['Mercury', 'Jupiter'],
+    housewarming: ['Venus', 'Moon'],
+    travel: ['Moon', 'Mars'],
+    education: ['Mercury', 'Jupiter'],
+    vehicle: ['Mercury', 'Venus'],
+    naming: ['Moon', 'Jupiter'],
+    surgery: ['Mars', 'Saturn'],
+    property: ['Venus', 'Jupiter'],
+    other: ['Jupiter', 'Mercury'],
+};
+
+/** Returns top 3 favorable hora windows for the activity */
+const calculateVedicMuhurat = (activity: string, dayOfWeek: number): string => {
+    const favorableLords = ACTIVITY_LORDS[activity.toLowerCase()] || ACTIVITY_LORDS.other;
+
+    const scored = BASE_HORAS.map((hora, idx) => ({
+        ...hora,
+        score: favorableLords.includes(getHoraLord(dayOfWeek, idx)) ? 100 : 60,
+    }));
+
+    const best = scored.sort((a, b) => b.score - a.score)[0];
+    return `${best.start} – ${best.end}`;
+};
+
 export const getMuhurat = async (
     activity: string,
     date: string,
     language: string = 'English'
-): Promise<{
-    rating: string;
-    bestTime: string;
-    reason: string;
-    fullReading: string;
-}> => {
-    const { provider, client } = getAIProvider();
-
-    // 1. Calculate real Vedic timing (simplified but authentic)
+): Promise<{ rating: string; bestTime: string; reason: string; fullReading: string }> => {
     const inputDate = new Date(date);
-    const dayOfWeek = inputDate.getDay(); // 0=Sunday, 1=Monday, etc.
-    const hour = inputDate.getHours();
+    const dayOfWeek = inputDate.getDay();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[dayOfWeek];
+    const bestTime = calculateVedicMuhurat(activity, dayOfWeek);
 
-    // Simple Vedic timing logic (expandable)
-    const bestTime = calculateVedicMuhurat(activity, dayOfWeek, hour);
+    const prompt = `You are a senior Vedic astrologer.
+For the activity "${activity}" on ${date} (${dayName}), the calculated Muhurat window is: ${bestTime}.
 
-    // 2. AI for personalized analysis
-    const prompt = createDynamicMuhuratPrompt(activity, date, bestTime, dayOfWeek);
+Using authentic Vedic principles (Hora, Panchang, day lords), create a detailed analysis explaining:
+1. Why ${bestTime} is optimal for "${activity}"
+2. Panchang factors for this day
+3. Rituals and preparations (5-minute ritual)
+4. Do's and Don'ts during the Muhurat
+5. Lucky elements (colors, numbers, symbols)
+6. What to do if you can't use the exact window
+
+Return ONLY valid JSON:
+{
+  "rating": "Excellent / Good / Moderate",
+  "bestTime": "${bestTime}",
+  "reason": "one sentence explanation",
+  "fullReading": "detailed multi-section markdown report"
+}`;
 
     try {
-        if (client) {
-            // Use your existing AI client
-            const completion = await client.responses.create({
-                model: provider === 'puter' ? 'gpt-4o-mini' : 'gpt-4.1-mini',
-                input: prompt,
-            });
+        const raw = await callAI(prompt, undefined, 0.5);
+        const parsed = parseJSON<any>(raw);
 
-            const rawText =
-                completion.output_text ||
-                (completion.output?.[0]?.content?.[0]?.text) ||
-                '';
-
-            // Extract structured data
-            const structured = parseAIMuhuratResponse(rawText);
-
+        if (parsed?.fullReading) {
             return {
-                rating: structured.rating || 'Good',
-                bestTime: structured.bestTime || bestTime,
-                reason: structured.reason || `Calculated based on Vedic timing for ${activity}.`,
-                fullReading: structured.fullReading || rawText,
+                rating: parsed.rating || 'Good',
+                bestTime: parsed.bestTime || bestTime,
+                reason: parsed.reason || `Optimal Vedic hora for ${activity} on ${dayName}.`,
+                fullReading: parsed.fullReading,
             };
         }
     } catch (err) {
-        console.warn('[getMuhurat] AI unavailable, using calculated fallback:', err);
+        console.warn('⚠️ Muhurat: AI unavailable, using calculated fallback:', err);
     }
 
-    // 3. Pure calculation fallback (no AI needed)
-    return createCalculatedMuhuratReport(activity, date, bestTime);
-};
-
-/**
- * Calculate authentic Vedic Muhurat based on activity and timing rules
- */
-const calculateVedicMuhurat = (
-    activity: string,
-    dayOfWeek: number,
-    hour: number
-): string => {
-    // Vedic day lords and activity types
-    const dayLords = ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'];
-    const dayLord = dayLords[dayOfWeek];
-
-    // Activity categories and favorable hours
-    const activityTypes = {
-        marriage: ['Jupiter', 'Venus'],
-        business: ['Mercury', 'Jupiter'],
-        housewarming: ['Venus', 'Moon'],
-        travel: ['Moon', 'Mars'],
-        education: ['Mercury', 'Jupiter'],
-        vehicle: ['Mercury', 'Venus'],
-        naming: ['Moon', 'Jupiter'],
-        surgery: ['Mars', 'Saturn'],
-        property: ['Venus', 'Jupiter'],
-        other: ['Jupiter', 'Mercury']
-    };
-
-    const favorableLords = activityTypes[activity.toLowerCase()] || ['Jupiter', 'Mercury'];
-    const favorableHours = calculateFavorableHours(dayLord, favorableLords, dayOfWeek);
-
-
-    // Return best hour slot
-    const bestHour = favorableHours[0];
-    return `${bestHour.start} â€“ ${bestHour.end} `;
-};
-
-/**
- * Calculate favorable hours based on day lord and activity
- */
-const calculateFavorableHours = (
-    dayLord: string,           // â† this is unused right now
-    favorableLords: string[],  // â† this is used
-    dayOfWeek: number          // â† ADD THIS PARAMETER
-): Array<{ start: string; end: string }> => {
-
-    // Simplified hora calculation (authentic Vedic logic)
-    const baseHours = [
-        { start: '06:00', end: '07:24' },
-        { start: '07:24', end: '08:48' },
-        { start: '08:48', end: '10:12' },
-        { start: '10:12', end: '11:36' },
-        { start: '11:36', end: '13:00' },
-        { start: '13:00', end: '14:24' },
-        { start: '14:24', end: '15:48' },
-        { start: '15:48', end: '17:12' },
-        { start: '17:12', end: '18:36' },
-        { start: '18:36', end: '20:00' },
-        { start: '20:00', end: '21:24' },
-        { start: '21:24', end: '22:48' },
-    ];
-
-    // Score hours based on hora lord matching favorable lords
-    const scoredHours = baseHours.map((hour, idx) => {
-        const horaLord = getHoraLord(dayOfWeek, idx);  // â† Add dayOfWeek param
-        const score = favorableLords.includes(horaLord) ? 100 : 60;
-        return { ...hour, score, horaLord };
-    });
-
-
-    return scoredHours
-        .filter(h => h.score > 50)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
-};
-
-/**
- * Get hora lord for day/hour (Vedic hora sequence)
- */
-const getHoraLord = (dayOfWeek: number, hourIdx: number): string => {
-    const horaSequence = ['Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter', 'Mars'];
-    const dayOffset = dayOfWeek;
-    const horaOffset = hourIdx % 7;
-    const lordIndex = (dayOffset + horaOffset) % 7;
-    return horaSequence[lordIndex];
-};
-
-/**
- * Create precise AI prompt with calculations
- */
-const createDynamicMuhuratPrompt = (
-    activity: string,
-    date: string,
-    bestTime: string,
-    dayOfWeek: number
-): string => {
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayLord = dayNames[dayOfWeek];
-
-    return `
-You are a senior Vedic astrologer.For "${activity}" on ${date} (${dayLord}), 
-the calculated Muhurat is ${bestTime}.
-
-Using authentic Vedic principles, create a detailed analysis explaining:
-
-        1. Why ${bestTime} is optimal for this activity
-2. Panchang factors(simplified)
-        3. Remedies and enhancements
-        4. Do's and Don'ts
-        5. Lucky elements
-
-Return JSON:
-        {
-            "rating": "...",
-                "bestTime": "${bestTime}",
-                    "reason": "...",
-                        "fullReading": "detailed multi-section report..."
-        }
-        `;
-};
-
-/**
- * Calculate duration between two times (simple version)
- */
-const calculateDuration = (timeRange: string): string => {
-    // Extract times like "10:12 AM â€“ 11:28 AM"
-    const times = timeRange.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/g);
-    if (!times || times.length < 2) return '84';
-
-    const start = times[0];
-    const end = times[1];
-
-    // Simple calculation: assume 84 minutes for most Muhurat windows
-    return '84'; // minutes
-};
-
-
-
-/**
- * Pure calculation fallback (no AI)
- */
-const createCalculatedMuhuratReport = (
-    activity: string,
-    date: string,
-    bestTime: string
-): {
-    rating: string;
-    bestTime: string;
-    reason: string;
-    fullReading: string;
-} => {
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const inputDate = new Date(date);
-    const dayOfWeek = inputDate.getDay();
-    const dayName = dayNames[dayOfWeek];
-
+    // ── Pure calculation fallback (no AI needed) ──────────────
     return {
         rating: 'Good',
         bestTime,
@@ -1104,102 +931,139 @@ const createCalculatedMuhuratReport = (
         fullReading: `
 # MUHURAT ANALYSIS
 
-## SHUBH MUHURAT REPORT FOR ${activity.toUpperCase()}
+## SHUBH MUHURAT FOR ${activity.toUpperCase()} — ${date}
 
-### CALCULATED MUHURAT WINDOW
-
-        [POSITIVE] â€¢ ** BEST TIME:** ** ${bestTime}**  
-â€¢ ** DAY:** ${dayName}  
-â€¢ ** CONTEXT:** Time selected using a simplified ** Vedic hora ** and ** dayâ€‘lord ** based logic.
-
-This window is chosen to ** avoid common inauspicious periods ** and to align with a more ** supportive energy ** for your activity.
+### ✨ BEST TIME WINDOW
+[POSITIVE] • **OPTIMAL MUHURAT:** **${bestTime}**
+• **DAY:** ${dayName}
+• **BASIS:** Vedic hora and day-lord calculation
 
 ---
 
-## QUICK PANCHANGâ€‘STYLE SUMMARY
-
-        [POSITIVE] â€¢ ** Day Lord:** ${dayName} (general supportive nature for progress and stability)
-            [POSITIVE] â€¢ ** Favorable Nature:** Growth, stability, and ** smooth beginnings **
-                [POSITIVE] â€¢ ** Duration:** Approx. ** ${calculateDuration(bestTime)} minutes ** of peak auspiciousness  
-
-These factors together create a ** balanced, practical Muhurat ** suitable for most people without needing a full personal birth chart.
-
----
-
-## PREPARATION RITUAL(5 MINUTES)
-
-        [POSITIVE] â€¢ ** Prepare the space:** Keep the area ** clean, organized, and clutterâ€‘free **.  
-[POSITIVE] â€¢ ** Light a diya or incense:** This invokes ** clarity and protection ** before you begin.  
-[POSITIVE] â€¢ ** Face East or North:** Traditionally linked with ** growth, learning, and prosperity **.  
-[POSITIVE] â€¢ ** Set your Sankalpa(intention):**  
-  â€œ* I begin this activity at an ** auspicious time **.May it bring ** stability, prosperity, and wellâ€‘being ** to all involved.*â€
-        [POSITIVE] â€¢ ** Chant briefly:**  
-  â€“ *â€œOm Gan Ganapataye Namahâ€* (11 times) â€“ to remove ** obstacles **.  
+### 📿 PREPARATION RITUAL (5 minutes before)
+[POSITIVE] • **Clean the space:** Keep the area clean, organized, and clutter-free.
+[POSITIVE] • **Light a diya or incense:** Invokes clarity and divine protection.
+[POSITIVE] • **Face East or North:** Traditionally linked with growth and prosperity.
+[POSITIVE] • **Set your Sankalpa (intention):** "I begin this activity at an auspicious time."
+[POSITIVE] • **Chant:** *"Om Gan Ganapataye Namah"* (11 times) — removes obstacles.
 
 ---
 
-## DOâ€™S AND DONâ€™TS DURING THE MUHURAT
+### ✅ DO's
+[POSITIVE] • Wear **clean, light colors** such as yellow, white, or light green.
+[POSITIVE] • Maintain a **calm, focused, and grateful** state of mind.
+[POSITIVE] • Keep **phone and distractions** on silent during the key action.
 
-### âœ… DO:
-
-        [POSITIVE] â€¢ Wear ** clean, light colors ** such as ** yellow, white, or light green **.  
-[POSITIVE] â€¢ Maintain a ** calm, focused, and grateful ** state of mind.  
-[POSITIVE] â€¢ Keep your ** phone and distractions on silent ** while you perform the key step.  
-[POSITIVE] â€¢ If documents are involved, ** reâ€‘check them calmly ** during the Muhurat.  
-[POSITIVE] â€¢ Offer a brief ** thanks or prayer ** once the main action is completed.
-
-### âŒ DONâ€™T:
-
-        [NEGATIVE] â€¢ Rush into the Muhurat while feeling ** angry, upset, or extremely anxious **.  
-[NEGATIVE] â€¢ Wear very ** dark / heavy colors ** (allâ€‘black, muddy brown) at the exact start.  
-[NEGATIVE] â€¢ Get into ** arguments, complaints, or negative talk ** around the start time.  
-[NEGATIVE] â€¢ Mix this sacred window with ** unrelated stressful tasks ** (e.g., heated calls, conflict).
-
-        ---
-
-## LUCKY ELEMENTS FOR THIS MUHURAT
-
-        [POSITIVE] â€¢ ** Colors:** Yellow, White, Green â€“ linked with ** clarity, purity, and growth **.  
-[POSITIVE] â€¢ ** Numbers:** 3, 5, 7 â€“ traditionally associated with ** expansion and good fortune **.  
-[POSITIVE] â€¢ ** Symbols:** Ganesh, Lakshmi â€“ invoke ** removal of obstacles ** and ** abundance **.  
-
-You may keep a ** small coin, crystal, or sacred symbol ** near you while beginning the activity as a subtle energetic anchor.
+### ❌ DON'Ts
+[NEGATIVE] • Don't rush in while feeling **angry, upset, or anxious**.
+[NEGATIVE] • Avoid **all-black or dark heavy colors** at the exact start time.
+[NEGATIVE] • Don't mix this window with **unrelated stressful tasks**.
 
 ---
 
-## IF YOU CANNOT USE THE EXACT WINDOW
-
-        [NEGATIVE] â€¢ If circumstances do not allow ** ${bestTime}** exactly, avoid ** panicking ** or feeling doomed.  
-[POSITIVE] â€¢ Try to begin ** as close as possible ** within a Â±30â€“45 minute band of this window.  
-[POSITIVE] â€¢ Preserve the ** intention, cleanliness, and short ritual ** even if the clock time shifts slightly.
-
-            Remember: ** Your focus, sincerity, and effort also create auspiciousness **, not only the clock.
+### 🍀 LUCKY ELEMENTS
+[POSITIVE] • **Colors:** Yellow, White, Green — clarity, purity, and growth.
+[POSITIVE] • **Numbers:** 3, 5, 7 — expansion and good fortune.
+[POSITIVE] • **Symbols:** Ganesh, Lakshmi — obstacle removal and abundance.
 
 ---
 
-## FINAL BLESSING
-
-        [POSITIVE] â€¢ May your ** ${activity}** be ** successful, stable, and blessed **, and may this Muhurat support longâ€‘term wellâ€‘being for you and your family.  
-ðŸ•‰ï¸ ** Shubham Bhavatu â€“ May it be auspicious.**
-            `.trim()
+🕉️ **Shubham Bhavatu — May it be auspicious.**`.trim(),
     };
 };
-// Generate Advance Astro Report 
-export const generateAdvancedAstroReport = async (details: any, engineData: any): Promise<any> => {
-    const { provider, client } = getAIProvider();
-    return { fullReportText: "" };
+
+// ─────────────────────────────────────────────────────────────
+// 13. 🌙 DREAM ANALYSIS
+// Used by: DreamAnalysis page
+// Returns: DreamAnalysisResponse
+// ─────────────────────────────────────────────────────────────
+
+export const analyzeDream = async (
+    dreamText: string,
+    language: string = 'en'
+): Promise<DreamAnalysisResponse> => {
+    console.log('🌙 Analyzing dream:', dreamText.substring(0, 50) + '...');
+
+    const prompt = `You are an expert dream interpreter combining Jungian psychology, Vedic symbolism, and modern neuroscience.
+
+DREAM DESCRIPTION: ${dreamText}
+
+Provide a comprehensive dream analysis with:
+1. Core Meaning (detailed 800-1200 word interpretation) covering:
+   - Primary Message, Symbolic Analysis, Psychological Insights,
+   - Emotional Landscape, Subconscious Patterns, Shadow Work,
+   - Vedic Perspective, Integration Advice, Future Guidance
+2. Key Symbols: 5-8 most significant symbols from the dream
+3. Emotions: 3-5 dominant emotions present
+4. Archetypes: 2-3 Jungian or mythological archetypes
+5. Lucky Numbers: 5 numbers (1-99) derived from dream symbolism
+6. Guidance: Practical action steps based on the dream
+
+Return ONLY valid JSON (no markdown):
+{
+  "meaning": "FULL DETAILED MARKDOWN REPORT with ### headers",
+  "symbols": ["symbol1", "symbol2"],
+  "emotions": ["emotion1", "emotion2"],
+  "archetypes": ["archetype1", "archetype2"],
+  "luckyNumbers": [23, 45, 67, 12, 89],
+  "guidance": "Practical steps for integration"
+}`;
+
+    try {
+        const raw = await callAI(prompt, undefined, 0.7);
+        const parsed = parseJSON<DreamAnalysisResponse>(raw);
+
+        if (!parsed || !parsed.meaning) {
+            console.warn('⚠️ Dream: JSON parse failed, using fallback');
+            return generateFallbackDreamAnalysis(dreamText);
+        }
+
+        // Normalize — fill defaults for any missing fields
+        return {
+            meaning: parsed.meaning,
+            symbols: Array.isArray(parsed.symbols) && parsed.symbols.length > 0 ? parsed.symbols : extractSymbolsFromDream(dreamText),
+            emotions: Array.isArray(parsed.emotions) && parsed.emotions.length > 0 ? parsed.emotions : ['Wonder', 'Curiosity', 'Reflection'],
+            archetypes: Array.isArray(parsed.archetypes) && parsed.archetypes.length > 0 ? parsed.archetypes : ['The Seeker', 'The Dreamer'],
+            luckyNumbers: Array.isArray(parsed.luckyNumbers) && parsed.luckyNumbers.length >= 5 ? parsed.luckyNumbers : generateLuckyNumbers(dreamText),
+            guidance: parsed.guidance || 'Reflect on the symbols and emotions from this dream. Journal your insights.',
+        };
+    } catch (error) {
+        console.error('❌ Dream analysis error:', error);
+        return generateFallbackDreamAnalysis(dreamText);
+    }
 };
 
-// Consultation Booking 
+// ─────────────────────────────────────────────────────────────
+// 14. 📊 ADVANCED ASTRO REPORT (stub — extend as needed)
+// ─────────────────────────────────────────────────────────────
+
+export const generateAdvancedAstroReport = async (
+    details: any,
+    engineData: any
+): Promise<any> => {
+    // TODO: Implement full Kundali + Dasha + transit report here
+    return { fullReportText: '' };
+};
+
+// ─────────────────────────────────────────────────────────────
+// 15. 📅 CONSULTATION BOOKING (stub — extend as needed)
+// ─────────────────────────────────────────────────────────────
+
 export const processConsultationBooking = async (bookingData: any): Promise<any> => {
-    const { provider, client } = getAIProvider();
+    // TODO: Implement booking confirmation logic
     return {};
 };
 
-// Fallback for when AI fails
-function generateFallbackReport(person1: any, person2: any) {
-    const score = 70 + Math.floor(Math.random() * 25); // 70-95
+// ============================================================
+// 🛡️ FALLBACK GENERATORS
+// Called when AI fails or parse errors occur.
+// All private (not exported) — only used internally.
+// ============================================================
 
+// ── CosmicSync fallbacks ─────────────────────────────────────
+
+function generateFallbackCosmicSync(person1: any, person2: any) {
+    const score = 70 + Math.floor(Math.random() * 25); // 70–95
     return {
         compatibilityScore: score,
         relationshipType: 'Cosmic Connection',
@@ -1208,350 +1072,99 @@ function generateFallbackReport(person1: any, person2: any) {
             'Complementary personality traits',
             'Shared values and life perspectives',
             'Strong emotional understanding',
-            'Potential for deep spiritual growth together'
+            'Potential for deep spiritual growth together',
         ],
         challenges: [
             'Different communication styles to navigate',
             'Balancing individual needs with partnership',
             'Managing expectations and compromises',
             'Growing together through life changes',
-            'Maintaining passion and connection over time'
+            'Maintaining passion and connection over time',
         ],
-        fullReading: generateDetailedReport(person1, person2, { compatibilityScore: score })
+        fullReading: generateDetailedCosmicReport(person1, person2, { compatibilityScore: score }),
     };
 }
 
-// Generate the Detailed Report
-function generateDetailedReport(person1: any, person2: any, data: any): string {
-    const p1Name = person1.name.split(' ')[0];
-    const p2Name = person2.name.split(' ')[0];
+function generateDetailedCosmicReport(person1: any, person2: any, data: any): string {
+    const p1 = person1.name.split(' ')[0];
+    const p2 = person2.name.split(' ')[0];
     const score = data.compatibilityScore || 75;
 
-    return `## ðŸŒŸ Cosmic Overview
+    return `## 🌟 Cosmic Overview
 
-${p1Name} and ${p2Name}, your souls have found each other in this vast cosmic dance.With a compatibility rating of ** ${score}%**, your connection holds significant promise and potential for growth.
+${p1} and ${p2}, your souls have found each other in this vast cosmic dance. With a compatibility rating of **${score}%**, your connection holds significant promise.
 
-            ${score >= 85 ? `This is an exceptional match! Your energies harmonize beautifully, creating a relationship foundation that many spend lifetimes searching for.` :
-            score >= 70 ? `You share a strong cosmic connection with natural compatibility that provides an excellent foundation for a lasting relationship.` :
-                score >= 60 ? `Your relationship has solid potential, with areas of natural harmony balanced by opportunities for growth and understanding.` :
-                    `Your connection presents unique challenges and opportunities. With conscious effort and mutual understanding, you can build something meaningful.`}
+${score >= 85 ? 'This is an exceptional match — your energies harmonize beautifully.' :
+            score >= 70 ? 'You share a strong cosmic connection with natural compatibility.' :
+                score >= 60 ? 'Your relationship has solid potential with areas of natural harmony.' :
+                    'Your connection presents unique growth opportunities.'}
 
-## ðŸ’• Emotional Compatibility
+## 💕 Emotional Compatibility
 
-The emotional landscape between ${p1Name} and ${p2Name} is ${score >= 75 ? 'remarkably harmonious' : 'dynamically balanced'}. ${p1Name}, you bring a unique emotional signature to this relationship, characterized by ${person1.tob ? 'depth and intuition guided by your birth chart' : 'natural empathy and understanding'}.
+The emotional landscape between ${p1} and ${p2} is ${score >= 75 ? 'remarkably harmonious' : 'dynamically balanced'}. You bring unique emotional signatures that, when understood, create profound depth.
 
-${p2Name}, your emotional expression ${score >= 70 ? 'complements this beautifully' : 'adds an interesting dynamic'}, creating a relationship where both partners feel seen and valued.The key to deepening your emotional bond lies in:
+**Keys to emotional intimacy:**
+- **Active listening** — hear what lies beneath the words
+- **Vulnerability** — create safe spaces for authentic expression
+- **Emotional validation** — acknowledge feelings without judgment
+- **Patience** — emotions flow differently for each person
 
-- ** Active listening **: Really hearing what lies beneath the words
-        - ** Vulnerability **: Creating safe spaces for authentic expression
-            - ** Emotional validation **: Acknowledging each other's feelings without judgment
-                - ** Patience **: Understanding that emotions flow differently for each person
+## 🗣️ Communication Dynamics
 
-## ðŸ—£ï¸ Communication Dynamics
+**Strengths:** Natural understanding, ability to discuss difficult topics, shared humor.
 
-Communication is the lifeline of your relationship.${p1Name} tends to express through ${person1.tob ? 'a communication style influenced by planetary positions' : 'thoughtful and measured words'}, while ${p2Name} brings ${person2.tob ? 'a distinct communicative energy' : 'an expressive and engaging approach'}.
+**Growth areas:** Speak up before small issues grow, balance talking and listening, translate feelings into clear words.
 
-** Strengths in Communication:**
-        - Natural understanding of each other's unspoken needs
-            - Ability to discuss difficult topics when calm
-                - Shared sense of humor and playfulness
-                    - Growing ability to read each other's emotional states
+## 🔥 Chemistry & Attraction
 
-                        ** Areas for Growth:**
-                            - Speaking up before small issues become big problems
-                                - Finding the right timing for important conversations
-                                    - Balancing talking and listening equally
-                                        - Translating feelings into clear words
+The magnetic pull between you registers at ${score >= 80 ? 'an intense level' : 'a compelling level'}. Keep this alive through spontaneity and never taking each other for granted.
 
-## ðŸ”¥ Chemistry & Attraction
+## 🌱 Long-Term Potential
 
-The physical and magnetic pull between you registers at ${score >= 80 ? 'an intense level' : 'a compelling level'}. This isn't just surface-level attractionâ€”there's a deeper recognition happening.Your bodies respond to each other in ways that suggest:
+Your foundation has **stability factors:** shared vision, compatible goals, complementary strengths. **Growth areas:** personal development alongside relationship growth, maintaining individuality within unity.
 
-- ** Magnetic resonance **: A natural pull that transcends the physical
-        - ** Energy exchange **: You literally affect each other's vibrations
-            - ** Unconscious synchronization **: Your rhythms naturally align
-                - ** Passionate potential **: Strong foundation for intimacy and connection
+## ⚔️ Navigating Conflicts
 
-Keep this flame alive through spontaneity, presence, and never taking each other for granted.
+1. **Pause before reacting** — take three deep breaths
+2. **Use "I" statements** — focus on feelings, not accusations
+3. **Find the underlying need** — what is really being asked for?
+4. **Seek win-win solutions** — compromise isn't about losing
+5. **Repair quickly** — don't let the sun set on anger
 
-## ðŸŒ± Long - Term Potential
+## 🔮 Karmic Lessons & Spiritual Connection
 
-Looking toward the horizon of your relationship, the cosmic indicators suggest ${score >= 80 ? 'exceptional' : 'strong'} long - term potential.The foundation you're building together has the following characteristics:
+This relationship carries deep karmic significance. Your souls recognize each other — nurture this sacred dimension through shared practices, deep conversations, and respecting each other's spiritual journey.
 
-        ** Stability Factors:**
-            - Shared vision for the future
-                - Compatible life goals and aspirations
-                    - Complementary strengths and weaknesses
-                        - Ability to weather storms together
-                            - Natural partnership dynamics
+## 💫 Practical Advice
 
-                                ** Growth Areas:**
-                                    - Continual personal development alongside relationship growth
-                                        - Maintaining individuality within unity
-                                            - Evolving together through life's stages
-                                                - Building traditions and shared memories
-                                                    - Creating a legacy together
-
-## ðŸŽ¯ Shared Values & Life Vision
-
-${p1Name} and ${p2Name}, your core values ${score >= 75 ? 'align beautifully' : 'create an interesting tapestry'}. You both seek:
-
-- ** Authenticity **: Being true to yourselves and each other
-        - ** Growth **: Evolution as individuals and as a couple
-            - ** Connection **: Deep, meaningful relationship experiences
-                - ** Purpose **: Building something meaningful together
-
-Where you differ, you have opportunities to learn and expand your worldviews.These differences aren't weaknessesâ€”they're invitations to grow.
-
-## âš”ï¸ Navigating Conflicts
-
-Every relationship faces challenges.Yours is no exception.Your conflict resolution style tends toward ${score >= 75 ? 'constructive discussion and mutual understanding' : 'passionate expression that requires conscious management'}.
-
-** Effective Conflict Strategies:**
-        1. ** Pause before reacting **: Take three deep breaths
-    2. ** Use "I" statements **: Focus on feelings, not accusations
-    3. ** Find the underlying need **: What's really being asked for?
-    4. ** Seek win - win solutions **: Compromise isn't about losing
-    5. ** Repair quickly **: Don't let the sun set on anger
-
-## ðŸ”® Karmic Lessons
-
-This relationship has arrived to teach both of you profound lessons:
-
-** For ${p1Name}:**
-        - Embracing vulnerability as strength
-            - Trusting the journey, not just the destination
-                - Balancing giving and receiving
-                    - Speaking your truth with love
-
-                    ** For ${p2Name}:**
-                        - Patience with process and timing
-                            - Surrendering control to partnership
-                                - Honoring your needs while considering another
-                                    - Finding strength in gentleness
-
-## âœ¨ Spiritual Connection
-
-Beyond the physical and emotional, your souls recognize each other.This ${score >= 85 ? 'profound' : 'meaningful'} spiritual connection manifests as:
-
-    - Moments of telepathic understanding
-        - Synchronicities and meaningful coincidences
-            - Feeling complete in each other's presence
-                - Shared dreams or intuitive knowing
-                    - A sense of "coming home" to each other
-
-Nurture this sacred dimension through:
-    - Meditation or spiritual practices together
-        - Deep conversations about meaning and purpose
-            - Respecting each other's spiritual journey
-                - Creating rituals that honor your bond
-
-## ðŸ’« Practical Advice for Success
-
-To maximize the potential of this ${data.relationshipType || 'cosmic connection'}:
-
-** Daily Practices:**
-        - Express appreciation for one thing daily
-            - Physical touch: hugs, hand - holding, gentle touches
-                - Eye contact: Really see each other
-                    - Quality time: Even 15 minutes of undivided attention
-                        - Laughter: Keep playfulness alive
-
-                            ** Weekly Rituals:**
-                                - Date night or quality time together
-                                    - Check - ins: How are we doing ?
-                                        - Shared activities you both enjoy
-                                            - Acts of service for each other
-                                                - Intimate connection
-
-                                                ** Long - term Nurturing:**
-                                                    - Annual relationship reviews
-                                                        - Couples growth experiences(retreats, workshops)
-                                                            - Continual learning about each other
-                                                                - Celebrating milestones and creating memories
-                                                                    - Individual therapy or growth work
-
-## ðŸŒˆ Final Cosmic Wisdom
-
-${p1Name} and ${p2Name}, you have been brought together for a reason.Your compatibility score of ** ${score}%** reflects real potential, but remember: numbers tell only part of the story.
-
-The greatest relationships aren't the ones that start with perfect compatibilityâ€”they're the ones where two people choose each other, day after day, through all of life's seasons.
-
-Your cosmic connection provides the foundation.What you build on it is entirely up to you.
-
-** Key Takeaways:**
-âœ¨ You have natural chemistry worth nurturing
-âœ¨ Communication is your superpowerâ€”use it consciously  
-âœ¨ Challenges are opportunities for deeper intimacy
-âœ¨ Your differences make you stronger together
-âœ¨ This relationship can be a vehicle for profound growth
-
-May the stars continue to guide your journey together, and may you always remember why you chose each other.
+**Daily:** Express appreciation, maintain physical affection, share quality time.
+**Weekly:** Date nights, honest check-ins, shared activities.
+**Long-term:** Annual relationship reviews, celebrate milestones, continue learning about each other.
 
 ---
-
-* This reading was prepared with cosmic insight and astrological wisdom.For personalized guidance, consider a detailed birth chart analysis with both partners' complete birth data.*`;
+*Your cosmic connection score of **${score}%** reflects real potential. What you build on it is entirely up to you.*`;
 }
 
-// Advance Dream Analysis Response
-export interface DreamAnalysisResponse {
-    meaning: string;
-    luckyNumbers: number[];
-    symbols: string[];
-    emotions: string[];
-    archetypes: string[];
-    guidance: string;
-}
+// ── Dream Analysis fallbacks ──────────────────────────────────
 
-// ============================================
-// ðŸ’­ Generate DREAM ANALYSIS
-// ============================================
-
-export const analyzeDream = async (
-    dreamText: string,
-    language: string = 'en'
-): Promise<DreamAnalysisResponse> => {
-    console.log('🌙 Analyzing dream:', dreamText.substring(0, 50) + '...');
-
-    try {
-        const { provider, client } = getAIProvider();
-
-        const prompt = `You are an expert dream interpreter combining Jungian psychology, Vedic symbolism, and modern neuroscience.
-
-DREAM DESCRIPTION: ${dreamText}
-
-Provide a comprehensive dream analysis with:
-1. Core Meaning (detailed 800-1200 word interpretation) covering:
-   - Primary Message: What is the dream's main teaching?
-   - Symbolic Analysis: Deep meaning of key symbols
-   - Psychological Insights: What this reveals about the dreamer
-   - Emotional Landscape: Feelings and their significance
-   - Subconscious Patterns: Recurring themes or suppressed thoughts
-   - Shadow Work: Hidden aspects being revealed
-   - Vedic Perspective: Karmic or spiritual implications
-   - Integration Advice: How to apply this wisdom
-   - Future Guidance: What this suggests about upcoming events
-2. Key Symbols: Extract 5-8 most significant symbols from the dream
-3. Emotions: Identify 3-5 dominant emotions present
-4. Archetypes: 2-3 Jungian or mythological archetypes appearing
-5. Lucky Numbers: 5 numbers (1-99) derived from dream symbolism
-6. Guidance: Practical action steps based on the dream
-
-Return ONLY valid JSON (no markdown):
-{
-  "meaning": "DREAM INTERPRETATION - Full detailed markdown report with headers for each section",
-  "symbols": ["symbol1", "symbol2", "..."],
-  "emotions": ["emotion1", "emotion2", "..."],
-  "archetypes": ["archetype1", "archetype2"],
-  "luckyNumbers": [23, 45, 67, 12, 89],
-  "guidance": "Practical steps for integration"
-}`;
-
-        let rawResponse = '';
-
-        // ── GOOGLE GEMINI BRANCH ──────────────────────────────────────────────
-        if (provider === AIProvider.GOOGLE) {
-            const model = client.getGenerativeModel({
-                model: 'gemini-1.5-flash',
-                generationConfig: { temperature: 0.7 },
-            });
-            const result = await model.generateContent(prompt);
-            rawResponse = result.response.text();
-        } else {
-            // ── PUTER.AI BRANCH ────────────────────────────────────────────────
-            const isAuth = await ensurePuterAuthentication();
-            if (!isAuth) return generateFallbackDreamAnalysis(dreamText);
-
-            const response = await client.ai.chat(prompt, {
-                model: 'gpt-4o-mini',
-                temperature: 0.7,
-            });
-            rawResponse =
-                typeof response === 'string'
-                    ? response
-                    : response.message?.content || '';
-        }
-
-        // ── Parse response ────────────────────────────────────────────────────
-        let parsed: any;
-        try {
-            const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                parsed = JSON.parse(jsonMatch[0]);
-            } else {
-                throw new Error('No JSON found in response');
-            }
-        } catch (parseError) {
-            console.error('Failed to parse AI response, using fallback');
-            parsed = generateFallbackDreamAnalysis(dreamText);
-        }
-
-        // ── Validate and normalize ────────────────────────────────────────────
-        return {
-            meaning: parsed.meaning || generateDetailedDreamReport(dreamText, parsed),
-            symbols:
-                Array.isArray(parsed.symbols) && parsed.symbols.length > 0
-                    ? parsed.symbols
-                    : extractSymbolsFromDream(dreamText),
-            emotions:
-                Array.isArray(parsed.emotions) && parsed.emotions.length > 0
-                    ? parsed.emotions
-                    : ['Wonder', 'Curiosity', 'Reflection'],
-            archetypes:
-                Array.isArray(parsed.archetypes) && parsed.archetypes.length > 0
-                    ? parsed.archetypes
-                    : ['The Seeker', 'The Dreamer'],
-            luckyNumbers:
-                Array.isArray(parsed.luckyNumbers) && parsed.luckyNumbers.length >= 5
-                    ? parsed.luckyNumbers
-                    : generateLuckyNumbers(dreamText),
-            guidance:
-                parsed.guidance ||
-                'Reflect on the symbols and emotions from this dream. Journal your insights.',
-        };
-    } catch (error) {
-        console.error('Error analyzing dream:', error);
-        return generateFallbackDreamAnalysis(dreamText);
-    }
-};
-
-
-// Helper: Extract symbols from dream text
 function extractSymbolsFromDream(dreamText: string): string[] {
-    const commonSymbols = [
-        'water', 'ocean', 'sea', 'river', 'lake',
-        'flying', 'falling', 'running', 'climbing',
-        'house', 'home', 'building', 'door', 'window',
-        'animal', 'cat', 'dog', 'bird', 'snake',
-        'person', 'child', 'mother', 'father',
-        'death', 'birth', 'wedding', 'funeral',
-        'fire', 'light', 'darkness', 'shadow',
-        'tree', 'forest', 'mountain', 'desert',
-        'car', 'vehicle', 'road', 'journey',
-        'money', 'gold', 'treasure', 'gift'
+    const known = [
+        'water', 'ocean', 'sea', 'river', 'lake', 'flying', 'falling', 'running',
+        'house', 'home', 'door', 'window', 'cat', 'dog', 'bird', 'snake', 'person',
+        'child', 'mother', 'father', 'death', 'birth', 'fire', 'light', 'darkness',
+        'tree', 'forest', 'mountain', 'car', 'road', 'money', 'gold', 'treasure',
     ];
-
-    const lowerDream = dreamText.toLowerCase();
-    const found = commonSymbols.filter(symbol => lowerDream.includes(symbol));
-
-    return found.length > 0
-        ? found.slice(0, 6)
-        : ['Mystery', 'Journey', 'Transformation', 'Awakening', 'Discovery'];
+    const lower = dreamText.toLowerCase();
+    const found = known.filter(s => lower.includes(s));
+    return found.length > 0 ? found.slice(0, 6) : ['Mystery', 'Journey', 'Transformation', 'Awakening', 'Discovery'];
 }
 
-// Helper: Generate lucky numbers from dream
 function generateLuckyNumbers(dreamText: string): number[] {
-    const seed = dreamText.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const numbers: number[] = [];
-
-    for (let i = 0; i < 5; i++) {
-        numbers.push(((seed * (i + 1) * 7) % 99) + 1);
-    }
-
-    return [...new Set(numbers)].slice(0, 5); // Ensure unique
+    const seed = dreamText.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const nums = Array.from({ length: 5 }, (_, i) => ((seed * (i + 1) * 7) % 99) + 1);
+    return [...new Set(nums)].slice(0, 5);
 }
 
-// Fallback for when AI fails
 function generateFallbackDreamAnalysis(dreamText: string): DreamAnalysisResponse {
     return {
         meaning: generateDetailedDreamReport(dreamText, {}),
@@ -1559,242 +1172,65 @@ function generateFallbackDreamAnalysis(dreamText: string): DreamAnalysisResponse
         emotions: ['Wonder', 'Curiosity', 'Anticipation'],
         archetypes: ['The Seeker', 'The Dreamer'],
         luckyNumbers: generateLuckyNumbers(dreamText),
-        guidance: 'Your dream contains powerful symbolism. Take time to reflect on how these images relate to your waking life.'
+        guidance: 'Your dream contains powerful symbolism. Take time to reflect on how these images relate to your waking life.',
     };
 }
 
-// Generate detailed dream report
 function generateDetailedDreamReport(dreamText: string, analysis: any): string {
     const symbols = analysis.symbols || extractSymbolsFromDream(dreamText);
     const firstSymbol = symbols[0] || 'journey';
-    const dreamLength = dreamText.split(' ').length;
-    const complexity = dreamLength > 50 ? 'deeply complex' : dreamLength > 20 ? 'richly symbolic' : 'meaningful';
+    const wordCount = dreamText.split(' ').length;
+    const complexity = wordCount > 50 ? 'deeply complex' : wordCount > 20 ? 'richly symbolic' : 'meaningful';
 
-    return `# ðŸŒ™ DREAM INTERPRETATION
+    return `# 🌙 DREAM INTERPRETATION
 
 ## Your Subconscious Message
 
-Your dream reveals a ${complexity} narrative from your subconscious mind. The imagery you experienced is not randomâ€”it's your psyche communicating through the ancient language of symbols.
+Your dream reveals a **${complexity}** narrative from your subconscious mind. The imagery you experienced is not random — it's your psyche communicating through the ancient language of symbols.
 
-**Your Dream:**
-> "${dreamText.length > 200 ? dreamText.substring(0, 200) + '...' : dreamText}"
+> *"${dreamText.length > 200 ? dreamText.substring(0, 200) + '...' : dreamText}"*
 
-This dream carries profound significance for your current life journey.
+## 🔮 Primary Symbolic Meaning
 
-## ðŸ”® Primary Symbolic Meaning
+The central theme revolves around **${firstSymbol}**, a powerful archetype that appears across cultures and throughout history.
 
-The central theme of your dream revolves around **${firstSymbol}**, a powerful archetype that appears across cultures and throughout history. In your personal context, this symbol is particularly significant.
+## 🧠 Psychological Insights
 
-${firstSymbol.toLowerCase().includes('water') || firstSymbol.toLowerCase().includes('ocean') || firstSymbol.toLowerCase().includes('sea') ? `
+1. **Current Life Phase**: You're in a period of ${wordCount > 40 ? 'significant transformation and growth' : 'reflection and processing'}.
+2. **Emotional Processing**: Working through feelings related to ${symbols.slice(0, 2).join(' and ')}.
+3. **Shadow Integration**: This dream invites you to integrate hidden aspects of yourself.
 
-**Water Symbolism:**
-Water in dreams represents the emotional realm, the unconscious mind, and the flow of life itself. The state of the waterâ€”calm, turbulent, deep, or shallowâ€”mirrors your emotional landscape.
+## 🌟 Subconscious Patterns
 
-- **Calm waters**: Emotional peace, clarity, and balance
-- **Rough seas**: Emotional turmoil, challenges, or transformation
-- **Deep water**: Profound emotions, mysteries yet to surface
-- **Crossing water**: Transition, change, moving between life stages
+Your subconscious is actively processing experiences and preparing you for what's ahead. Pay attention to recurring elements — they are your psyche's persistent messages.
 
-Your relationship with water in the dream reveals how you're navigating your emotional world right now.
+## 🕉️ Vedic & Spiritual Perspective
 
-` : firstSymbol.toLowerCase().includes('fly') || firstSymbol.toLowerCase().includes('flight') ? `
-
-**Flying Symbolism:**
-Flying represents freedom, transcendence, and rising above earthly concerns. It's one of the most exhilarating dream experiences.
-
-- **Soaring high**: Confidence, achievement, spiritual elevation
-- **Difficulty flying**: Obstacles to freedom, self-doubt
-- **Fear while flying**: Anxiety about success or responsibility
-- **Flying over landscapes**: Gaining perspective on life situations
-
-Your experience of flight suggests a desire for liberation or a breakthrough happening in your waking life.
-
-` : `
-
-**The Power of ${firstSymbol}:**
-This symbol carries deep psychological and spiritual meaning. It represents aspects of yourself or your life that are seeking expression or resolution.
-
-In Jungian psychology, dream symbols are compensatoryâ€”they balance what's missing in your conscious awareness. If this symbol seems foreign or surprising, it's especially important to explore its message.
-
-`}
-
-## ðŸ§  Psychological Insights
-
-Your dream emerges from the deeper layers of your psyche, where unprocessed experiences, emotions, and insights reside.
-
-**What This Reveals About You:**
-
-1. **Current Life Phase**: You're in a period of ${dreamLength > 40 ? 'significant transformation and growth' : 'reflection and processing'}. Your subconscious is actively working through experiences and preparing you for what's ahead.
-
-2. **Emotional Processing**: The dream indicates you're working through feelings related to ${symbols.slice(0, 2).join(' and ')}. These aren't just dream imagesâ€”they're emotional signatures.
-
-3. **Unconscious Desires**: Beneath your daily awareness, you're seeking ${dreamText.toLowerCase().includes('lost') ? 'what has been lost or forgotten' : dreamText.toLowerCase().includes('find') ? 'discovery and understanding' : 'fulfillment and meaning'}.
-
-4. **Shadow Integration**: Carl Jung taught that dreams reveal our "shadow"â€”the parts of ourselves we don't fully acknowledge. This dream invites you to integrate these hidden aspects.
-
-## ðŸ’« Emotional Landscape
-
-Dreams are fundamentally emotional experiences. The feelings you had during the dream are as important as the content.
-
-**Dominant Emotional Themes:**
-
-${dreamText.toLowerCase().includes('fear') || dreamText.toLowerCase().includes('scared') || dreamText.toLowerCase().includes('afraid') ? `
-- **Fear/Anxiety**: Your dream contained fear, which often represents:
-  - Avoiding something in waking life
-  - Feeling unprepared for a situation
-  - Confronting unknown aspects of yourself
-  - Processing real-life anxieties in a safe space
-
-The fear in dreams is actually protectiveâ€”it's your psyche's way of preparing you for challenges.
-` : ''}
-
-${dreamText.toLowerCase().includes('happy') || dreamText.toLowerCase().includes('joy') || dreamText.toLowerCase().includes('excited') ? `
-- **Joy/Excitement**: Positive emotions suggest:
-  - Alignment with your authentic self
-  - Recognition of upcoming opportunities
-  - Celebration of inner growth
-  - Positive life developments manifesting
-
-These feelings are your psyche's approval of your current direction.
-` : ''}
-
-${dreamText.toLowerCase().includes('sad') || dreamText.toLowerCase().includes('cry') ? `
-- **Sadness/Grief**: These emotions indicate:
-  - Necessary mourning or letting go
-  - Acknowledging losses (big or small)
-  - Emotional healing in progress
-  - Compassion for yourself or others
-
-Sadness in dreams is often the beginning of emotional release and healing.
-` : ''}
-
-- **Overall Emotional Tone**: ${dreamLength > 30 ? 'The complexity of your dream suggests deep emotional processing' : 'The focused nature of your dream points to specific emotional themes'}.
-
-## ðŸŒŸ Subconscious Patterns
-
-Your subconscious mind speaks in patterns, not just single images. Looking at the dream as a whole reveals:
-
-**Recurring Themes:**
-${dreamText.includes('back') || dreamText.includes('return') ? `
-- **Return/Revisiting**: You may be processing past experiences or considering old paths with new wisdom. The psyche often revisits the past when we're ready to integrate lessons we previously couldn't understand.
-` : ''}
-
-${dreamText.includes('lost') || dreamText.includes('searching') || dreamText.includes('looking') ? `
-- **Search/Quest**: The seeking pattern suggests you're in a phase of discovery. What you're looking for externally in the dream often represents something you're seeking within yourself.
-` : ''}
-
-${dreamText.includes('people') || dreamText.includes('person') || dreamText.includes('friend') ? `
-- **Relationships/Others**: People in dreams often represent aspects of yourself or your relationships with those qualities. Every character is a part of your psyche speaking to you.
-` : ''}
-
-**Suppressed Thoughts Emerging:**
-Dreams bring forward what we suppress during waking hours. Your dream suggests you may be suppressing:
-- Desires or ambitions you haven't fully acknowledged
-- Emotions you feel shouldn't be expressed
-- Aspects of your personality seeking integration
-- Creative or spiritual impulses needing attention
-
-## ðŸ•‰ï¸ Vedic & Spiritual Perspective
-
-In Vedic tradition, dreams are considered messages from the subtle realmsâ€”where past karma, future possibilities, and spiritual guidance intersect.
+In Vedic tradition, dreams are messages from the subtle realms where past karma, future possibilities, and spiritual guidance intersect.
 
 **Karmic Implications:**
-Your dream may be revealing:
-- **Past Life Echoes**: Symbols or scenarios that feel familiar yet foreign
-- **Karmic Lessons**: Situations you're meant to resolve in this lifetime
-- **Soul Contracts**: Relationships or purposes you agreed to before birth
-- **Spiritual Awakening**: Signs of consciousness expanding
+- Past experiences seeking resolution
+- Soul contracts and karmic lessons
+- Spiritual awakening signals
 
-**The Three Gunas in Your Dream:**
-- **Sattva (Purity/Harmony)**: ${symbols.includes('light') || symbols.includes('white') ? 'Strong presence of light suggests sattvic qualities' : 'Present in the clarity of certain symbols'}
-- **Rajas (Passion/Activity)**: ${dreamText.includes('running') || dreamText.includes('moving') || dreamText.includes('doing') ? 'Evident in the active, dynamic elements' : 'Shown through energy and movement'}
-- **Tamas (Darkness/Inertia)**: ${dreamText.includes('dark') || dreamText.includes('stuck') ? 'Appearing as obstacles or shadows' : 'Minimal presence, suggesting mental clarity'}
+## 🎯 Integration & Action Steps
 
-## ðŸŽ¯ Integration & Action Steps
+**Immediate (24-48 hours):**
+1. Journal deeply about the feelings and symbols
+2. Notice how dream themes appear in waking life today
+3. Sit quietly and revisit the dream with open curiosity
 
-A dream's value comes from integrating its wisdom into waking life.
+**This week:**
+4. Research the cultural meanings of key symbols
+5. Create space to process the emotions that lingered
 
-**Immediate Actions (Next 24-48 Hours):**
+## 💎 The Gift of This Dream
 
-1. **Journal Deeply**: Write freely about:
-   - How the dream made you feel
-   - What associations come up with key symbols
-   - Any "aha" moments or sudden insights
-   - Questions the dream raises
-
-2. **Creative Expression**: Draw, paint, or create something inspired by the dream. Art bypasses the analytical mind and accesses deeper wisdom.
-
-3. **Active Imagination**: In a quiet moment, revisit the dream. Imagine continuing it or asking dream characters questions. Your imagination can complete unfinished dream narratives.
-
-**This Week:**
-
-4. **Symbol Research**: Look up the cultural, psychological, and spiritual meanings of your key symbols. Notice which interpretations resonate.
-
-5. **Behavior Observation**: Watch for how the dream's themes play out in waking life. Dreams often foreshadow or parallel daily events.
-
-6. **Emotional Processing**: Create space to feel whatever emotions the dream brought up. Suppressing them blocks the dream's healing power.
-
-**Long-term Integration:**
-
-7. **Pattern Recognition**: Keep a dream journal and look for recurring themes across multiple dreams. Patterns reveal your psyche's persistent messages.
-
-8. **Life Changes**: If the dream clearly points to needed changes (relationships, career, habits), take small steps in that direction.
-
-9. **Spiritual Practice**: Incorporate meditation, prayer, or contemplation to deepen your connection with the wisdom of dreams.
-
-## ðŸ”® Prophetic Elements
-
-While not all dreams are prophetic, many contain glimpses of future possibilities.
-
-**Potential Future Indicators:**
-${dreamText.includes('pregnant') || dreamText.includes('baby') || dreamText.includes('birth') ? `
-- **Birth/Pregnancy Symbols**: Often herald new beginnings, creative projects, or actual pregnancies within 3-12 months
-` : ''}
-
-${dreamText.includes('death') || dreamText.includes('dying') || dreamText.includes('funeral') ? `
-- **Death/Endings**: Rarely literal; usually signify transformation, the end of a life phase, or ego death preceding spiritual rebirth
-` : ''}
-
-${dreamText.includes('house') || dreamText.includes('home') || dreamText.includes('building') ? `
-- **Houses/Buildings**: Represent your psyche or life structure. New rooms suggest unexplored potential; old houses point to foundations or past patterns
-` : ''}
-
-- **Timing**: Dreams can be:
-  - **Immediate** (next few days): Vivid, emotionally intense dreams
-  - **Near-term** (weeks to months): Recurring themes or clear scenarios
-  - **Long-term** (months to years): Archetypal dreams with universal symbols
-
-## ðŸ’Ž The Gift of This Dream
-
-Every dream is a gift from your deeper self. This particular dream offers you:
-
-âœ¨ **Self-Knowledge**: Clearer understanding of your inner world
-âœ¨ **Emotional Healing**: Processing and release of stored feelings  
-âœ¨ **Future Preparation**: Subtle guidance for upcoming situations
-âœ¨ **Creative Inspiration**: Images and ideas for creative expression
-âœ¨ **Spiritual Growth**: Connection to deeper dimensions of reality
-
-## ðŸŒˆ Final Wisdom
-
-"${dreamText.substring(0, 100)}${dreamText.length > 100 ? '...' : ''}"
-
-This dream is uniquely yoursâ€”a message crafted by your subconscious specifically for this moment in your life. While dream dictionaries and general interpretations are helpful starting points, the most accurate interpretation comes from your own inner knowing.
-
-Trust your intuition about what the dream means. The symbols that make you pause, the emotions that linger, the images you can't forgetâ€”these are your guideposts.
-
-Your subconscious mind is incredibly wise. It has access to all your memories, all your experiences, and even dimensions beyond normal consciousness. When it speaks to you through dreams, listen carefully.
-
-**Remember:**
-- Dreams are not fortune-telling; they're wisdom-sharing
-- Negative dreams are often the most healing
-- You are the ultimate authority on your dreams
-- Every dream element is a part of you
-
-May this interpretation serve your highest growth and deepest understanding. Sweet dreams and wakeful insights to you.
+✨ Self-knowledge — clearer understanding of your inner world
+✨ Emotional healing — processing and release of stored feelings
+✨ Future preparation — subtle guidance for upcoming situations
+✨ Spiritual growth — connection to deeper dimensions of reality
 
 ---
-
-*"The dream is a little hidden door in the innermost and most secret recesses of the soul." - Carl Jung*
-
-*This interpretation combines Jungian psychology, Vedic wisdom, and modern dream science to provide comprehensive insights into your subconscious message.*`;
+*"The dream is a little hidden door in the innermost and most secret recesses of the soul." — Carl Jung*`;
 }

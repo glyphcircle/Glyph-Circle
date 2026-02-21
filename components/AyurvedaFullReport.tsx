@@ -81,105 +81,121 @@ const AyurvedaFullReport: React.FC<AyurvedaFullReportProps> = ({
     ];
 
     return (
-        <div className="space-y-8 animate-fade-in-up">
+        <div className="space-y-6 animate-fade-in-up">
+
             {/* Header Section */}
-            <Card className={`p-8 text-center ${isLight
-                    ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300'
-                    : 'bg-gradient-to-br from-green-900/50 to-emerald-900/50 border-green-500/30'
+            <Card className={`p-5 md:p-8 text-center ${isLight
+                ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300'
+                : 'bg-gradient-to-br from-green-900/50 to-emerald-900/50 border-green-500/30'
                 }`}>
-                <div className="flex items-center justify-center gap-4 mb-4">
-                    <primaryDosha.icon className={`w-12 h-12 ${primaryDosha.color === 'blue' ? 'text-blue-500' :
-                            primaryDosha.color === 'red' ? 'text-red-500' :
-                                'text-yellow-600'
+                <div className="flex items-center justify-center gap-3 mb-3">
+                    <primaryDosha.icon className={`w-8 h-8 md:w-12 md:h-12 ${primaryDosha.color === 'blue' ? 'text-blue-500' :
+                        primaryDosha.color === 'red' ? 'text-red-500' : 'text-yellow-600'
                         }`} />
-                    <h2 className={`text-4xl font-cinzel font-black ${isLight ? 'text-green-900' : 'text-white'
+                    <h2 className={`text-2xl md:text-4xl font-cinzel font-black ${isLight ? 'text-green-900' : 'text-white'
                         }`}>
-                        {dosha} {t('ayurveda.fullReport.constitution')} {/* ✅ Static translation */}
+                        {dosha} {t('ayurveda.fullReport.constitution')}
                     </h2>
                 </div>
-                <p className={`text-lg font-lora max-w-3xl mx-auto ${isLight ? 'text-green-800' : 'text-green-200'
+                <p className={`text-sm md:text-lg font-lora max-w-3xl mx-auto leading-relaxed ${isLight ? 'text-green-800' : 'text-green-200'
                     }`}>
                     {isTranslating ? (
                         <span className="opacity-50 animate-pulse">{t('ayurveda.analyzingMessage')}</span>
-                    ) : (
-                        translatedReading // ✅ Dynamic AI translation
-                    )}
+                    ) : translatedReading}
                 </p>
             </Card>
 
             {/* Dosha Balance Chart */}
-            <Card className={`p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
+            <Card className={`p-5 md:p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
                 }`}>
-                <h3 className={`text-2xl font-cinzel font-bold mb-6 flex items-center gap-3 ${isLight ? 'text-gray-900' : 'text-white'
+                <h3 className={`text-xl md:text-2xl font-cinzel font-bold mb-5 flex items-center gap-2 ${isLight ? 'text-gray-900' : 'text-white'
                     }`}>
-                    <Brain className="w-6 h-6 text-green-500" />
-                    {t('ayurveda.fullReport.doshaBalance')} {/* ✅ Static translation */}
+                    <Brain className="w-5 h-5 md:w-6 md:h-6 text-green-500" />
+                    {t('ayurveda.fullReport.doshaBalance')}
                 </h3>
 
-                <div className="grid md:grid-cols-3 gap-6 mb-8">
+                {/* 3-col on md+, 1-col on mobile */}
+                // Replace the entire doshaScores.map() block with this:
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                     {doshaScores.map((d, idx) => (
-                        <div key={d.name} className={`text-center p-6 rounded-xl ${idx === 0
-                                ? isLight ? 'bg-green-100 border-2 border-green-500' : 'bg-green-900/30 border-2 border-green-500'
-                                : isLight ? 'bg-gray-50' : 'bg-gray-800/50'
+                        <div key={d.name} className={`text-center p-4 md:p-6 rounded-xl overflow-hidden ${idx === 0
+                            ? isLight
+                                ? 'bg-green-100 border-2 border-green-500'
+                                : 'bg-green-900/30 border-2 border-green-500'
+                            : isLight ? 'bg-gray-50' : 'bg-gray-800/50'
                             }`}>
-                            <d.icon className={`w-16 h-16 mx-auto mb-4 ${d.color === 'blue' ? 'text-blue-500' :
-                                    d.color === 'red' ? 'text-red-500' :
-                                        'text-yellow-600'
+                            {/* Icon */}
+                            <d.icon className={`w-10 h-10 sm:w-14 sm:h-14 mx-auto mb-3 ${d.color === 'blue' ? 'text-blue-500' :
+                                d.color === 'red' ? 'text-red-500' : 'text-yellow-600'
                                 }`} />
-                            <h4 className={`text-xl font-bold mb-2 ${isLight ? 'text-gray-900' : 'text-white'
+
+                            {/* Name — truncate long text, wrap on small screens */}
+                            <h4 className={`text-sm sm:text-base md:text-xl font-bold mb-2 
+                truncate w-full px-1 ${isLight ? 'text-gray-900' : 'text-white'
                                 }`}>
-                                {t(`ayurveda.fullReport.doshaNames.${d.name}`)} {/* ✅ Static translation */}
+                                {t(`ayurveda.fullReport.doshaNames.${d.name}`)}
                             </h4>
-                            <div className={`text-4xl font-black mb-2 ${d.color === 'blue' ? 'text-blue-600' :
-                                    d.color === 'red' ? 'text-red-600' :
-                                        'text-yellow-600'
+
+                            {/* Percentage */}
+                            <div className={`text-2xl md:text-4xl font-black mb-1 ${d.color === 'blue' ? 'text-blue-600' :
+                                d.color === 'red' ? 'text-red-600' : 'text-yellow-600'
                                 }`}>
                                 {d.score}%
                             </div>
+
+                            {/* Primary badge */}
                             {idx === 0 && (
-                                <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-green-700' : 'text-green-400'
+                                <span className={`block mt-1 text-xs font-bold uppercase 
+                    tracking-wider truncate ${isLight ? 'text-green-700' : 'text-green-400'
                                     }`}>
-                                    {t('ayurveda.fullReport.primary')} {/* ✅ Static translation */}
+                                    {t('ayurveda.fullReport.primary')}
                                 </span>
                             )}
                         </div>
                     ))}
                 </div>
+
             </Card>
 
-            {/* Key Characteristics with static translations */}
-            <Card className={`p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
+            {/* Key Characteristics */}
+            <Card className={`p-5 md:p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
                 }`}>
-                <h3 className={`text-2xl font-cinzel font-bold mb-6 flex items-center gap-3 ${isLight ? 'text-gray-900' : 'text-white'
+                <h3 className={`text-xl md:text-2xl font-cinzel font-bold mb-5 flex items-center gap-2 ${isLight ? 'text-gray-900' : 'text-white'
                     }`}>
-                    <Heart className="w-6 h-6 text-red-500" />
-                    {t('ayurveda.fullReport.yourCharacteristics').replace('{{dosha}}', t(`ayurveda.fullReport.doshaNames.${primaryDosha.name}`))}
-                </h3>
+                    <Heart className="w-5 h-5 md:w-6 md:h-6 text-red-500" />
 
-                <div className="grid md:grid-cols-2 gap-4">
+                    {t('ayurveda.fullReport.yourCharacteristics', { dosha: t(`ayurveda.fullReport.doshaNames.${primaryDosha.name}`) })}
+
+                </h3>
+                {/* 2-col on md+, 1-col on mobile */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {characteristics.map((char: string, idx: number) => (
-                        <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg ${isLight ? 'bg-green-50' : 'bg-green-900/20'
-                            }`}>
-                            <span className="text-green-500 text-xl">✦</span>
-                            <p className={`${isLight ? 'text-gray-800' : 'text-gray-200'}`}>{char}</p>
+                        <div key={idx} className={`flex items-start gap-3 p-3 md:p-4 
+            rounded-lg ${isLight ? 'bg-green-50' : 'bg-green-900/20'}`}>
+                            <span className="text-green-500 text-lg shrink-0 mt-0.5">✦</span>
+                            <p className={`text-sm md:text-base leading-relaxed break-words 
+                min-w-0 ${isLight ? 'text-gray-800' : 'text-gray-200'}`}>
+                                {char}
+                            </p>
                         </div>
                     ))}
                 </div>
             </Card>
 
-            {/* Dietary Recommendations with dynamic AI translation */}
-            <Card className={`p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
+            {/* Dietary Recommendations */}
+            <Card className={`p-5 md:p-8 ${isLight ? 'bg-white border-green-200' : 'bg-gray-900/50 border-green-500/20'
                 }`}>
-                <h3 className={`text-2xl font-cinzel font-bold mb-6 flex items-center gap-3 ${isLight ? 'text-gray-900' : 'text-white'
+                <h3 className={`text-xl md:text-2xl font-cinzel font-bold mb-5 flex items-center gap-2 ${isLight ? 'text-gray-900' : 'text-white'
                     }`}>
-                    <Utensils className="w-6 h-6 text-orange-500" />
-                    {t('ayurveda.dietaryRecommendations')} {/* ✅ Static translation */}
+                    <Utensils className="w-5 h-5 md:w-6 md:h-6 text-orange-500" />
+                    {t('ayurveda.dietaryRecommendations')}
                 </h3>
-
-                <ul className={`space-y-2 ${isLight ? 'text-gray-700' : 'text-gray-300'}`}>
-                    {translatedDiet.map((item, i) => ( // ✅ Dynamic AI translation
-                        <li key={i} className="flex items-start">
-                            <span className={`mr-2 ${isLight ? 'text-green-600' : 'text-green-400'}`}>•</span>
+                <ul className={`space-y-2 text-sm md:text-base ${isLight ? 'text-gray-700' : 'text-gray-300'
+                    }`}>
+                    {translatedDiet.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                            <span className={`mt-0.5 shrink-0 ${isLight ? 'text-green-600' : 'text-green-400'
+                                }`}>•</span>
                             <span>{item}</span>
                         </li>
                     ))}
@@ -187,14 +203,15 @@ const AyurvedaFullReport: React.FC<AyurvedaFullReportProps> = ({
             </Card>
 
             {/* Disclaimer */}
-            <Card className={`p-6 ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-900/20 border-amber-500/30'
+            <Card className={`p-4 md:p-6 ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-amber-900/20 border-amber-500/30'
                 }`}>
-                <p className={`text-sm text-center ${isLight ? 'text-amber-900' : 'text-amber-200'}`}>
-                    {t('ayurveda.fullReport.disclaimer')} {/* ✅ Static translation */}
+                <p className={`text-xs md:text-sm text-center ${isLight ? 'text-amber-900' : 'text-amber-200'
+                    }`}>
+                    {t('ayurveda.fullReport.disclaimer')}
                 </p>
             </Card>
         </div>
     );
-};
 
+};
 export default AyurvedaFullReport;

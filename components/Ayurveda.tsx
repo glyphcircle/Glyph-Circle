@@ -105,19 +105,20 @@ const Ayurveda: React.FC = () => {
     const kaphaPercentage = result?.breakdown?.kapha ?? 0;
 
     return (
-        <div className={`min-h-screen py-8 px-4 transition-colors duration-500 ${isLight ? 'bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50' : 'bg-gradient-to-br from-gray-900 via-green-950 to-black'
+        <div className={`min-h-screen py-6 px-4 transition-colors duration-500 ${isLight
+            ? 'bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50'
+            : 'bg-gradient-to-br from-gray-900 via-green-950 to-black'
             }`}>
-            {/* ✅ SmartBackButton already has z-[70] built-in */}
-            <SmartBackButton className="mb-6" />
+            <SmartBackButton className="mb-4" />
 
             <div className="max-w-4xl mx-auto">
                 {/* HEADER */}
-                <div className="text-center mb-8">
-                    <h1 className={`text-4xl md:text-5xl font-cinzel font-bold mb-2 ${isLight ? 'text-green-800' : 'text-green-300'
+                <div className="text-center mb-6">
+                    <h1 className={`text-3xl md:text-5xl font-cinzel font-bold mb-2 ${isLight ? 'text-green-800' : 'text-green-300'
                         }`}>
                         🌿 Ayurvedic Wisdom
                     </h1>
-                    <p className={`font-lora text-lg ${isLight ? 'text-green-600' : 'text-emerald-300/70'
+                    <p className={`font-lora text-base md:text-lg ${isLight ? 'text-green-600' : 'text-emerald-300/70'
                         }`}>
                         Discover your Prakriti (Nature)
                     </p>
@@ -125,11 +126,11 @@ const Ayurveda: React.FC = () => {
 
                 {/* QUESTIONNAIRE */}
                 {!result && !isLoading && (
-                    <Card className={`p-8 border-l-4 max-w-lg mx-auto ${isLight
-                            ? 'bg-white border-green-500 shadow-xl'
-                            : 'bg-gray-900/80 border-green-500'
+                    <Card className={`p-6 md:p-8 border-l-4 max-w-lg mx-auto ${isLight
+                        ? 'bg-white border-green-500 shadow-xl'
+                        : 'bg-gray-900/80 border-green-500'
                         }`}>
-                        <div className="mb-6">
+                        <div className="mb-5">
                             <div className={`flex justify-between text-xs uppercase tracking-widest mb-2 font-bold ${isLight ? 'text-green-700' : 'text-green-400'
                                 }`}>
                                 <span>Question {step + 1} of {QUESTIONS.length}</span>
@@ -140,11 +141,11 @@ const Ayurveda: React.FC = () => {
                                 <div
                                     className="h-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-500 rounded-full"
                                     style={{ width: `${(step / QUESTIONS.length * 100)}%` }}
-                                ></div>
+                                />
                             </div>
                         </div>
 
-                        <h3 className={`text-xl md:text-2xl font-cinzel font-bold mb-6 text-center ${isLight ? 'text-gray-900' : 'text-white'
+                        <h3 className={`text-lg md:text-2xl font-cinzel font-bold mb-5 text-center ${isLight ? 'text-gray-900' : 'text-white'
                             }`}>
                             {QUESTIONS[step].q}
                         </h3>
@@ -154,9 +155,9 @@ const Ayurveda: React.FC = () => {
                                 <button
                                     key={i}
                                     onClick={() => handleOptionSelect(opt)}
-                                    className={`w-full p-4 rounded-lg transition-all text-left font-semibold ${isLight
-                                            ? 'bg-green-50 border-2 border-green-200 hover:bg-green-100 hover:border-green-400 text-gray-800 hover:shadow-lg'
-                                            : 'bg-black/40 border border-green-500/30 hover:bg-green-900/30 hover:border-green-400 text-amber-100 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                                    className={`w-full p-3 md:p-4 rounded-lg transition-all text-left text-sm md:text-base font-semibold ${isLight
+                                        ? 'bg-green-50 border-2 border-green-200 hover:bg-green-100 hover:border-green-400 text-gray-800 hover:shadow-lg'
+                                        : 'bg-black/40 border border-green-500/30 hover:bg-green-900/30 hover:border-green-400 text-amber-100'
                                         }`}
                                 >
                                     {opt}
@@ -175,87 +176,61 @@ const Ayurveda: React.FC = () => {
 
                 {/* RESULTS */}
                 {result && !isLoading && (
-                    <div className="space-y-8 animate-fade-in-up">
-                        <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-6 animate-fade-in-up">
+                        {/* DOSHA + DIET — stacked on mobile, side-by-side on md+ */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
                             {/* DOSHA BREAKDOWN CARD */}
-                            <Card className={`p-6 border-2 ${isLight
-                                    ? 'bg-gradient-to-br from-green-100 via-emerald-50 to-teal-50 border-green-300'
-                                    : 'bg-gradient-to-br from-green-900 to-black border-green-500/30'
+                            <Card className={`p-5 md:p-6 border-2 ${isLight
+                                ? 'bg-gradient-to-br from-green-100 via-emerald-50 to-teal-50 border-green-300'
+                                : 'bg-gradient-to-br from-green-900 to-black border-green-500/30'
                                 }`}>
-                                <h2 className={`text-3xl md:text-4xl font-cinzel font-bold mb-1 ${isLight ? 'text-green-900' : 'text-white'
+                                <h2 className={`text-2xl md:text-3xl font-cinzel font-bold mb-1 ${isLight ? 'text-green-900' : 'text-white'
                                     }`}>
                                     {result.dosha}
                                 </h2>
-                                <p className={`text-xs uppercase tracking-widest mb-6 font-bold ${isLight ? 'text-green-700' : 'text-green-300'
+                                <p className={`text-xs uppercase tracking-widest mb-5 font-bold ${isLight ? 'text-green-700' : 'text-green-300'
                                     }`}>
                                     Dominant Constitution
                                 </p>
 
-                                <div className="space-y-4">
-                                    {/* Vata */}
-                                    <div>
-                                        <div className={`flex justify-between text-xs mb-1 font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'
-                                            }`}>
-                                            <span>💨 Vata (Air)</span>
-                                            <span>{vataPercentage}%</span>
+                                <div className="space-y-3">
+                                    {[
+                                        { label: '💨 Vata (Air)', value: vataPercentage, bg: 'bg-blue-500', track: isLight ? 'bg-blue-200' : 'bg-gray-800' },
+                                        { label: '🔥 Pitta (Fire)', value: pittaPercentage, bg: 'bg-red-500', track: isLight ? 'bg-red-200' : 'bg-gray-800' },
+                                        { label: '🌍 Kapha (Earth)', value: kaphaPercentage, bg: 'bg-yellow-600', track: isLight ? 'bg-yellow-200' : 'bg-gray-800' },
+                                    ].map((d) => (
+                                        <div key={d.label}>
+                                            <div className={`flex justify-between text-xs mb-1 font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'
+                                                }`}>
+                                                <span>{d.label}</span>
+                                                <span>{d.value}%</span>
+                                            </div>
+                                            <div className={`h-2 rounded-full ${d.track}`}>
+                                                <div
+                                                    className={`h-full ${d.bg} rounded-full transition-all duration-1000`}
+                                                    style={{ width: `${d.value}%` }}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className={`h-2 rounded-full ${isLight ? 'bg-blue-200' : 'bg-gray-800'
-                                            }`}>
-                                            <div
-                                                className="h-full bg-blue-500 rounded-full transition-all duration-1000"
-                                                style={{ width: `${vataPercentage}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    {/* Pitta */}
-                                    <div>
-                                        <div className={`flex justify-between text-xs mb-1 font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'
-                                            }`}>
-                                            <span>🔥 Pitta (Fire)</span>
-                                            <span>{pittaPercentage}%</span>
-                                        </div>
-                                        <div className={`h-2 rounded-full ${isLight ? 'bg-red-200' : 'bg-gray-800'
-                                            }`}>
-                                            <div
-                                                className="h-full bg-red-500 rounded-full transition-all duration-1000"
-                                                style={{ width: `${pittaPercentage}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    {/* Kapha */}
-                                    <div>
-                                        <div className={`flex justify-between text-xs mb-1 font-semibold ${isLight ? 'text-gray-800' : 'text-gray-200'
-                                            }`}>
-                                            <span>🌍 Kapha (Earth)</span>
-                                            <span>{kaphaPercentage}%</span>
-                                        </div>
-                                        <div className={`h-2 rounded-full ${isLight ? 'bg-yellow-200' : 'bg-gray-800'
-                                            }`}>
-                                            <div
-                                                className="h-full bg-yellow-600 rounded-full transition-all duration-1000"
-                                                style={{ width: `${kaphaPercentage}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
                             </Card>
 
                             {/* DIETARY RECOMMENDATIONS CARD */}
-                            <Card className={`p-6 border-2 ${isLight
-                                    ? 'bg-white border-green-200'
-                                    : 'bg-black/60 border-green-500/20'
+                            <Card className={`p-5 md:p-6 border-2 ${isLight
+                                ? 'bg-white border-green-200'
+                                : 'bg-black/60 border-green-500/20'
                                 }`}>
-                                <h3 className={`font-bold mb-4 text-lg ${isLight ? 'text-green-800' : 'text-green-300'
+                                <h3 className={`font-bold mb-4 text-base md:text-lg ${isLight ? 'text-green-800' : 'text-green-300'
                                     }`}>
                                     🥗 Dietary Recommendations
                                 </h3>
                                 <ul className={`space-y-2 text-sm ${isLight ? 'text-gray-700' : 'text-gray-300'
                                     }`}>
                                     {(result.diet || []).slice(0, 4).map((item: string, i: number) => (
-                                        <li key={i} className="flex items-start">
-                                            <span className={`mr-2 ${isLight ? 'text-green-600' : 'text-green-400'
+                                        <li key={i} className="flex items-start gap-2">
+                                            <span className={`mt-0.5 shrink-0 ${isLight ? 'text-green-600' : 'text-green-400'
                                                 }`}>•</span>
                                             <span>{item}</span>
                                         </li>
@@ -263,8 +238,8 @@ const Ayurveda: React.FC = () => {
                                 </ul>
                                 {!isPaid && (
                                     <div className={`mt-4 p-3 text-center text-xs rounded-lg font-semibold ${isLight
-                                            ? 'bg-green-100 text-green-800 border border-green-300'
-                                            : 'bg-green-900/20 text-green-400 border border-green-500/30'
+                                        ? 'bg-green-100 text-green-800 border border-green-300'
+                                        : 'bg-green-900/20 text-green-400 border border-green-500/30'
                                         }`}>
                                         🔒 Unlock full report for recipes & lifestyle plan
                                     </div>
@@ -276,20 +251,17 @@ const Ayurveda: React.FC = () => {
                         {!isPaid ? (
                             <div className="text-center">
                                 <Button
-                                    onClick={() => {
-                                        console.log('🌿 [Ayurveda] Buy clicked, price:', servicePrice);
-                                        openPayment(
-                                            (paymentDetails) => {
-                                                console.log('✅ Ayurveda payment success:', paymentDetails);
-                                                setIsPaid(true);
-                                            },
-                                            'ayurveda',
-                                            servicePrice
-                                        );
-                                    }}
-                                    className={`px-8 py-4 font-bold text-lg shadow-xl transition-all hover:scale-105 rounded-xl ${isLight
-                                            ? 'bg-green-600 hover:bg-green-700 text-white'
-                                            : 'bg-green-700 hover:bg-green-600 text-white'
+                                    onClick={() => openPayment(
+                                        (paymentDetails) => {
+                                            console.log('✅ Ayurveda payment success:', paymentDetails);
+                                            setIsPaid(true);
+                                        },
+                                        'ayurveda',
+                                        servicePrice
+                                    )}
+                                    className={`w-full md:w-auto px-6 md:px-8 py-4 font-bold text-base md:text-lg shadow-xl transition-all hover:scale-105 rounded-xl ${isLight
+                                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                                        : 'bg-green-700 hover:bg-green-600 text-white'
                                         }`}
                                 >
                                     🔓 Unlock Full Health Report - ₹{servicePrice}
@@ -308,6 +280,6 @@ const Ayurveda: React.FC = () => {
             </div>
         </div>
     );
-};
 
+};
 export default Ayurveda;

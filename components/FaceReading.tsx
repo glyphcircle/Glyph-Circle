@@ -8,25 +8,108 @@ import { usePayment } from '../context/PaymentContext';
 import FullReport from './FullReport';
 import { useAuth } from '../context/AuthContext';
 import { useDb } from '../hooks/useDb';
+import { useTheme } from '../context/ThemeContext';
 import { cloudManager } from '../services/cloudManager';
 import SmartBackButton from './shared/SmartBackButton';
 import { supabase } from '../services/supabaseClient';
 import { useDevice } from '../hooks/useDevice';
+
+const FALLBACK_READING = `## **Facial Structure Analysis**
+
+**Upper Zone (Forehead Region) - Intelligence & Wisdom**
+
+✅ **Strengths:**
+- Strong analytical thinking and problem-solving abilities
+- Capacity for deep reflection and strategic planning
+- Natural wisdom that grows with experience
+- Ability to learn quickly from various sources
+
+⚠️ **Areas to Watch:**
+- Tendency to overthink situations at times
+- May need to balance logic with intuition
+
+---
+
+## **Middle Zone (Eyes, Nose, Cheeks) - Emotions & Social Life**
+
+✅ **Positive Traits:**
+- Excellent communication and interpersonal skills
+- Strong empathy and understanding of others' feelings
+- Natural ability to build meaningful connections
+
+⚠️ **Potential Challenges:**
+- May sometimes take on others' emotional burdens
+- Need to maintain personal boundaries
+
+---
+
+## **Lower Zone (Mouth, Jaw, Chin) - Action & Determination**
+
+✅ **Strengths:**
+- Strong willpower and persistence in achieving goals
+- Practical approach to implementing ideas
+- Natural leadership qualities when needed
+
+⚠️ **Watch Points:**
+- Balance ambition with realistic expectations
+- Ensure work-life harmony
+
+---
+
+## **Planetary Influences**
+
+🌞 **Sun (Leadership):** Moderate to strong influence
+🌙 **Moon (Emotions):** Well-balanced emotional nature
+♂️ **Mars (Energy):** Good drive and determination
+☿ **Mercury (Communication):** Excellent expression
+♃ **Jupiter (Wisdom):** Growing wisdom through experience
+♀ **Venus (Relationships):** Harmonious social connections
+♄ **Saturn (Discipline):** Strong sense of responsibility
+
+---
+
+## **Overall Character Summary**
+
+You possess a **well-rounded and balanced personality** with harmonious development across all three facial zones.
+
+🎯 **Core Strengths:** Adaptability, balanced thinking, strong integrity, ability to inspire others.
+🌟 **Life Path:** Best suited for roles requiring both intellect and empathy.
+💡 **Recommendations:** Trust intuition alongside analysis; maintain healthy work-life balance.`;
+
+const FALLBACK_ANALYSIS: FaceAnalysis = {
+  zones: {
+    upper: 33,
+    middle: 34,
+    lower: 33,
+    dominance: 'Middle (Intellect & Emotion)',
+  },
+  planetary: {
+    Sun: 75, Moon: 80, Mars: 70,
+    Mercury: 85, Jupiter: 78, Venus: 82, Saturn: 68,
+  },
+  personality: {
+    primary: 'Balanced',
+    traits: ['Intellectual', 'Emotional', 'Practical'],
+  },
+};
 
 const FaceReading: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [reading, setReading] = useState<string>('');
   const [analysisData, setAnalysisData] = useState<FaceAnalysis | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [progress, setProgress] = useState<number>(0);
-  const [error, setError] = useState<string>('');
-  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState('');
+  const [isPaid, setIsPaid] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [servicePrice, setServicePrice] = useState(49);
   const [readingId, setReadingId] = useState<string | null>(null);
 
+  // ✅ Refs — reliable across async boundaries
+  const readingIdRef = useRef<string | null>(null);
+  const isPaymentOpenRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const analyzeButtonRef = useRef<HTMLDivElement>(null);
@@ -36,87 +119,83 @@ const FaceReading: React.FC = () => {
   const { openPayment } = usePayment();
   const { user } = useAuth();
   const { db } = useDb();
+  const { theme } = useTheme();
   const { isMobile } = useDevice();
+  const isLight = theme.mode === 'light';
 
-  const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_face')?.path ||
-    "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800";
+  const reportImage = db.image_assets?.find((a: any) => a.id === 'report_bg_face')?.path
+    || 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800';
 
-  useEffect(() => {
-    fetchServicePrice();
-  }, []);
+  useEffect(() => { fetchServicePrice(); }, []);
 
   const fetchServicePrice = async () => {
     try {
       const { data, error } = await supabase
-        .from('services')
-        .select('price')
-        .eq('name', 'Face Reading')
-        .eq('status', 'active')
-        .single();
-
-      if (!error && data) {
-        setServicePrice(data.price);
-        console.log('✅ Face Reading price loaded:', data.price);
-      }
-    } catch (err) {
-      console.error('Error fetching price:', err);
-    }
+        .from('services').select('price')
+        .eq('name', 'Face Reading').eq('status', 'active').single();
+      if (!error && data) setServicePrice(data.price);
+    } catch (err) { console.error('Error fetching price:', err); }
   };
 
+  // Scroll to report when paid
   useEffect(() => {
     if (isPaid && reportRef.current) {
-      setTimeout(() => {
-        reportRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      }, 300);
+      setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     }
   }, [isPaid]);
 
+  // Connect camera stream to video element
   useEffect(() => {
     if (cameraStream && videoRef.current) {
-      console.log('📹 Connecting camera stream to video element');
       videoRef.current.srcObject = cameraStream;
-
       videoRef.current.play().catch(err => {
         console.error('❌ Video play error:', err);
-        setError('Failed to start video preview. Please try again.');
+        setError('Failed to start video preview. Please use Gallery instead.');
       });
     }
-
     return () => {
-      if (cameraStream) {
-        console.log('🛑 Stopping camera stream');
-        cameraStream.getTracks().forEach(track => track.stop());
-      }
+      if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
     };
   }, [cameraStream]);
 
+  // Auto-scroll to analyze button on mobile after image selection
   useEffect(() => {
     if (imageFile && analyzeButtonRef.current && isMobile) {
-      setTimeout(() => {
-        analyzeButtonRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }, 300);
+      setTimeout(() => analyzeButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
     }
   }, [imageFile, isMobile]);
 
-  const generateReadingKey = (): string => {
-    const timestamp = Date.now();
-    const key = `face_${user?.id || 'anon'}_${timestamp}`;
-    return key.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  // ── HELPERS ─────────────────────────────────────────────────────────
+
+  const getLanguageName = (code: string) => {
+    const map: Record<string, string> = {
+      en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu',
+      bn: 'Bengali', mr: 'Marathi', es: 'Spanish', fr: 'French',
+      ar: 'Arabic', pt: 'Portuguese',
+    };
+    return map[code] || 'English';
   };
+
+  const getLoadingMessage = (p: number) => {
+    if (p < 20) return 'Scanning physiological structure...';
+    if (p < 40) return 'Identifying Samudrika landmarks...';
+    if (p < 60) return 'Analyzing planetary correspondences...';
+    if (p < 80) return 'Extracting karmic signatures...';
+    if (p < 95) return 'Finalizing character synthesis...';
+    return 'Manifesting destiny...';
+  };
+
+  const generateReadingKey = () =>
+    `face_${user?.id || 'anon'}_${Date.now()}`.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+  // ── DATABASE ─────────────────────────────────────────────────────────
 
   const saveToDatabase = async (faceData: FaceAnalysis, readingText: string) => {
     try {
       if (!supabase) return null;
-
       const readingKey = generateReadingKey();
 
-      const { data: readingRecord, error: readingError } = await supabase
+      const { data: rec, error: err } = await supabase
         .from('readings')
         .insert({
           user_id: user?.id || null,
@@ -128,51 +207,38 @@ const FaceReading: React.FC = () => {
           meta_data: {
             reading_key: readingKey,
             personality: faceData.personality,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         })
-        .select()
-        .single();
+        .select().single();
 
-      if (readingError) {
-        console.error('❌ Reading save error:', readingError);
-        return null;
-      }
+      if (err) { console.error('❌ Reading save error:', err); return null; }
 
-      const { data: cache, error: cacheError } = await supabase
-        .from('face_reading_cache')
-        .upsert({
-          reading_key: readingKey,
-          user_id: user?.id || null,
-          dob: null, // ✅ Use null instead of empty string
-          face_metrics: null,
-          analysis_data: faceData,
-          reading_text: readingText,
-          reading_id: readingRecord.id,
-          is_paid: false,
-          language: language
-        }, { onConflict: 'reading_key' })
-        .select()
-        .single();
+      await supabase.from('face_reading_cache').upsert({
+        reading_key: readingKey,
+        user_id: user?.id || null,
+        dob: null,
+        face_metrics: null,
+        analysis_data: faceData,
+        reading_text: readingText,
+        reading_id: rec.id,
+        is_paid: false,
+        language: language,
+      }, { onConflict: 'reading_key' });
 
-      if (cacheError) {
-        console.error('❌ Cache save error:', cacheError);
-      }
-
-      console.log('✅ Face reading saved:', readingRecord.id);
-      setReadingId(readingRecord.id);
-      return readingRecord.id;
-
+      setReadingId(rec.id);
+      readingIdRef.current = rec.id; // ✅ Always sync ref
+      console.log('✅ Face reading saved:', rec.id);
+      return rec.id;
     } catch (error) {
       console.error('❌ Database save error:', error);
       return null;
     }
   };
 
-
   const savePaymentRecord = async (readId: string) => {
     try {
-      const { data: txn, error: txnError } = await supabase
+      const { data: txn, error: txnErr } = await supabase
         .from('transactions')
         .insert({
           user_id: user?.id || null,
@@ -185,208 +251,118 @@ const FaceReading: React.FC = () => {
           payment_provider: 'manual',
           reading_id: readId,
           order_id: `FACE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          metadata: {
-            dominant_zone: analysisData?.zones.dominance
-          }
+          metadata: { dominant_zone: analysisData?.zones.dominance },
         })
-        .select()
-        .single();
+        .select().single();
 
-      if (txnError) {
-        console.error('❌ Transaction save error:', txnError);
-      } else {
+      if (!txnErr) {
+        await supabase.from('readings').update({ is_paid: true }).eq('id', readId);
         console.log('✅ Transaction saved:', txn);
-
-        await supabase
-          .from('readings')
-          .update({ is_paid: true })
-          .eq('id', readId);
       }
-
-    } catch (error) {
-      console.error('❌ Payment save error:', error);
-    }
+    } catch (error) { console.error('❌ Payment save error:', error); }
   };
 
-  // ✅ ENHANCED: Better mobile camera handling
+  // ── CAMERA ───────────────────────────────────────────────────────────
+
   const handleOpenCamera = async () => {
     setError('');
-
     try {
-      console.log('📹 Opening camera directly...');
-      console.log('📱 Platform:', navigator.platform);
-      console.log('📱 User Agent:', navigator.userAgent);
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError('Camera not supported. Please use Gallery instead.');
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Camera not supported on this device. Please use Gallery instead.');
         return;
       }
 
-      // ✅ Request permissions explicitly first on mobile
-      if (isMobile) {
+      if (isMobile && navigator.permissions) {
         try {
-          // Try with permissions API first (if available)
-          if (navigator.permissions) {
-            const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-            console.log('📹 Camera permission status:', result.state);
-
-            if (result.state === 'denied') {
-              setError('Camera permission denied. Please enable it in your browser settings, then use Gallery to upload.');
-              return;
-            }
+          const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
+          if (result.state === 'denied') {
+            setError('Camera permission denied. Please enable it in browser settings or use Gallery.');
+            return;
           }
-        } catch (permErr) {
-          console.log('⚠️ Permissions API not available, proceeding...');
-        }
+        } catch { /* Permissions API not available — proceed */ }
       }
 
-      let stream;
-
+      let stream: MediaStream;
       try {
-        // ✅ Try mobile-optimized constraints first
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 640, max: 1280 },
-            height: { ideal: 480, max: 720 }
-          },
-          audio: false
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
         });
-        console.log('✅ Camera stream obtained with ideal constraints');
-      } catch (err1) {
-        console.log('⚠️ Ideal constraints failed, trying basic...');
+      } catch {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false
-          });
-          console.log('✅ Camera stream obtained with basic constraints');
-        } catch (err2) {
-          console.log('⚠️ Front camera failed, trying any camera...');
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-          console.log('✅ Camera stream obtained with any camera');
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         }
       }
-
-      if (!stream) {
-        throw new Error('Failed to get camera stream');
-      }
-
-      console.log('✅ Camera ready:', stream.getVideoTracks()[0].label);
-      console.log('📹 Video track settings:', stream.getVideoTracks()[0].getSettings());
 
       setCameraStream(stream);
       setIsCameraOpen(true);
-
     } catch (err: any) {
-      console.error('❌ Camera error:', err);
-      console.error('❌ Error name:', err.name);
-      console.error('❌ Error message:', err.message);
-
-      let errorMessage = '';
-
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage = 'Camera permission denied. Please:\n\n1. Tap browser address bar\n2. Go to Site Settings\n3. Allow Camera access\n\nOr use Gallery button to upload instead.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMessage = 'No camera found on this device. Please use the Gallery button to upload a photo.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMessage = 'Camera is being used by another app. Please close other camera apps and try again, or use Gallery.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMessage = 'Camera settings not supported. Please use the Gallery button to upload a photo.';
-      } else if (err.name === 'SecurityError') {
-        errorMessage = 'Camera access blocked by security policy. Please use HTTPS or the Gallery button.';
-      } else {
-        errorMessage = `Unable to access camera (${err.name || 'Unknown error'}). Please use the Gallery button to upload a photo.`;
-      }
-
-      setError(errorMessage);
+      const msgs: Record<string, string> = {
+        NotAllowedError: 'Camera permission denied. Enable in browser settings or use Gallery.',
+        PermissionDeniedError: 'Camera permission denied. Enable in browser settings or use Gallery.',
+        NotFoundError: 'No camera found. Please use Gallery to upload a photo.',
+        DevicesNotFoundError: 'No camera found. Please use Gallery to upload a photo.',
+        NotReadableError: 'Camera is busy with another app. Close it and retry, or use Gallery.',
+        TrackStartError: 'Camera is busy with another app. Close it and retry, or use Gallery.',
+        OverconstrainedError: 'Camera settings unsupported. Please use Gallery.',
+        SecurityError: 'Camera blocked by security policy. Use HTTPS or Gallery.',
+      };
+      setError(msgs[err.name] || `Unable to access camera (${err.name || 'Unknown'}). Use Gallery.`);
     }
   };
 
-
   const handleStopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => {
-        track.stop();
-        console.log('🛑 Stopped track:', track.label);
-      });
-      setCameraStream(null);
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    cameraStream?.getTracks().forEach(t => t.stop());
+    setCameraStream(null);
+    if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraOpen(false);
   };
 
   const handleCapture = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(videoRef.current, 0, 0);
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], "face_capture.jpg", { type: "image/jpeg" });
-            setImageFile(file);
-            setImagePreview(URL.createObjectURL(blob));
-            handleStopCamera();
-            setReading('');
-            setAnalysisData(null);
-            setError('');
-            setIsPaid(false);
-            console.log('✅ Face captured:', file.size, 'bytes');
-          }
-        }, 'image/jpeg', 0.95);
-      }
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoRef.current, 0, 0);
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const file = new File([blob], 'face_capture.jpg', { type: 'image/jpeg' });
+        setImageFile(file);
+        setImagePreview(URL.createObjectURL(blob));
+        handleStopCamera();
+        setReading('');
+        setAnalysisData(null);
+        setError('');
+        setIsPaid(false);
+      }, 'image/jpeg', 0.95);
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      console.log('📸 File selected:', file.name, file.type, file.size);
-      setImageFile(file);
-      setReading('');
-      setAnalysisData(null);
-      setError('');
-      setIsPaid(false);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setReading('');
+    setAnalysisData(null);
+    setError('');
+    setIsPaid(false);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
-  // ✅ FIX: Only trigger file input for gallery
-  const handleGalleryClick = () => {
-    console.log('🖼️ Opening gallery...');
-    if (galleryInputRef.current) {
-      galleryInputRef.current.click();
-    }
-  };
+  const handleGalleryClick = () => galleryInputRef.current?.click();
 
-  const getLanguageName = (code: string) => {
-    const map: Record<string, string> = {
-      en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu',
-      bn: 'Bengali', mr: 'Marathi', es: 'Spanish', fr: 'French',
-      ar: 'Arabic', pt: 'Portuguese'
-    };
-    return map[code] || 'English';
-  };
+  // ── MAIN ANALYZE ─────────────────────────────────────────────────────
 
   const handleGetReading = useCallback(async () => {
-    if (!imageFile) {
-      setError('Please upload an image of your face first.');
-      return;
-    }
+    if (!imageFile) { setError('Please upload an image of your face first.'); return; }
 
     setIsLoading(true);
     setProgress(0);
@@ -394,283 +370,144 @@ const FaceReading: React.FC = () => {
     setAnalysisData(null);
     setError('');
     setReadingId(null);
+    readingIdRef.current = null;
 
     const timer = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 92) return prev;
-        return prev + (Math.random() * 5);
-      });
+      setProgress(p => p >= 92 ? p : p + Math.random() * 5);
     }, 400);
 
     try {
-      console.log('🔮 Starting face reading analysis...');
-      console.log('📸 Image:', imageFile.name, imageFile.size, 'bytes');
-
-      const result = await getFaceReading(imageFile, getLanguageName(language), null);
-
-      console.log('✅ Face reading result received');
-
+      // ✅ Pass undefined (not null) for optional dob
+      const result = await getFaceReading(imageFile, getLanguageName(language));
       clearInterval(timer);
       setProgress(100);
 
-      // ✅ Check if AI refused or gave generic response
-      const isRefusal = result.textReading && (
+      // Detect AI refusal or too-short response
+      const isRefusal = !result.textReading || (
+        result.textReading.length < 100 ||
         result.textReading.toLowerCase().includes("i'm sorry") ||
         result.textReading.toLowerCase().includes("i can't assist") ||
-        result.textReading.toLowerCase().includes("i cannot") ||
-        result.textReading.length < 100
+        result.textReading.toLowerCase().includes("i cannot")
       );
 
-      if (isRefusal) {
-        console.warn('⚠️ AI refused or gave short response, using detailed fallback');
+      const finalReading = isRefusal ? FALLBACK_READING : result.textReading;
+      const finalAnalysis = (result.rawMetrics?.width && result.rawMetrics?.height)
+        ? calculateFaceReading(result.rawMetrics)
+        : FALLBACK_ANALYSIS;
 
-        // ✅ Rich, detailed fallback reading
-        result.textReading = `## **Facial Structure Analysis**
+      // ✅ Set UI immediately — don't wait for DB
+      setAnalysisData(finalAnalysis);
+      setReading(finalReading);
 
-**Upper Zone (Forehead Region) - Intelligence & Wisdom**
-The forehead area reveals your intellectual capacity and approach to life's challenges. Your frontal region shows:
-
-✅ **Strengths:**
-- Strong analytical thinking and problem-solving abilities
-- Capacity for deep reflection and strategic planning
-- Natural wisdom that grows with experience
-- Ability to learn quickly from various sources
-
-⚠️ **Areas to Watch:**
-- Tendency to overthink situations at times
-- May need to balance logic with intuition
-- Can benefit from occasional spontaneity
-
----
-
-## **Middle Zone (Eyes, Nose, Cheeks) - Emotions & Social Life**
-
-This region governs your emotional intelligence and relationships with others.
-
-✅ **Positive Traits:**
-- Excellent communication and interpersonal skills
-- Strong empathy and understanding of others' feelings
-- Balanced emotional responses in most situations
-- Natural ability to build meaningful connections
-
-⚠️ **Potential Challenges:**
-- May sometimes take on others' emotional burdens
-- Need to maintain personal boundaries
-- Should prioritize self-care in relationships
-
----
-
-## **Lower Zone (Mouth, Jaw, Chin) - Action & Determination**
-
-The lower face indicates your drive, determination, and ability to execute plans.
-
-✅ **Strengths:**
-- Strong willpower and persistence in achieving goals
-- Practical approach to implementing ideas
-- Reliable and consistent in commitments
-- Natural leadership qualities when needed
-
-⚠️ **Watch Points:**
-- May push too hard at times - remember to rest
-- Balance ambition with realistic expectations
-- Ensure work-life harmony
-
----
-
-## **Planetary Influences**
-
-🌞 **Sun (Leadership):** Moderate to strong influence - natural confidence
-🌙 **Moon (Emotions):** Well-balanced emotional nature
-♂️ **Mars (Energy):** Good drive and determination
-☿ **Mercury (Communication):** Excellent verbal and written expression
-♃ **Jupiter (Wisdom):** Growing wisdom through life experiences
-♀ **Venus (Relationships):** Harmonious social connections
-♄ **Saturn (Discipline):** Strong sense of responsibility
-
----
-
-## **Overall Character Summary**
-
-You possess a **well-rounded and balanced personality** with harmonious development across all three facial zones. Your face indicates:
-
-🎯 **Core Strengths:**
-- Adaptability to various life situations
-- Balance between thinking, feeling, and doing
-- Strong moral compass and integrity
-- Ability to inspire and help others
-
-🌟 **Life Path Insights:**
-- Best suited for roles requiring both intellect and empathy
-- Will find success through steady, consistent effort
-- Relationships and career both important for fulfillment
-- Natural mediator and problem-solver
-
-💡 **Recommendations:**
-- Continue developing both logical and creative sides
-- Maintain healthy work-life balance
-- Trust your intuition alongside your analysis
-- Focus on long-term goals while enjoying the present
-
-Your facial features suggest a person capable of great achievements through balanced approach to life. The key to maximizing your potential lies in maintaining this harmony while continuously growing in all areas.`;
-      }
-
-      let analysis: FaceAnalysis;
-
-      if (result.rawMetrics && result.rawMetrics.width && result.rawMetrics.height) {
-        console.log('📊 Using real face metrics');
-        analysis = calculateFaceReading(result.rawMetrics);
-      } else {
-        console.log('⚠️ Using fallback analysis data');
-        analysis = {
-          zones: {
-            upper: 33,
-            middle: 34,
-            lower: 33,
-            dominance: 'Middle (Intellect & Emotion)'
-          },
-          planetary: {
-            Sun: 75,
-            Moon: 80,
-            Mars: 70,
-            Mercury: 85,
-            Jupiter: 78,
-            Venus: 82,
-            Saturn: 68
-          },
-          personality: {
-            primary: 'Balanced',
-            traits: ['Intellectual', 'Emotional', 'Practical']
-          }
-        };
-      }
-
-      // ✅ SET STATE FIRST (so UI updates immediately)
-      setAnalysisData(analysis);
-      setReading(result.textReading);
-
-      console.log('✅ Face reading complete - UI updated');
-
-      // ✅ Save to database in background (don't block UI)
-      console.log('💾 Saving to database...');
-      saveToDatabase(analysis, result.textReading)
-        .then(savedId => {
-          if (savedId) {
-            console.log('✅ Database save successful:', savedId);
-          } else {
-            console.warn('⚠️ Database save failed, but reading is still available');
-          }
+      // ✅ Save to DB in background
+      saveToDatabase(finalAnalysis, finalReading)
+        .then(id => {
+          if (id) { readingIdRef.current = id; }
         })
-        .catch(err => {
-          console.error('❌ Database save error:', err);
-          console.log('⚠️ Continuing with reading despite save error');
-        });
+        .catch(err => console.error('❌ Background DB save error:', err));
 
     } catch (err: any) {
       clearInterval(timer);
+      setProgress(0);
       console.error('❌ Face reading error:', err);
       setError(`Failed to analyze face: ${err.message || 'Unknown error'}. Please try again.`);
     } finally {
-      // ✅ ALWAYS clear loading state
       clearInterval(timer);
       setTimeout(() => {
         setIsLoading(false);
         setProgress(0);
-        console.log('✅ Loading state cleared');
-      }, 500); // Small delay to show 100% completion
+      }, 500);
     }
   }, [imageFile, language, user?.id]);
 
-  const handleReadMore = () => {
-    console.log('💰 Opening payment for Face Reading - Price:', servicePrice);
+  // ── PAYMENT ──────────────────────────────────────────────────────────
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleReadMore = () => {
+    if (isPaymentOpenRef.current) { console.warn('⚠️ Payment already open'); return; }
+    isPaymentOpenRef.current = true;
 
     openPayment(
       async () => {
-        console.log('✅ Payment success callback triggered');
+        isPaymentOpenRef.current = false;
+        let currentReadingId = readingIdRef.current;
 
-        const currentReadingId = readingId || await saveToDatabase(analysisData!, reading);
-
-        if (currentReadingId) {
-          await savePaymentRecord(currentReadingId);
-          setIsPaid(true);
-          console.log('✅ Payment completed and saved');
-
-          setTimeout(() => {
-            if (reportRef.current) {
-              reportRef.current.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-              });
-            }
-          }, 500);
-        } else {
-          console.error('❌ No reading ID available for payment');
+        if (!currentReadingId && analysisData) {
+          currentReadingId = await saveToDatabase(analysisData, reading);
+          if (currentReadingId) readingIdRef.current = currentReadingId;
         }
+
+        if (currentReadingId) await savePaymentRecord(currentReadingId);
+
+        // ✅ Always unlock — even if DB fails
+        setIsPaid(true);
+        console.log('✅ Face Reading payment complete');
       },
       'Face Reading',
       servicePrice
     );
+
+    // Reset if user cancels
+    setTimeout(() => { isPaymentOpenRef.current = false; }, 30000);
   };
 
-  const getLoadingMessage = (p: number) => {
-    if (p < 20) return "Scanning physiological structure...";
-    if (p < 40) return "Identifying Samudrika landmarks...";
-    if (p < 60) return "Analyzing planetary correspondences...";
-    if (p < 80) return "Extracting karmic signatures...";
-    if (p < 95) return "Finalizing character synthesis...";
-    return "Manifesting destiny...";
-  };
+  // ── VEDIC DASHBOARD ──────────────────────────────────────────────────
 
   const renderVedicDashboard = () => {
     if (!analysisData) return null;
     const { zones, planetary } = analysisData;
 
     return (
-      <div className="space-y-6 mt-6 animate-fade-in-up">
-        <div className="bg-black/30 p-4 rounded border border-amber-500/10">
-          <h4 className="text-amber-400 font-bold text-xs uppercase tracking-widest mb-3">Mukha Trikona (3 Zones)</h4>
+      <div className="space-y-4 md:space-y-6 mt-4 md:mt-6 animate-fade-in-up">
+        {/* Zone Bars */}
+        <div className={`p-4 rounded-lg border ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-black/30 border-amber-500/10'
+          }`}>
+          <h4 className={`font-bold text-xs uppercase tracking-widest mb-3 ${isLight ? 'text-amber-700' : 'text-amber-400'
+            }`}>
+            Mukha Trikona (3 Zones)
+          </h4>
           <div className="space-y-3 mb-3">
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-amber-100">Upper (Forehead)</span>
-                <span className="text-amber-400 font-bold">{zones.upper}%</span>
+            {[
+              { label: 'Upper (Forehead)', value: zones.upper, color: 'bg-blue-500' },
+              { label: 'Middle (Eyes/Nose)', value: zones.middle, color: 'bg-green-500' },
+              { label: 'Lower (Mouth/Chin)', value: zones.lower, color: 'bg-red-500' },
+            ].map(({ label, value, color }) => (
+              <div key={label}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className={isLight ? 'text-amber-800' : 'text-amber-100'}>{label}</span>
+                  <span className={`font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>{value}%</span>
+                </div>
+                <div className={`w-full h-1.5 rounded-full ${isLight ? 'bg-amber-100' : 'bg-gray-800'}`}>
+                  <div className={`h-full ${color} rounded-full`} style={{ width: `${value}%` }} />
+                </div>
               </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full">
-                <div className="h-full bg-blue-500" style={{ width: `${zones.upper}%` }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-amber-100">Middle (Eyes/Nose)</span>
-                <span className="text-amber-400 font-bold">{zones.middle}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full">
-                <div className="h-full bg-green-500" style={{ width: `${zones.middle}%` }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-amber-100">Lower (Mouth/Chin)</span>
-                <span className="text-amber-400 font-bold">{zones.lower}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full">
-                <div className="h-full bg-red-500" style={{ width: `${zones.lower}%` }}></div>
-              </div>
-            </div>
+            ))}
           </div>
-          <div className="text-center bg-gray-800/50 p-2 rounded text-xs text-amber-200">
-            Dominant: <strong className="text-white">{zones.dominance}</strong> ({analysisData.personality.primary})
+          <div className={`text-center p-2 rounded text-xs ${isLight ? 'bg-amber-100 text-amber-900' : 'bg-gray-800/50 text-amber-200'
+            }`}>
+            Dominant: <strong>{zones.dominance}</strong> ({analysisData.personality.primary})
           </div>
         </div>
 
-        <div className="bg-black/30 p-4 rounded border border-amber-500/10">
-          <h4 className="text-amber-400 font-bold text-xs uppercase tracking-widest mb-3">Planetary Influences</h4>
-          <div className="grid grid-cols-4 gap-2">
+        {/* Planetary Grid — 4 cols on md+, 3 cols on mobile */}
+        <div className={`p-4 rounded-lg border ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-black/30 border-amber-500/10'
+          }`}>
+          <h4 className={`font-bold text-xs uppercase tracking-widest mb-3 ${isLight ? 'text-amber-700' : 'text-amber-400'
+            }`}>
+            Planetary Influences
+          </h4>
+          {/* ✅ 3 cols on mobile, 4 on md+ — prevents cramping */}
+          <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
             {Object.entries(planetary).map(([planet, score]) => (
-              <div key={planet} className="bg-gray-900 p-2 rounded text-center border border-gray-700">
-                <div className="text-[10px] uppercase text-gray-400 mb-1">{planet}</div>
-                <div className={`font-bold text-sm ${(score as number) > 80 ? 'text-green-400' : 'text-amber-100'}`}>{score as number}</div>
+              <div key={planet} className={`p-2 rounded text-center border ${isLight ? 'bg-white border-amber-200' : 'bg-gray-900 border-gray-700'
+                }`}>
+                <div className={`text-[10px] uppercase mb-1 ${isLight ? 'text-gray-500' : 'text-gray-400'
+                  }`}>{planet}</div>
+                <div className={`font-bold text-sm ${(score as number) > 80
+                    ? isLight ? 'text-green-600' : 'text-green-400'
+                    : isLight ? 'text-amber-700' : 'text-amber-100'
+                  }`}>
+                  {score as number}
+                </div>
               </div>
             ))}
           </div>
@@ -679,155 +516,203 @@ Your facial features suggest a person capable of great achievements through bala
     );
   };
 
-  return (
-    <div className="flex flex-col gap-12 items-center">
-      <div className="w-full max-w-4xl mx-auto p-4 md:p-6">
-        <SmartBackButton label={t('backToHome')} className="mb-6" />
+  // ── RENDER ───────────────────────────────────────────────────────────
 
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-amber-300 mb-2">{t('aiFaceReading')}</h2>
-          <p className="text-amber-100/70">{t('uploadFacePrompt')}</p>
+  return (
+    <div className={`min-h-screen py-6 px-4 transition-colors duration-500 ${isLight
+        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50'
+        : 'bg-gradient-to-br from-gray-950 via-amber-950 to-black'
+      }`}>
+      <div className="max-w-4xl mx-auto">
+        <SmartBackButton label={t('backToHome')} className="mb-4 md:mb-6" />
+
+        {/* Header */}
+        <div className="text-center mb-6 md:mb-8">
+          <h2 className={`text-2xl md:text-3xl font-bold mb-2 ${isLight ? 'text-amber-800' : 'text-amber-300'
+            }`}>
+            {t('aiFaceReading')}
+          </h2>
+          <p className={`text-sm md:text-base ${isLight ? 'text-amber-700' : 'text-amber-100/70'
+            }`}>
+            {t('uploadFacePrompt')}
+          </p>
         </div>
 
-        <div className="max-w-4xl mx-auto p-6 bg-gradient-to-br from-amber-900/40 via-orange-900/40 to-black/60 rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md">
-          <div className="grid md:grid-cols-2 gap-8 items-start">
+        {/* Main Card */}
+        <div className={`p-4 md:p-6 rounded-xl shadow-2xl border backdrop-blur-md ${isLight
+            ? 'bg-white/80 border-amber-200'
+            : 'bg-gradient-to-br from-amber-900/40 via-orange-900/40 to-black/60 border-amber-500/30'
+          }`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-8 items-start">
 
-            {/* LEFT: Image Upload/Camera */}
+            {/* LEFT: Upload / Camera */}
             <div className="space-y-4">
               {isCameraOpen ? (
                 <div className="w-full relative bg-black rounded-lg overflow-hidden border-2 border-amber-500 shadow-xl">
                   <video
                     ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-64 object-cover transform scale-x-[-1]"
-                    onLoadedMetadata={() => console.log('📹 Video metadata loaded')}
-                    onCanPlay={() => console.log('✅ Video can play')}
+                    autoPlay playsInline muted
+                    className="w-full h-64 md:h-80 object-cover transform scale-x-[-1]"
                   />
                   <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-10">
-                    <button onClick={handleStopCamera} className="bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-sm">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    <button
+                      onClick={handleStopCamera}
+                      className="bg-red-600/80 hover:bg-red-600 text-white p-2.5 rounded-full backdrop-blur-sm"
+                    >
+                      <svg className="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
-                    <button onClick={handleCapture} className="bg-white/90 hover:bg-white text-black p-4 rounded-full shadow-lg backdrop-blur-sm border-4 border-amber-500/50 transform active:scale-95 transition-transform">
-                      <div className="w-4 h-4 bg-red-600 rounded-full"></div>
+                    <button
+                      onClick={handleCapture}
+                      className="bg-white/90 hover:bg-white text-black p-3 md:p-4 rounded-full shadow-lg border-4 border-amber-500/50 transform active:scale-95 transition-transform"
+                    >
+                      <div className="w-4 h-4 bg-red-600 rounded-full" />
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="w-full">
-                  {/* Image Preview */}
-                  <div className="w-full h-64 border-2 border-dashed border-amber-400 rounded-lg flex flex-col justify-center items-center bg-gray-900/50 mb-4">
+                <div>
+                  {/* Preview Box */}
+                  <div className={`w-full h-56 md:h-64 border-2 border-dashed rounded-lg flex flex-col justify-center items-center mb-4 ${isLight ? 'border-amber-400 bg-amber-50' : 'border-amber-400 bg-gray-900/50'
+                    }`}>
                     {imagePreview ? (
                       <img src={imagePreview} alt="Face preview" className="object-contain h-full w-full rounded-lg" />
                     ) : (
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-amber-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className={`h-10 w-10 md:h-12 md:w-12 mb-2 ${isLight ? 'text-amber-500' : 'text-amber-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                         </svg>
-                        <span className="text-amber-200 text-center px-4 text-sm">
-                          {isMobile ? 'Use buttons below to capture or upload' : 'Use webcam or upload file'}
+                        <span className={`text-center px-4 text-sm ${isLight ? 'text-amber-700' : 'text-amber-200'}`}>
+                          {isMobile ? 'Tap Camera or Gallery below' : 'Use webcam or upload file'}
                         </span>
                       </>
                     )}
                   </div>
 
-                  {/* ✅ ONLY ONE FILE INPUT (for gallery only) */}
-                  <input
-                    ref={galleryInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
+                  {/* Hidden file input */}
+                  <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
 
-                  {/* ✅ TWO SEPARATE BUTTONS */}
+                  {/* Camera / Gallery buttons */}
                   <div className="grid grid-cols-2 gap-3">
                     <Button
                       onClick={handleOpenCamera}
-                      className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 border-blue-500 text-sm py-3 flex items-center justify-center gap-2"
+                      className="py-3 text-sm bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 flex items-center justify-center gap-2"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                      <span>📸 Camera</span>
+                      <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      📸 Camera
                     </Button>
                     <Button
                       onClick={handleGalleryClick}
-                      className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 border-purple-500 text-sm py-3 flex items-center justify-center gap-2"
+                      className="py-3 text-sm bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 flex items-center justify-center gap-2"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      <span>🖼️ Gallery</span>
+                      <svg className="h-4 w-4 md:h-5 md:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      🖼️ Gallery
                     </Button>
                   </div>
                 </div>
               )}
 
-              {error && error.includes('Camera') && (
-                <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                  <p className="text-blue-400 text-xs font-bold mb-2">💡 Tip:</p>
-                  <p className="text-xs text-blue-200">Use the Gallery button to upload from your phone</p>
+              {/* Camera permission hint */}
+              {error && error.toLowerCase().includes('camera') && (
+                <div className={`p-3 rounded-lg border text-xs ${isLight
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-blue-900/20 border-blue-500/30 text-blue-200'
+                  }`}>
+                  <p className="font-bold mb-1">💡 Tip:</p>
+                  <p>Use the <strong>Gallery</strong> button to upload from your photos.</p>
                 </div>
               )}
 
+              {/* Analyze button */}
               <div ref={analyzeButtonRef}>
                 {imageFile && !isCameraOpen && (
                   <Button
                     onClick={handleGetReading}
                     disabled={isLoading}
-                    className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600"
+                    className={`w-full py-3 md:py-4 font-cinzel font-bold tracking-wider ${isLight
+                        ? 'bg-gradient-to-r from-amber-600 to-orange-700 text-white'
+                        : 'bg-gradient-to-r from-amber-600 to-orange-700'
+                      }`}
                   >
                     {isLoading ? t('analyzing') : t('getYourReading')}
                   </Button>
                 )}
               </div>
 
-              {error && !error.includes('Camera') && (
-                <p className="text-red-400 text-center text-sm bg-red-900/20 p-2 rounded border border-red-500/20">
+              {/* General errors */}
+              {error && !error.toLowerCase().includes('camera') && (
+                <p className={`text-center text-sm p-3 rounded-lg border ${isLight
+                    ? 'text-red-700 bg-red-50 border-red-200'
+                    : 'text-red-400 bg-red-900/20 border-red-500/20'
+                  }`}>
                   {error}
                 </p>
               )}
             </div>
 
-            {/* RIGHT: Preview/Results */}
-            <div className="min-h-[20rem] bg-black/20 rounded-lg border border-amber-500/20 p-6 relative overflow-hidden flex flex-col">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/10 rounded-full blur-3xl -z-10"></div>
+            {/* RIGHT: Results Preview */}
+            <div className={`min-h-[16rem] md:min-h-[20rem] rounded-lg border p-4 md:p-6 relative overflow-hidden flex flex-col ${isLight ? 'bg-amber-50/50 border-amber-200' : 'bg-black/20 border-amber-500/20'
+              }`}>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/10 rounded-full blur-3xl -z-10" />
 
+              {/* Loading overlay */}
               {isLoading && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-20">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-20 rounded-lg">
                   <ProgressBar progress={progress} message={getLoadingMessage(progress)} />
                 </div>
               )}
 
+              {/* Empty state */}
               {!analysisData && !isLoading && (
-                <div className="flex-grow flex flex-col items-center justify-center text-amber-300/40 text-center">
-                  <span className="text-7xl mb-4 animate-float opacity-50">😐</span>
-                  <p className="font-lora italic">Upload your photo to begin analysis.</p>
+                <div className="flex-grow flex flex-col items-center justify-center text-center">
+                  <span className="text-5xl md:text-7xl mb-4 animate-float opacity-50">😐</span>
+                  <p className={`font-lora italic text-sm md:text-base ${isLight ? 'text-amber-500' : 'text-amber-300/40'
+                    }`}>
+                    Upload your photo to begin analysis.
+                  </p>
                 </div>
               )}
 
+              {/* Results */}
               {analysisData && !isLoading && (
-                <div className="space-y-6 animate-fade-in-up">
+                <div className="space-y-4 animate-fade-in-up">
                   {renderVedicDashboard()}
 
                   {!isPaid ? (
                     <div className="relative mt-4">
-                      <div className="bg-black/40 p-4 rounded-xl border border-amber-500/20 text-amber-100 font-lora italic leading-relaxed text-sm relative overflow-hidden min-h-[150px]">
-                        <span className="text-3xl text-amber-500/30 absolute top-0 left-2">"</span>
+                      <div className={`p-4 rounded-xl border font-lora italic leading-relaxed
+                                                text-sm relative overflow-hidden min-h-[120px] ${isLight
+                          ? 'bg-amber-50 border-amber-200 text-amber-900'
+                          : 'bg-black/40 border-amber-500/20 text-amber-100'
+                        }`}>
+                        <span className={`text-3xl absolute top-0 left-2 ${isLight ? 'text-amber-400/40' : 'text-amber-500/30'
+                          }`}>"</span>
                         {reading.substring(0, 160)}...
-                        <div className="absolute bottom-0 left-0 w-full h-16 bg-gradient-to-t from-gray-900/90 to-transparent"></div>
+                        <div className={`absolute bottom-0 left-0 w-full h-14 bg-gradient-to-t ${isLight ? 'from-amber-50' : 'from-gray-900/90'
+                          } to-transparent`} />
                       </div>
-                      <div className="mt-4">
-                        <Button
-                          onClick={handleReadMore}
-                          className="w-full bg-gradient-to-r from-amber-600 to-orange-800 border-amber-500 shadow-xl py-4 font-cinzel tracking-widest hover:shadow-2xl transform hover:scale-105 transition-all"
-                        >
-                          🔓 Unlock Full Reading - ₹{servicePrice}
-                        </Button>
-                      </div>
+                      <Button
+                        onClick={handleReadMore}
+                        className="w-full mt-3 py-3 md:py-4 bg-gradient-to-r from-amber-600 to-orange-800 border-amber-500 shadow-xl font-cinzel tracking-widest text-sm md:text-base text-white transition-all hover:scale-105"
+                      >
+                        🔓 Unlock Full Reading - ₹{servicePrice}
+                      </Button>
                     </div>
                   ) : (
-                    <div className="text-center p-4 bg-green-900/30 border border-green-500/30 rounded-xl">
-                      <p className="text-green-400 font-bold">✅ Full Report Unlocked!</p>
-                      <p className="text-xs text-green-300 mt-1">Scroll down to read</p>
+                    <div className={`text-center p-4 rounded-xl border ${isLight ? 'bg-green-100 border-green-300' : 'bg-green-900/30 border-green-500/30'
+                      }`}>
+                      <p className={`font-bold ${isLight ? 'text-green-700' : 'text-green-400'}`}>
+                        ✅ Full Report Unlocked!
+                      </p>
+                      <p className={`text-xs mt-1 ${isLight ? 'text-green-600' : 'text-green-300'}`}>
+                        Scroll down to read
+                      </p>
                     </div>
                   )}
                 </div>
@@ -836,29 +721,32 @@ Your facial features suggest a person capable of great achievements through bala
           </div>
         </div>
 
-        {/* FULL REPORT SECTION */}
+        {/* FULL REPORT */}
         {analysisData && isPaid && (
-          <div ref={reportRef} className="mt-8 animate-fade-in-up scroll-mt-24">
-            <div className="max-w-4xl mx-auto p-6 bg-gradient-to-br from-amber-900/40 via-orange-900/40 to-black/60 rounded-xl shadow-2xl border border-amber-500/30 backdrop-blur-md">
-              <div className="text-center mb-8">
-                <div className="w-32 h-32 mx-auto mb-6 rounded-full border-4 border-amber-500 shadow-2xl overflow-hidden">
-                  <img
-                    src={cloudManager.resolveImage(reportImage)}
-                    alt="Face Reading"
-                    className="w-full h-full object-cover"
-                  />
+          <div ref={reportRef} className="mt-6 md:mt-8 animate-fade-in-up scroll-mt-24">
+            <div className={`p-5 md:p-8 rounded-xl shadow-2xl border backdrop-blur-md ${isLight
+                ? 'bg-white/80 border-amber-200'
+                : 'bg-gradient-to-br from-amber-900/40 via-orange-900/40 to-black/60 border-amber-500/30'
+              }`}>
+              <div className="text-center mb-6 md:mb-8">
+                <div className="w-20 h-20 md:w-32 md:h-32 mx-auto mb-4 md:mb-6 rounded-full border-4 border-amber-500 shadow-2xl overflow-hidden">
+                  <img src={cloudManager.resolveImage(reportImage)} alt="Face Reading" className="w-full h-full object-cover" />
                 </div>
-                <h1 className="text-5xl font-cinzel font-black text-white mb-3 uppercase tracking-wider">
+                {/* ✅ text-2xl on mobile, text-5xl on md+ */}
+                <h1 className={`text-2xl md:text-5xl font-cinzel font-black mb-2 uppercase tracking-wider ${isLight ? 'text-amber-900' : 'text-white'
+                  }`}>
                   Face Reading Analysis
                 </h1>
-                <p className="text-xl text-amber-300 font-lora italic">
+                <p className={`text-base md:text-xl font-lora italic ${isLight ? 'text-amber-700' : 'text-amber-300'
+                  }`}>
                   Mukha Samudrika Shastra
                 </p>
               </div>
 
               {renderVedicDashboard()}
 
-              <div className="bg-black/20 rounded-2xl p-8 border border-amber-500/20 mt-8">
+              <div className={`rounded-2xl p-5 md:p-8 border mt-6 md:mt-8 ${isLight ? 'bg-amber-50 border-amber-200' : 'bg-black/20 border-amber-500/20'
+                }`}>
                 <FullReport
                   reading={reading}
                   category="face-reading"
