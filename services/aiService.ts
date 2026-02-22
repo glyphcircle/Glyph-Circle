@@ -1041,9 +1041,80 @@ export const generateAdvancedAstroReport = async (
     details: any,
     engineData: any
 ): Promise<any> => {
-    // TODO: Implement full Kundali + Dasha + transit report here
-    return { fullReportText: '' };
+    const { provider, client } = getAIProvider();
+
+    const planets = engineData?.planets?.map((p: any) =>
+        `${p.name}: ${p.signName} ${p.normDegree?.toFixed(1)}° House ${p.house}${p.isRetrograde ? ' (Retrograde)' : ''}`
+    ).join('\n') || '';
+
+    const prompt = `
+${DETAIL_SYSTEM_PROMPT}
+
+BIRTH DETAILS:
+- Name: ${details.name}
+- Date of Birth: ${details.dob}
+- Time of Birth: ${details.tob}
+- Place of Birth: ${details.pob}
+- Ascendant (Lagna): ${engineData?.lagna?.signName} at ${engineData?.lagna?.degree?.toFixed(2)}°
+- Lagna Nakshatra: ${engineData?.lagna?.nakshatra}
+- Moon Sign: ${engineData?.planets?.find((p: any) => p.name === 'Moon')?.signName}
+- Moon Nakshatra: ${engineData?.panchang?.nakshatra}
+
+PLANETARY POSITIONS:
+${planets}
+
+CURRENT DASHA: ${engineData?.dashas?.current?.planet} Mahadasha
+
+Generate a COMPREHENSIVE IMPERIAL ASTROLOGY REPORT structured into EXACTLY these 12 numbered sections:
+
+1. BIRTH CHART OVERVIEW
+Detailed analysis of the Lagna, Lagna Lord, and overall chart disposition. Strengths and themes of this nativity.
+
+2. PLANETARY STRENGTHS & DIGNITIES
+Analyze each of the 9 grahas — their sign dignity (exalted, own sign, debilitated, friend, enemy), house placement strength, and combust/retrograde status. Which planets are most powerful in this chart?
+
+3. HOUSE-BY-HOUSE ANALYSIS
+Deep interpretation of all 12 Bhavas — what each house signifies for this person, which planets aspect or occupy each house, and the role of each house lord.
+
+4. NAKSHATRA ANALYSIS
+Detailed reading of the birth Nakshatra (${engineData?.panchang?.nakshatra}), its deity, symbol, shakti, shadow, and life themes. Also analyze the Lagna Nakshatra.
+
+5. YOGAS & SPECIAL COMBINATIONS
+Identify and explain all major planetary yogas present — Raj Yoga, Dhana Yoga, Gajakesari, Kemadruma, Viparita Raja Yoga, and others. What do they promise for this native?
+
+6. VIMSHOTTARI DASHA FORECAST
+Current Mahadasha: ${engineData?.dashas?.current?.planet}. Explain what this period means, its sub-periods, and forecast for 2024–2030.
+
+7. CAREER & WEALTH FORECAST
+10th house, 2nd house, 11th house, and their lords. Ideal profession, business potential, wealth-accumulation periods.
+
+8. LOVE, MARRIAGE & RELATIONSHIPS
+7th house, 5th house, Venus analysis. Marriage timing, partner qualities, relationship karma.
+
+9. HEALTH & VITALITY
+1st house, 6th house, 8th house analysis. Physical constitution, chronic vulnerabilities, healing path.
+
+10. SPIRITUAL PATH & PAST LIFE KARMA
+9th house, 12th house, Ketu. Dharmic mission, spiritual gifts, past-life imprints, liberation path.
+
+11. LUCKY PERIODS, COLORS & NUMBERS
+Auspicious days, gemstones to wear, lucky numbers, favorable directions, auspicious colors, best years ahead.
+
+12. MASTER'S FINAL DECREE
+A powerful 150–200 word personal message to this soul — their life's cosmic purpose, hidden gifts, and the karmic lesson of this incarnation.
+
+CRITICAL: Each section must have at least 4–6 bullet points. Total report must be 1500+ words. Use ✦ POSITIVE: and ✦ NEGATIVE: prefix conventions.
+`;
+
+    try {
+        const raw = await callAI(prompt, undefined, 0.8);
+        return { fullReportText: raw };
+    } catch (error: any) {
+        console.error('Advanced Astro Report Error:', error);
+        throw new Error('The Oracle is currently unavailable. Please try again.');
+    }
 };
+
 
 // ─────────────────────────────────────────────────────────────
 // 15. 📅 CONSULTATION BOOKING (stub — extend as needed)
