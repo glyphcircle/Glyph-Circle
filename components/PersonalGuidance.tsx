@@ -1,15 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
+// PersonalGuidance.tsx — FIXED & ALIGNED
+// ✅ useServicePayment + initiateFlow (same as Tarot, MoonJournal)
+// ✅ resolveService for dynamic price (no .single() 400 errors)
+// ✅ saveReading + dbService.recordTransaction inside generator
+// ✅ reportDataRef race-condition guard
+// ✅ Cache restore banner (Already Purchased This Year)
+// ✅ useTheme for light/dark support
+// ✅ reportImage handles string | cloud object
+// ✅ Mobile touch targets (min-h-[44px])
+// ✅ Removed usePayment
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDb } from '../hooks/useDb';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import Button from './shared/Button';
 import SmartBackButton from './shared/SmartBackButton';
 import FullReport from './FullReport';
 import { useTranslation } from '../hooks/useTranslation';
-import { usePayment } from '../context/PaymentContext';
-import { supabase } from '../services/supabaseClient';
+import { useServicePayment } from '../hooks/useServicePayment';
+import { resolveService } from '../services/serviceRegistry';
 import { cloudManager } from '../services/cloudManager';
+import { dbService } from '../services/db';
 import { findProductInStore } from '../services/productMatcher';
 import { generatePersonalizedGuidance } from '../services/personalGuidanceAI';
+import ErrorBoundary from './shared/ErrorBoundary';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CONCERN_TYPES = [
     { value: 'health', label: 'Health & Wellness', emoji: '🏥', color: 'bg-green-500' },
@@ -20,87 +36,132 @@ const CONCERN_TYPES = [
     { value: 'general', label: 'General Guidance', emoji: '✨', color: 'bg-indigo-500' },
 ];
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 const PersonalGuidance: React.FC = () => {
+
+    // ── Form state ─────────────────────────────────────────────────────────────
     const [concernType, setConcernType] = useState('');
     const [concernDescription, setConcernDescription] = useState('');
     const [currentChallenges, setCurrentChallenges] = useState('');
     const [goals, setGoals] = useState('');
+
+    // ── System state ───────────────────────────────────────────────────────────
     const [isPaid, setIsPaid] = useState(false);
     const [servicePrice, setServicePrice] = useState(49);
     const [isSaving, setIsSaving] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [reportData, setReportData] = useState<string>('');
-    const [readingId, setReadingId] = useState<string | null>(null);
+    const [retrievedTx, setRetrievedTx] = useState<any>(null);
+    const [error, setError] = useState('');
 
+    // ── Refs ───────────────────────────────────────────────────────────────────
     const reportRef = useRef<HTMLDivElement>(null);
+    // ✅ Race-condition guard — same as Tarot / MoonJournal
+    const reportDataRef = useRef<string>('');
+
+    // ── Hooks ──────────────────────────────────────────────────────────────────
     const { db } = useDb();
     const { user } = useAuth();
     const { t } = useTranslation();
-    const { openPayment } = usePayment();
+    const { theme } = useTheme();
+    const isLight = theme.mode === 'light';
 
-    const reportImage = db?.image_assets?.find((a: any) => a.id === 'report_bg_guidance')?.path ||
-        "https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?q=80&w=800";
+    // ── Derived ────────────────────────────────────────────────────────────────
+    const currentReport = reportData || reportDataRef.current;
 
-    useEffect(() => {
-        fetchServicePrice();
+    const reportImageRaw =
+        db?.image_assets?.find((a: any) => a.id === 'report_bg_guidance')?.path ||
+        'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?q=80&w=800';
+
+    // ✅ Handle both string and cloud object
+    const reportImage = typeof reportImageRaw === 'string'
+        ? reportImageRaw
+        : cloudManager.resolveImage(reportImageRaw);
+
+    // ── Scroll helper ──────────────────────────────────────────────────────────
+    const scrollToReport = useCallback(() => {
+        setTimeout(() => {
+            if (reportRef.current) {
+                reportRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }, 150);
     }, []);
 
-    const fetchServicePrice = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('services')
-                .select('price')
-                .eq('name', 'Personal Guidance')
-                .eq('status', 'active')
-                .single();
-
-            if (!error && data) {
-                setServicePrice(data.price);
-                console.log('✅ Service price loaded:', data.price);
-            }
-        } catch (err) {
-            console.error('Error fetching price:', err);
-        }
-    };
-
+    // ── Dynamic price from serviceRegistry ────────────────────────────────────
     useEffect(() => {
-        if (isPaid && reportRef.current) {
-            setTimeout(() => {
-                reportRef.current?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }, 500);
-        }
-    }, [isPaid]);
+        resolveService('personal-guidance').then(record => {
+            if (record?.price != null) setServicePrice(record.price);
+        });
+    }, []);
 
-    const validateForm = () => {
+    // ── Auto-scroll when paid ──────────────────────────────────────────────────
+    useEffect(() => {
+        if (isPaid && currentReport) scrollToReport();
+    }, [isPaid, currentReport]);
+
+    // ── useServicePayment ──────────────────────────────────────────────────────
+    const { initiateFlow, isCheckingCache } = useServicePayment({
+        serviceType: 'personal-guidance',
+
+        onReportGenerated: () => {
+            console.log('✅ [PersonalGuidance] Report display triggered');
+
+            // ✅ Restore from ref if state hasn't settled (free service race)
+            if (!reportData && reportDataRef.current) {
+                setReportData(reportDataRef.current);
+            }
+            setIsPaid(true);
+            scrollToReport();
+        },
+
+        onCacheRestored: (readingData, transaction) => {
+            console.log('✅ [PersonalGuidance] Cache restored:', readingData);
+            setRetrievedTx(transaction);
+
+            const content = readingData.content || '';
+            setReportData(content);
+            reportDataRef.current = content;
+
+            // Restore concern type from meta if available
+            const meta = readingData.meta_data;
+            if (meta?.concern_type) setConcernType(meta.concern_type);
+
+            setIsPaid(false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+    });
+
+    // ── Validation ─────────────────────────────────────────────────────────────
+    const validateForm = (): boolean => {
         if (!concernType) {
             alert('❌ Please select a concern type');
             return false;
         }
-        if (!concernDescription.trim() || concernDescription.trim().length < 50) {
+        if (concernDescription.trim().length < 50) {
             alert('❌ Please describe your concern in detail (minimum 50 characters)');
             return false;
         }
-        if (!currentChallenges.trim() || currentChallenges.trim().length < 30) {
+        if (currentChallenges.trim().length < 30) {
             alert('❌ Please describe your current challenges (minimum 30 characters)');
             return false;
         }
-        if (!goals.trim() || goals.trim().length < 30) {
+        if (goals.trim().length < 30) {
             alert('❌ Please share your goals in detail (minimum 30 characters)');
             return false;
         }
         return true;
     };
 
-    const generateReport = async () => {
+    // ── Report generation ──────────────────────────────────────────────────────
+    // ✅ Called INSIDE initiateFlow generator — only runs after payment succeeds
+    const buildReport = useCallback(async (): Promise<string> => {
         const concernEmoji = CONCERN_TYPES.find(c => c.value === concernType)?.emoji || '✨';
         const concernLabel = CONCERN_TYPES.find(c => c.value === concernType)?.label || concernType;
 
-        console.log('🤖 Generating personalized guidance with products...');
-
-        // Get AI-powered guidance
+        console.log('🤖 Generating personalized guidance...');
         const aiGuidance = await generatePersonalizedGuidance(
             concernType,
             concernDescription,
@@ -108,11 +169,9 @@ const PersonalGuidance: React.FC = () => {
             goals
         );
 
-        console.log('✅ Guidance received, fetching products from store...');
-
-        // Match AI-recommended products with store items
+        console.log('✅ Matching products from store...');
         const productsWithDetails = await Promise.all(
-            aiGuidance.recommended_products.map(async (product) => {
+            aiGuidance.recommended_products.map(async (product: any) => {
                 const match = await findProductInStore(product.name, concernType);
                 return {
                     name: match?.name || product.name,
@@ -121,16 +180,16 @@ const PersonalGuidance: React.FC = () => {
                     store_id: match?.id,
                     reason: product.reason,
                     confidence: match?.confidence || 0,
-                    available: match !== null && match.confidence >= 50
+                    available: match !== null && (match.confidence ?? 0) >= 50,
                 };
             })
         );
 
-        console.log('✅ All products matched:', productsWithDetails.length);
-
         return `# Personal Guidance & Remedies ${concernEmoji}
 
-**Report Generated:** ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+**Report Generated:** ${new Date().toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        })}
 
 **Concern Area:** ${concernLabel}
 
@@ -159,9 +218,7 @@ ${aiGuidance.healing_approach}
 
 ## 🛍️ Sacred Tools for Your Journey
 
-Based on your unique situation, these powerful spiritual tools will support your transformation:
-
-${productsWithDetails.map((product, i) => `### ${i + 1}. ${product.name} ${product.available ? '✅' : '⏳'}
+${productsWithDetails.map((product: any, i: number) => `### ${i + 1}. ${product.name} ${product.available ? '✅' : '⏳'}
 
 ![${product.name}](${product.image_url})
 
@@ -170,81 +227,68 @@ ${product.reason}
 
 **Price:** ₹${product.price} ${product.available ? '' : '*(Being added to our collection)*'}
 
-${product.store_id ? `**[🛒 Shop Now](/store/item/${product.store_id})**` : '**[📱 Contact Us for This Item](/contact)**'}
-`).join('\n\n---\n\n')}
+${product.store_id
+                ? `**[🛒 Shop Now](/store/item/${product.store_id})**`
+                : '**[📱 Contact Us for This Item](/contact)**'
+            }`).join('\n\n---\n\n')}
 
 ### 🎁 Exclusive Offer
-*Use code **GUIDANCE10** for 10% off your first purchase from our store*
+*Use code **GUIDANCE10** for 10% off your first purchase*
 
 ---
 
 ## 🕉️ Your Daily Spiritual Practice
 
-Follow these practices consistently for best results:
+${aiGuidance.daily_practices.map((p: any, i: number) => `### ${i + 1}. ${p.title}
 
-${aiGuidance.daily_practices.map((practice, i) => `### ${i + 1}. ${practice.title}
+${p.description}
 
-${practice.description}
-
-**⏰ Best Time:** ${practice.timing}`).join('\n\n')}
+**⏰ Best Time:** ${p.timing}`).join('\n\n')}
 
 ---
 
 ## ✨ Powerful Affirmations for ${concernLabel}
 
-Repeat these daily with deep faith and feeling. Feel each word as truth:
-
-${aiGuidance.affirmations.map((aff, i) => `${i + 1}. _"${aff}"_`).join('\n\n')}
+${aiGuidance.affirmations.map((aff: string, i: number) => `${i + 1}. _"${aff}"_`).join('\n\n')}
 
 ---
 
 ## 📅 Your 30-Day Sacred Transformation Journey
 
 ### Week 1: Foundation & Preparation (Days 1-7)
-- Acquire your recommended spiritual tools from our store
+- Acquire your recommended spiritual tools
 - Set up a dedicated sacred space in your home
 - Begin 10-minute daily meditation practice
 - Start using affirmations every morning
-- Keep a spiritual journal
 
 ### Week 2: Building Sacred Energy (Days 8-14)
 - Increase meditation to 15-20 minutes daily
 - Work with your crystals/tools consistently
-- Practice all recommended daily rituals
 - Notice and journal subtle positive shifts
-- Maintain unwavering faith in the process
 
 ### Week 3: Deep Integration & Healing (Days 15-21)
 - Full practice routine becomes natural habit
-- Add advanced energy healing techniques
 - Observe significant behavioral/emotional changes
 - Deepen spiritual connection through devotion
-- Share gratitude for transformation
 
 ### Week 4: Manifestation & Mastery (Days 22-30)
 - Witness clear manifestation of your goals
-- Celebrate your incredible progress
 - Create sustainable long-term practice plan
 - Consider sharing your journey to inspire others
-- Book follow-up consultation if needed
 
 ---
 
 ## 🙏 Important Guidance Notes
 
-### For Deeper Astrological Insights
-This guidance is based on your current situation and spiritual wisdom. For detailed predictions based on your exact birth chart (including planetary positions, dashas, and timing of events), please book a personal consultation with our expert Vedic astrologers.
+For detailed predictions based on your exact birth chart, please book a personal consultation with our expert Vedic astrologers.
 
-**[📅 Book One-on-One Astrological Consultation →](/book-consultation)**
-
-### Explore Our Sacred Collection
-Visit our Vedic Store to explore our complete collection of authentic spiritual tools, crystals, yantras, and sacred items.
+**[📅 Book One-on-One Consultation →](/book-consultation)**
 
 **[🛒 Browse All Products →](/store)**
 
 ---
 
-**⚠️ Disclaimer:** This guidance combines ancient Vedic spiritual wisdom with modern insights. It is intended for spiritual growth and self-improvement purposes. This is not a substitute for professional medical, legal, or financial advice. For specific life predictions and birth chart analysis, please book a personal astrology consultation.
+**⚠️ Disclaimer:** This guidance combines ancient Vedic spiritual wisdom with modern insights. It is intended for spiritual growth and is not a substitute for professional medical, legal, or financial advice.
 
 ---
 
@@ -254,303 +298,457 @@ May divine grace, peace, and abundance flow into your life. 🙏✨
 
 ---
 
-*Report ID: ${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5).toUpperCase()}*`;
-    };
+*Report ID: ${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5).toUpperCase()}*`.trim();
+    }, [concernType, concernDescription, currentChallenges, goals]);
 
-    const saveToDatabase = async (report: string, currentReadingId?: string) => {
-        try {
-            console.log('💾 Saving to database...');
-
-            let savedReadingId = currentReadingId;
-
-            if (!savedReadingId) {
-                const { data: readingRecord, error: readingError } = await supabase
-                    .from('readings')
-                    .insert([{
-                        user_id: user?.id,
-                        type: 'personal-guidance',
-                        title: `Personal Guidance - ${CONCERN_TYPES.find(c => c.value === concernType)?.label}`,
-                        subtitle: new Date().toLocaleDateString(),
-                        content: report,
-                        is_paid: isPaid,
-                        meta_data: { concern_type: concernType }
-                    }])
-                    .select()
-                    .single();
-
-                if (readingError) throw readingError;
-                savedReadingId = readingRecord.id;
-                setReadingId(readingRecord.id);
-                console.log('✅ Reading created:', readingRecord.id);
-            }
-
-            const { error: guidanceError } = await supabase
-                .from('personal_guidance_readings')
-                .insert([{
-                    user_id: user?.id,
-                    concern_type: concernType,
-                    concern_description: concernDescription,
-                    current_challenges: currentChallenges,
-                    goals: goals,
-                    guidance_summary: report.substring(0, 500),
-                    reading_id: savedReadingId,
-                    is_paid: isPaid
-                }]);
-
-            if (guidanceError) console.error('Guidance save error:', guidanceError);
-            else console.log('✅ Guidance details saved');
-
-            return savedReadingId;
-
-        } catch (error) {
-            console.error('❌ Database save error:', error);
-            throw error;
-        }
-    };
-
-    const savePaymentRecord = async (savedReadingId: string) => {
-        try {
-            console.log('💰 Saving payment record...');
-
-            const { data: txn, error: txnError } = await supabase
-                .from('transactions')
-                .insert([{
-                    user_id: user?.id,
-                    service_type: 'personal-guidance',
-                    service_title: 'Personal Guidance & Remedies',
-                    amount: servicePrice,
-                    currency: 'INR',
-                    status: 'success',
-                    payment_method: 'upi',
-                    payment_provider: 'manual',
-                    reading_id: savedReadingId,
-                    order_id: `GUIDANCE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    metadata: {
-                        concern_type: concernType,
-                        analysis_date: new Date().toISOString()
-                    }
-                }])
-                .select()
-                .single();
-
-            if (txnError) throw txnError;
-            console.log('✅ Transaction saved:', txn.id);
-
-            await supabase
-                .from('readings')
-                .update({ is_paid: true })
-                .eq('id', savedReadingId);
-
-            await supabase
-                .from('personal_guidance_readings')
-                .update({ is_paid: true })
-                .eq('reading_id', savedReadingId);
-
-            console.log('✅ Payment completed and saved');
-
-        } catch (error) {
-            console.error('❌ Payment save error:', error);
-            throw error;
-        }
-    };
-
+    // ── Main handler ───────────────────────────────────────────────────────────
     const handleGetGuidance = async () => {
-        console.log('🎯 Get Guidance clicked');
-
         if (!validateForm()) return;
 
-        console.log('✅ Validation passed');
+        setError('');
 
-        setIsGenerating(true);
+        await initiateFlow(
+            {
+                name: user?.user_metadata?.full_name || user?.email,
+                concern_type: concernType,
+            },
+            // ✅ Generator — called AFTER payment succeeds
+            async (paymentDetails?: any) => {
+                console.log('✅ [PersonalGuidance] Payment success, generating report...');
+                setIsGenerating(true);
+                setIsSaving(true);
 
-        try {
-            const report = await generateReport();
-            setReportData(report);
-            console.log('📄 Report generated');
+                try {
+                    // 1. Generate report (after payment — no wasted AI calls)
+                    const report = await buildReport();
 
-            const savedReadingId = await saveToDatabase(report);
-            console.log('✅ Initial save complete, reading ID:', savedReadingId);
+                    // ✅ Set both state and ref immediately
+                    reportDataRef.current = report;
+                    setReportData(report);
 
-            setIsGenerating(false);
+                    // 2. Save reading
+                    const savedReading = await dbService.saveReading({
+                        user_id: user?.id,
+                        type: 'personal-guidance',
+                        title: `Personal Guidance — ${CONCERN_TYPES.find(c => c.value === concernType)?.label}`,
+                        subtitle: new Date().toLocaleDateString(),
+                        content: report,
+                        is_paid: true,
+                        meta_data: {
+                            concern_type: concernType,
+                            concern_description: concernDescription,
+                            current_challenges: currentChallenges,
+                            goals,
+                        },
+                    });
 
-            console.log('💳 Opening payment modal...');
-
-            openPayment(
-                async () => {
-                    console.log('✅ Payment success callback triggered');
-                    setIsSaving(true);
-
-                    try {
-                        await savePaymentRecord(savedReadingId!);
-                        setIsPaid(true);
-                        console.log('✅ All payment data saved');
-
-                        setTimeout(() => {
-                            reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 500);
-
-                    } catch (error) {
-                        console.error('❌ Error during payment save:', error);
-                        alert('Payment recorded but failed to save. Please contact support.');
-                    } finally {
-                        setIsSaving(false);
+                    // 3. Record transaction via dbService (aligned with all services)
+                    if (savedReading?.data?.id) {
+                        await dbService.recordTransaction({
+                            user_id: user?.id,
+                            service_type: 'personal-guidance',
+                            service_title: 'Personal Guidance & Remedies',
+                            amount: servicePrice,
+                            currency: 'INR',
+                            payment_method: paymentDetails?.method || 'manual',
+                            payment_provider: paymentDetails?.provider || 'manual',
+                            order_id: paymentDetails?.orderId || `GUIDANCE-ORD-${Date.now()}`,
+                            transaction_id: paymentDetails?.transactionId || `GUIDANCE-TXN-${Date.now()}`,
+                            reading_id: savedReading.data.id,
+                            status: 'success',
+                            metadata: {
+                                concern_type: concernType,
+                                analysis_date: new Date().toISOString(),
+                            },
+                        });
                     }
-                },
-                'Personal Guidance & Remedies',
-                servicePrice
-            );
-        } catch (error) {
-            console.error('❌ Error during generation:', error);
-            alert('Failed to generate report. Please try again.');
-            setIsGenerating(false);
-        }
+
+                    console.log('✅ [PersonalGuidance] All data saved');
+
+                    return {
+                        reading: report,
+                        content: report,
+                        meta_data: {
+                            concern_type: concernType,
+                            concern_description: concernDescription,
+                            goals,
+                        },
+                    };
+
+                } catch (err: any) {
+                    console.error('❌ [PersonalGuidance] Save error:', err);
+                    setError('Report generated but failed to save. Please contact support.');
+                    // Don't throw — still show the report if generation succeeded
+                    return {
+                        reading: reportDataRef.current,
+                        content: reportDataRef.current,
+                        meta_data: { concern_type: concernType },
+                    };
+                } finally {
+                    setIsGenerating(false);
+                    setIsSaving(false);
+                }
+            }
+        );
     };
+
+    // ── Reset ──────────────────────────────────────────────────────────────────
+    const startNewGuidance = () => {
+        setConcernType('');
+        setConcernDescription('');
+        setCurrentChallenges('');
+        setGoals('');
+        setIsPaid(false);
+        setReportData('');
+        reportDataRef.current = '';
+        setRetrievedTx(null);
+        setError('');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // RENDER
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const isFormValid =
+        !!concernType &&
+        concernDescription.length >= 50 &&
+        currentChallenges.length >= 30 &&
+        goals.length >= 30;
 
     return (
         <div className="max-w-4xl mx-auto p-4 md:p-6">
             <SmartBackButton label={t('backToHome')} className="mb-6" />
 
-            {/* Generating Loading State */}
-            {isGenerating && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250]">
-                    <div className="bg-gradient-to-br from-purple-900 via-indigo-800 to-purple-900 p-10 rounded-3xl shadow-2xl border border-purple-500/30 max-w-md text-center">
-                        <div className="w-24 h-24 mx-auto mb-8 relative">
-                            <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
-                            <div className="absolute inset-0 border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+            {/* ── New Guidance button ── */}
+            {(isPaid || retrievedTx) && (
+                <div className="mb-4 flex justify-end">
+                    <button
+                        onClick={startNewGuidance}
+                        style={{ touchAction: 'manipulation' }}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-3 rounded-full text-sm font-bold uppercase tracking-wider shadow-lg transition-all min-h-[44px]"
+                    >
+                        ✨ New Guidance
+                    </button>
+                </div>
+            )}
+
+            {/* ── Already Purchased banner ── */}
+            {retrievedTx && !isPaid && (
+                <div className={`
+          rounded-2xl p-6 mb-8 shadow-xl border-2 animate-fade-in-up
+          ${isLight
+                        ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-300'
+                        : 'bg-gradient-to-r from-green-900/30 to-emerald-900/30 border-green-500/40'
+                    }
+        `}>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                            <h3 className={`font-cinzel font-black text-xl uppercase ${isLight ? 'text-emerald-800' : 'text-green-400'
+                                }`}>
+                                Already Purchased This Year!
+                            </h3>
+                            <p className={`text-sm italic ${isLight ? 'text-emerald-700' : 'text-green-300/70'
+                                }`}>
+                                Your guidance report retrieved from history.
+                            </p>
                         </div>
-                        <h3 className="text-3xl font-bold text-white mb-3">🔮 Consulting Divine Wisdom</h3>
-                        <p className="text-purple-300 mb-2 text-lg">Analyzing your situation...</p>
-                        <p className="text-purple-400 text-sm">Matching sacred tools from our collection...</p>
-                        <p className="text-purple-500 text-sm mt-2">This may take 10-15 seconds 🕉️</p>
+                        <div className="flex gap-2 flex-wrap">
+                            <button
+                                onClick={() => { setIsPaid(true); scrollToReport(); }}
+                                style={{ touchAction: 'manipulation' }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest min-h-[44px] transition-all"
+                            >
+                                📄 View Report
+                            </button>
+                            <button
+                                onClick={startNewGuidance}
+                                style={{ touchAction: 'manipulation' }}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full text-[10px] font-bold uppercase tracking-widest min-h-[44px] transition-all"
+                            >
+                                ✨ New
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Saving Payment Loading State */}
-            {isSaving && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250]">
-                    <div className="bg-gradient-to-br from-purple-900 via-indigo-800 to-purple-900 p-10 rounded-3xl shadow-2xl border border-purple-500/30 max-w-md text-center">
+            {/* ── Generating overlay ── */}
+            {isGenerating && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-4">
+                    <div className="bg-gradient-to-br from-purple-900 via-indigo-800 to-purple-900 p-8 md:p-10 rounded-3xl shadow-2xl border border-purple-500/30 max-w-md w-full text-center">
+                        <div className="w-24 h-24 mx-auto mb-8 relative">
+                            <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
+                            <div className="absolute inset-0 border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+                            <div className="absolute inset-3 border-4 border-purple-400/10 rounded-full"></div>
+                            <div
+                                className="absolute inset-3 border-4 border-b-purple-400 border-t-transparent border-r-transparent border-l-transparent rounded-full animate-spin"
+                                style={{ animationDuration: '1.5s', animationDirection: 'reverse' }}
+                            ></div>
+                        </div>
+                        <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">
+                            🔮 Consulting Divine Wisdom
+                        </h3>
+                        <p className="text-purple-300 mb-2 text-base md:text-lg">
+                            Analyzing your situation...
+                        </p>
+                        <p className="text-purple-400 text-sm">
+                            Matching sacred tools from our collection...
+                        </p>
+                        <p className="text-purple-500 text-sm mt-2">
+                            This may take 10-15 seconds 🕉️
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Saving overlay ── */}
+            {isSaving && !isGenerating && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-4">
+                    <div className="bg-gradient-to-br from-purple-900 via-indigo-800 to-purple-900 p-8 md:p-10 rounded-3xl shadow-2xl border border-purple-500/30 max-w-md w-full text-center">
                         <div className="w-24 h-24 mx-auto mb-8 relative">
                             <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
                             <div className="absolute inset-0 border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
                         </div>
-                        <h3 className="text-3xl font-bold text-white mb-3">Processing Payment</h3>
-                        <p className="text-purple-300 mb-2 text-lg">Saving your data...</p>
+                        <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">
+                            Processing Payment
+                        </h3>
+                        <p className="text-purple-300 mb-2 text-base md:text-lg">
+                            Saving your data...
+                        </p>
                         <p className="text-purple-500 text-sm">This may take a moment 🕉️</p>
                     </div>
                 </div>
             )}
 
-            <div className="bg-gradient-to-br from-purple-900/40 via-indigo-900/40 to-black/60 rounded-xl shadow-2xl border border-purple-500/30 backdrop-blur-md p-6 md:p-8">
-                <div className="text-center mb-8">
-                    <h2 className="text-4xl font-cinzel font-bold text-purple-300 mb-2">✨ Personal Guidance</h2>
-                    <p className="text-purple-100/70 font-lora italic">Receive personalized spiritual guidance and practical remedies</p>
-                </div>
-
-                <div className="mb-6">
-                    <label className="block text-purple-300 font-semibold mb-3 text-sm uppercase tracking-wider">
-                        What area needs guidance? <span className="text-red-400">*</span>
-                    </label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {CONCERN_TYPES.map((concern) => (
-                            <button
-                                key={concern.value}
-                                onClick={() => setConcernType(concern.value)}
-                                className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${concernType === concern.value
-                                    ? `${concern.color} border-white shadow-lg scale-105`
-                                    : 'bg-gray-900/50 border-purple-500/20 hover:border-purple-500/50'
-                                    }`}
-                            >
-                                <span className="text-3xl mb-2">{concern.emoji}</span>
-                                <span className={`text-xs text-center ${concernType === concern.value ? 'text-white font-bold' : 'text-purple-300'}`}>
-                                    {concern.label}
-                                </span>
-                            </button>
-                        ))}
+            {/* ── isCheckingCache overlay ── */}
+            {isCheckingCache && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-4">
+                    <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8 md:p-10 rounded-3xl shadow-2xl border border-purple-500/30 max-w-md w-full text-center">
+                        <div className="w-24 h-24 mx-auto mb-8 relative">
+                            <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
+                            <div className="absolute inset-0 border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin"></div>
+                            <div className="absolute inset-3 border-4 border-purple-400/10 rounded-full"></div>
+                            <div
+                                className="absolute inset-3 border-4 border-b-purple-400 border-t-transparent border-r-transparent border-l-transparent rounded-full animate-spin"
+                                style={{ animationDuration: '1.5s', animationDirection: 'reverse' }}
+                            ></div>
+                        </div>
+                        <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">
+                            Checking Registry
+                        </h3>
+                        <p className="text-gray-300 mb-2 text-base md:text-lg">
+                            Verifying your purchase history
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                            Consulting the akashic records...
+                        </p>
                     </div>
                 </div>
+            )}
 
-                <div className="mb-6">
-                    <label className="block text-purple-300 font-semibold mb-2 text-sm">
-                        Describe your situation in detail <span className="text-red-400">*</span>
-                    </label>
-                    <textarea
-                        value={concernDescription}
-                        onChange={(e) => setConcernDescription(e.target.value)}
-                        placeholder="Please share your situation in detail... What is troubling you? When did it start? How is it affecting your life?"
-                        rows={6}
-                        className="w-full p-4 bg-black/40 border border-purple-500/30 rounded-lg text-purple-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-purple-400/30 font-lora leading-relaxed"
-                    />
-                    <p className="text-gray-500 text-xs mt-1">
-                        Minimum 50 characters • Current: {concernDescription.length}
-                        {concernDescription.length >= 50 && <span className="text-green-500 ml-2 font-semibold">✓ Good detail</span>}
-                    </p>
-                </div>
+            {/* ── Form (hidden once paid) ── */}
+            {!isPaid && (
+                <div className={`
+          rounded-xl shadow-2xl border backdrop-blur-md p-6 md:p-8
+          ${isLight
+                        ? 'bg-white/80 border-purple-200'
+                        : 'bg-gradient-to-br from-purple-900/40 via-indigo-900/40 to-black/60 border-purple-500/30'
+                    }
+        `}>
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <h2 className={`text-3xl md:text-4xl font-cinzel font-bold mb-2 ${isLight ? 'text-purple-700' : 'text-purple-300'
+                            }`}>
+                            ✨ Personal Guidance
+                        </h2>
+                        <p className={`font-lora italic text-sm md:text-base ${isLight ? 'text-purple-500' : 'text-purple-100/70'
+                            }`}>
+                            Receive personalized spiritual guidance and practical remedies
+                        </p>
+                    </div>
 
-                <div className="mb-6">
-                    <label className="block text-purple-300 font-semibold mb-2 text-sm">
-                        What specific challenges are you facing? <span className="text-red-400">*</span>
-                    </label>
-                    <textarea
-                        value={currentChallenges}
-                        onChange={(e) => setCurrentChallenges(e.target.value)}
-                        placeholder="What obstacles are blocking you? What have you already tried? What patterns do you notice?"
-                        rows={5}
-                        className="w-full p-4 bg-black/40 border border-purple-500/30 rounded-lg text-purple-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-purple-400/30 font-lora"
-                    />
-                    <p className="text-gray-500 text-xs mt-1">
-                        Minimum 30 characters • Current: {currentChallenges.length}
-                        {currentChallenges.length >= 30 && <span className="text-green-500 ml-2 font-semibold">✓</span>}
-                    </p>
-                </div>
+                    {/* Concern type grid */}
+                    <div className="mb-6">
+                        <label className={`block font-semibold mb-3 text-sm uppercase tracking-wider ${isLight ? 'text-purple-700' : 'text-purple-300'
+                            }`}>
+                            What area needs guidance? <span className="text-red-400">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {CONCERN_TYPES.map((concern) => (
+                                <button
+                                    key={concern.value}
+                                    onClick={() => setConcernType(concern.value)}
+                                    style={{ touchAction: 'manipulation' }}
+                                    className={`
+                    flex flex-col items-center justify-center p-3 md:p-4
+                    rounded-xl border-2 transition-all min-h-[80px] active:scale-95
+                    ${concernType === concern.value
+                                            ? `${concern.color} border-white shadow-lg scale-105`
+                                            : isLight
+                                                ? 'bg-white border-purple-200 hover:border-purple-400'
+                                                : 'bg-gray-900/50 border-purple-500/20 hover:border-purple-500/50'
+                                        }
+                  `}
+                                >
+                                    <span className="text-2xl md:text-3xl mb-1">{concern.emoji}</span>
+                                    <span className={`text-xs text-center leading-tight ${concernType === concern.value
+                                            ? 'text-white font-bold'
+                                            : isLight ? 'text-purple-600' : 'text-purple-300'
+                                        }`}>
+                                        {concern.label}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
-                <div className="mb-8">
-                    <label className="block text-purple-300 font-semibold mb-2 text-sm">
-                        What are your goals and desired outcomes? <span className="text-red-400">*</span>
-                    </label>
-                    <textarea
-                        value={goals}
-                        onChange={(e) => setGoals(e.target.value)}
-                        placeholder="What would you like to achieve? How would you like your life to look? What would success mean to you?"
-                        rows={5}
-                        className="w-full p-4 bg-black/40 border border-purple-500/30 rounded-lg text-purple-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-purple-400/30 font-lora"
-                    />
-                    <p className="text-gray-500 text-xs mt-1">
-                        Minimum 30 characters • Current: {goals.length}
-                        {goals.length >= 30 && <span className="text-green-500 ml-2 font-semibold">✓</span>}
-                    </p>
-                </div>
-
-                <Button
-                    onClick={handleGetGuidance}
-                    disabled={!concernType || concernDescription.length < 50 || currentChallenges.length < 30 || goals.length < 30 || isGenerating}
-                    className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 border-pink-400/50 shadow-lg py-4 text-lg font-cinzel tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isGenerating ? '🔮 Generating Guidance...' : `🔮 Get Divine Guidance - ₹${servicePrice}`}
-                </Button>
-
-                <p className="text-center text-gray-500 text-xs mt-3">
-                    <span className="text-red-500">*</span> All fields required • Detailed responses ensure better guidance
-                </p>
-
-                <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-500/20">
-                    <p className="text-gray-700 dark:text-purple-300 text-xs text-center">
-                        💡 <strong>Note:</strong> For personalized astrological predictions based on your birth chart,
-                        book a one-on-one consultation where your exact birth details can be analyzed by our expert astrologers.
-                    </p>
-                </div>
-            </div>
-
-            {reportData && isPaid && (
-                <div ref={reportRef} className="mt-8 scroll-mt-24">
-                    <div className="bg-gradient-to-br from-purple-900/40 via-indigo-900/40 to-black/60 rounded-xl shadow-2xl border border-purple-500/30 backdrop-blur-md p-8">
-                        <FullReport
-                            reading={reportData}
-                            category="personal-guidance"
-                            title="Personal Guidance & Remedies"
-                            subtitle={CONCERN_TYPES.find(c => c.value === concernType)?.label || 'Guidance Report'}
-                            imageUrl={cloudManager.resolveImage(reportImage)}
+                    {/* Concern description */}
+                    <div className="mb-6">
+                        <label className={`block font-semibold mb-2 text-sm ${isLight ? 'text-purple-700' : 'text-purple-300'
+                            }`}>
+                            Describe your situation in detail <span className="text-red-400">*</span>
+                        </label>
+                        <textarea
+                            value={concernDescription}
+                            onChange={(e) => setConcernDescription(e.target.value)}
+                            placeholder="Please share your situation in detail... What is troubling you? When did it start? How is it affecting your life?"
+                            rows={6}
+                            className={`
+                w-full p-4 border rounded-lg focus:outline-none focus:ring-2
+                focus:ring-purple-400 resize-none font-lora leading-relaxed text-sm md:text-base
+                ${isLight
+                                    ? 'bg-white border-purple-200 text-gray-800 placeholder-gray-400'
+                                    : 'bg-black/40 border-purple-500/30 text-purple-100 placeholder-purple-400/30'
+                                }
+              `}
                         />
+                        <p className={`text-xs mt-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Min 50 chars • Current: {concernDescription.length}
+                            {concernDescription.length >= 50 && (
+                                <span className="text-green-500 ml-2 font-semibold">✓ Good detail</span>
+                            )}
+                        </p>
+                    </div>
+
+                    {/* Current challenges */}
+                    <div className="mb-6">
+                        <label className={`block font-semibold mb-2 text-sm ${isLight ? 'text-purple-700' : 'text-purple-300'
+                            }`}>
+                            What specific challenges are you facing? <span className="text-red-400">*</span>
+                        </label>
+                        <textarea
+                            value={currentChallenges}
+                            onChange={(e) => setCurrentChallenges(e.target.value)}
+                            placeholder="What obstacles are blocking you? What have you already tried? What patterns do you notice?"
+                            rows={4}
+                            className={`
+                w-full p-4 border rounded-lg focus:outline-none focus:ring-2
+                focus:ring-purple-400 resize-none font-lora text-sm md:text-base
+                ${isLight
+                                    ? 'bg-white border-purple-200 text-gray-800 placeholder-gray-400'
+                                    : 'bg-black/40 border-purple-500/30 text-purple-100 placeholder-purple-400/30'
+                                }
+              `}
+                        />
+                        <p className={`text-xs mt-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Min 30 chars • Current: {currentChallenges.length}
+                            {currentChallenges.length >= 30 && (
+                                <span className="text-green-500 ml-2 font-semibold">✓</span>
+                            )}
+                        </p>
+                    </div>
+
+                    {/* Goals */}
+                    <div className="mb-8">
+                        <label className={`block font-semibold mb-2 text-sm ${isLight ? 'text-purple-700' : 'text-purple-300'
+                            }`}>
+                            What are your goals and desired outcomes? <span className="text-red-400">*</span>
+                        </label>
+                        <textarea
+                            value={goals}
+                            onChange={(e) => setGoals(e.target.value)}
+                            placeholder="What would you like to achieve? How would you like your life to look? What would success mean to you?"
+                            rows={4}
+                            className={`
+                w-full p-4 border rounded-lg focus:outline-none focus:ring-2
+                focus:ring-purple-400 resize-none font-lora text-sm md:text-base
+                ${isLight
+                                    ? 'bg-white border-purple-200 text-gray-800 placeholder-gray-400'
+                                    : 'bg-black/40 border-purple-500/30 text-purple-100 placeholder-purple-400/30'
+                                }
+              `}
+                        />
+                        <p className={`text-xs mt-1 ${isLight ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Min 30 chars • Current: {goals.length}
+                            {goals.length >= 30 && (
+                                <span className="text-green-500 ml-2 font-semibold">✓</span>
+                            )}
+                        </p>
+                    </div>
+
+                    {/* Error message */}
+                    {error && (
+                        <div className="mb-4 p-4 bg-red-900/30 border border-red-500/40 rounded-xl text-red-300 text-sm">
+                            {error}
+                        </div>
+                    )}
+
+                    {/* Submit button */}
+                    <Button
+                        onClick={handleGetGuidance}
+                        disabled={!isFormValid || isGenerating}
+                        style={{ touchAction: 'manipulation' }}
+                        className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 border-pink-400/50 shadow-lg py-4 text-base md:text-lg font-cinzel tracking-wider disabled:opacity-50 disabled:cursor-not-allowed min-h-[56px]"
+                    >
+                        {isGenerating
+                            ? '🔮 Generating Guidance...'
+                            : `🔮 Get Divine Guidance — ₹${servicePrice}`
+                        }
+                    </Button>
+
+                    <p className={`text-center text-xs mt-3 ${isLight ? 'text-gray-400' : 'text-gray-500'
+                        }`}>
+                        <span className="text-red-500">*</span> All fields required •
+                        Detailed responses ensure better guidance
+                    </p>
+
+                    {/* Info note */}
+                    <div className={`
+            mt-4 p-4 rounded-lg border text-xs text-center
+            ${isLight
+                            ? 'bg-purple-50 border-purple-200 text-gray-700'
+                            : 'bg-purple-900/20 border-purple-500/20 text-purple-300'
+                        }
+          `}>
+                        💡 <strong>Note:</strong> For personalized astrological predictions based on your
+                        birth chart, book a one-on-one consultation with our expert Vedic astrologers.
+                    </div>
+                </div>
+            )}
+
+            {/* ── Full Report ── */}
+            {currentReport && isPaid && (
+                <div ref={reportRef} className="mt-8 scroll-mt-6">
+                    <div className={`
+            rounded-xl shadow-2xl border backdrop-blur-md p-6 md:p-8
+            ${isLight
+                            ? 'bg-white/80 border-purple-200'
+                            : 'bg-gradient-to-br from-purple-900/40 via-indigo-900/40 to-black/60 border-purple-500/30'
+                        }
+          `}>
+                        <ErrorBoundary>
+                            <FullReport
+                                reading={currentReport}
+                                category="personal-guidance"
+                                title="Personal Guidance & Remedies"
+                                subtitle={
+                                    CONCERN_TYPES.find(c => c.value === concernType)?.label ||
+                                    'Guidance Report'
+                                }
+                                imageUrl={reportImage}
+                            />
+                        </ErrorBoundary>
                     </div>
                 </div>
             )}
