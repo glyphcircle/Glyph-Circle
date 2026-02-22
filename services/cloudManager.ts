@@ -1,117 +1,159 @@
-// src/services/cloudManager.ts - UPDATED TO 2024 METHOD
-// Uses Google Drive Thumbnail API (more reliable)
-
-import { dbService } from './db';
+import { supabase } from './supabaseClient';
 
 export interface CloudProvider {
-  id: string;
-  provider: 'Google Drive' | 'Dropbox' | 'AWS S3' | 'Firebase Storage' | 'Cloudinary' | 'Generic';
-  name: string;
+  id?: string;
+  name?: string;
+  provider?: string;
   api_key?: string;
-  secret?: string;
   folder_id?: string;
   bucket_name?: string;
-  region?: string;
-  cloud_name?: string;
-  base_url?: string;
-  is_active: boolean;
-  status: 'active' | 'inactive';
+  is_active?: boolean;
+  status?: string;
 }
 
 class CloudManager {
-  async saveProvider(provider: Omit<CloudProvider, 'id' | 'status'> & { id?: string }) {
-    const data = { ...provider, status: 'active' };
-    if (provider.id) {
-      await dbService.updateEntry('cloud_providers', provider.id, data);
-    } else {
-      await dbService.createEntry('cloud_providers', { ...data });
+
+  // ─────────────────────────────────────────────
+  // CORE: Extract Drive File ID from ANY URL format
+  // ─────────────────────────────────────────────
+  private extractDriveFileId(url: string): string | null {
+    if (!url) return null;
+
+    // Format: /file/d/FILE_ID/view  ← most common share link
+    const fileDMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/);
+    if (fileDMatch) return fileDMatch[1];
+
+    // Format: ?id=FILE_ID or &id=FILE_ID  ← uc?export, thumbnail
+    const qIdMatch = url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+    if (qIdMatch) return qIdMatch[1];
+
+    // Format: /folders/FILE_ID
+    const folderMatch = url.match(/\/folders\/([a-zA-Z0-9_-]{10,})/);
+    if (folderMatch) return folderMatch[1];
+
+    return null;
+  }
+
+  // ─────────────────────────────────────────────
+  // PRIMARY: Convert ANY Drive URL → thumbnail API
+  // This is the ONLY working embed method in 2026
+  // ─────────────────────────────────────────────
+  toEmbeddableUrl(url: string): string {
+    if (!url || !url.trim()) return url;
+    const trimmed = url.trim();
+
+    // Not a Drive URL — return as-is
+    if (!trimmed.includes('drive.google.com')) return trimmed;
+
+    // Already correct thumbnail format — return as-is
+    if (trimmed.includes('drive.google.com/thumbnail')) return trimmed;
+
+    const fileId = this.extractDriveFileId(trimmed);
+    if (!fileId) {
+      console.warn('⚠️ [CloudManager] Could not extract file ID from:', trimmed);
+      return trimmed;
     }
+
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
   }
 
-  async deleteProvider(id: string) {
-    await dbService.updateEntry('cloud_providers', id, { status: 'inactive' });
-  }
-
-  async testConnection(provider: Partial<CloudProvider>): Promise<{ success: boolean; message: string }> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (!provider.api_key && !provider.base_url && !provider.bucket_name && provider.provider !== 'Google Drive') {
-          resolve({ success: false, message: "Missing required configuration fields" });
-        } else {
-          resolve({ success: true, message: `Successfully connected to ${provider.provider}.` });
-        }
-      }, 1500);
-    });
-  }
-
-  validateProviderActive(url: string, providers: CloudProvider[]): { valid: boolean; message?: string } {
-    if (!url || !url.startsWith('http')) return { valid: true };
-    let detectedProvider = '';
-    if (url.includes('drive.google.com') || url.includes('drive.usercontent.google.com')) detectedProvider = 'Google Drive';
-    else if (url.includes('dropbox.com')) detectedProvider = 'Dropbox';
-    else if (url.includes('s3') || url.includes('aws')) detectedProvider = 'AWS S3';
-    else if (url.includes('firebase')) detectedProvider = 'Firebase Storage';
-    else if (url.includes('cloudinary')) detectedProvider = 'Cloudinary';
-
-    if (detectedProvider) {
-      const isActive = providers.some(p => p.provider === detectedProvider && p.status === 'active' && p.is_active);
-      if (!isActive) return { valid: false, message: `⚠️ Missing configuration for ${detectedProvider}.` };
-    }
-    return { valid: true };
-  }
-
-  getProxyImageUrl(imageId: string | number, fallbackUrl: string): string {
-    if (String(imageId).startsWith('http')) return this.resolveImage(String(imageId));
-    return this.resolveImage(fallbackUrl);
-  }
-
-  /**
-   * ✅ UPDATED: Uses Google Drive Thumbnail API (2024 method)
-   * This is more reliable than lh3.googleusercontent.com
-   */
+  // ─────────────────────────────────────────────
+  // resolveImage — used everywhere in the app
+  // Handles ALL URL types: Drive, ImgBB, Unsplash, etc.
+  // ─────────────────────────────────────────────
   resolveImage(url: string | undefined): string {
     if (!url) return this.getFallbackImage();
 
     const trimmed = url.trim();
+    if (!trimmed) return this.getFallbackImage();
 
-    // ✅ ImgBB URLs - return as is
+    // ✅ ImgBB — always works, return as-is
     if (trimmed.includes('i.ibb.co') || trimmed.includes('ibb.co')) {
       return trimmed;
     }
 
-    // Already using thumbnail API - return as is
+    // ✅ Already correct thumbnail API — return as-is
     if (trimmed.includes('drive.google.com/thumbnail')) {
       return trimmed;
     }
 
-    // Already in lh3 format - return as is (legacy support)
+    // ✅ lh3 Google user content — still works
     if (trimmed.includes('lh3.googleusercontent.com')) {
       return trimmed;
     }
 
-    // Already a direct URL (Unsplash, etc) - return as is
-    if (trimmed.startsWith('http') && !trimmed.includes('drive.google')) {
+    // ✅ Any other non-Drive HTTP URL (Unsplash, CDN, etc.)
+    if (trimmed.startsWith('http') && !trimmed.includes('drive.google.com')) {
       return trimmed;
     }
 
-    // Extract Google Drive file ID
-    const fileIdMatch = trimmed.match(/[\\/=]([a-zA-Z0-9_-]{25,})/);
-    if (fileIdMatch && fileIdMatch[1]) {
-      const fileId = fileIdMatch[1];
-      console.log('🖼️ [CloudManager] Using Google Drive Thumbnail API, ID:', fileId);
-
-      // ✅ USE 2024 METHOD: Google Drive Thumbnail API
-      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+    // ✅ Any Drive URL variant → convert to thumbnail API
+    if (trimmed.includes('drive.google.com')) {
+      const fileId = this.extractDriveFileId(trimmed);
+      if (fileId) {
+        console.log('🖼️ [CloudManager] Resolving Drive ID:', fileId);
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+      }
     }
 
-    console.warn('⚠️ [CloudManager] Could not parse URL:', url);
+    // ✅ Bare file ID (25+ alphanumeric chars, no slashes)
+    const bareIdMatch = trimmed.match(/^([a-zA-Z0-9_-]{25,})$/);
+    if (bareIdMatch) {
+      console.log('🖼️ [CloudManager] Resolving bare Drive ID:', bareIdMatch[1]);
+      return `https://drive.google.com/thumbnail?id=${bareIdMatch[1]}&sz=w1000`;
+    }
+
+    console.warn('⚠️ [CloudManager] Could not resolve URL:', url);
     return this.getFallbackImage();
   }
 
-  private getFallbackImage(): string {
-    return 'https://placehold.co/400x400/0a0a14/d97706?text=No+Image';
+  // ─────────────────────────────────────────────
+  // Fallback image when nothing else works
+  // ─────────────────────────────────────────────
+  getFallbackImage(): string {
+    return 'https://images.unsplash.com/photo-1615529182904-14819d19f5d4?w=400&h=300&fit=crop';
+  }
+
+  // ─────────────────────────────────────────────
+  // Save cloud provider config to Supabase
+  // ─────────────────────────────────────────────
+  async saveProvider(provider: CloudProvider): Promise<void> {
+    const payload = {
+      ...provider,
+      status: provider.is_active ? 'active' : 'inactive',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (provider.id) {
+      const { error } = await supabase
+        .from('cloud_providers')
+        .update(payload)
+        .eq('id', provider.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('cloud_providers')
+        .insert(payload);
+      if (error) throw error;
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // Get active provider from DB
+  // ─────────────────────────────────────────────
+  async getActiveProvider(): Promise<CloudProvider | null> {
+    const { data, error } = await supabase
+      .from('cloud_providers')
+      .select('*')
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[CloudManager] Failed to get provider:', error);
+      return null;
+    }
+    return data;
   }
 }
 
-// Export single instance
 export const cloudManager = new CloudManager();

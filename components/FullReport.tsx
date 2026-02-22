@@ -97,9 +97,10 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
 
   // Custom markdown components for rendering images and links
   const markdownComponents = useMemo(() => ({
+    // ✅ NEW — toEmbeddableUrl guarantees <img>-safe URL
+    // ✅ Use resolveImage only — which now correctly returns thumbnail URLs
     img: ({ node, src, alt, ...props }: any) => {
-      let imageSrc = src || '';
-      const resolvedSrc = cloudManager.resolveImage(imageSrc);
+      const resolvedSrc = cloudManager.resolveImage(src || '');
 
       return (
         <div className={`${isMobile ? 'my-4' : 'my-6'} flex justify-center`}>
@@ -109,7 +110,8 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
             className={`rounded-lg shadow-lg ${isMobile ? 'max-w-full' : 'max-w-md'} w-full h-auto object-cover border-2 border-purple-500/30`}
             onError={(e) => {
               console.error('❌ Image failed to load:', resolvedSrc);
-              e.currentTarget.src = 'https://images.unsplash.com/photo-1615529182904-14819d19f5d4?w=400&h=300&fit=crop';
+              (e.currentTarget as HTMLImageElement).src =
+                'https://images.unsplash.com/photo-1615529182904-14819d19f5d4?w=400&h=300&fit=crop';
             }}
             loading="lazy"
             {...props}
@@ -117,6 +119,8 @@ const FullReport: React.FC<FullReportProps> = ({ reading, title, subtitle, chart
         </div>
       );
     },
+
+
     a: ({ node, href, children, ...props }: any) => {
       if (href?.startsWith('/')) {
         return (
