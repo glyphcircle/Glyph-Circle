@@ -63,6 +63,7 @@ import { useDevice } from './hooks/useDevice';
 import { DebugConsole } from './components/DebugConsole';
 import AuthCallback from './components/AuthCallback';
 import BiometricEnrollPrompt from './components/BiometricEnrollPrompt';
+import { initPuter } from './services/aiService';
 // Call once at top level — warms the cache before any service is used
 preloadServiceRegistry();
 
@@ -150,6 +151,10 @@ function AppRoutes() {
 
         {showLayout && <Header onLogout={logout} isMobile={isMobile} />}
 
+        {/* ✅ BiometricEnrollPrompt — separate, clean */}
+        {isAuthenticated && <BiometricEnrollPrompt />}
+
+        {/* ✅ Authenticated overlays — separate block */}
         {isAuthenticated && (
           <>
             <DailyReminder />
@@ -169,11 +174,9 @@ function AppRoutes() {
         )}
 
         <main className={`flex-grow ${showLayout ? `container mx-auto ${isMobile ? 'px-3 pt-4 pb-28' : 'px-4 py-8'}` : ''} overflow-x-hidden`}>
-
           {location.pathname === '/home' && isAuthenticated && <PanchangBar />}
 
           <Routes>
-            {/* ... all your routes stay the same ... */}
             <Route path="/" element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />} />
             <Route path="/login" element={isAuthenticated ? <Navigate to="/home" /> : <Login />} />
             <Route path="/register" element={isAuthenticated ? <Navigate to="/home" /> : <Register />} />
@@ -214,17 +217,15 @@ function AppRoutes() {
             <Route path="/voice-oracle" element={<ProtectedRoute><ErrorBoundary><VoiceOracle /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><ErrorBoundary><KalnirnayeCalendar /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/coming-soon" element={<ComingSoon />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />  {/* ✅ before wildcard */}
             <Route path="*" element={<Navigate to="/login" />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
           </Routes>
         </main>
 
-        {/* ✅ Mobile nav must be outside main to avoid overflow issues */}
         {showLayout && isMobile && <MobileNavBar />}
         {showLayout && !isMobile && <Footer />}
 
-        {/* ✅ FIXED: Debug Console moved OUTSIDE Routes and always visible */}
-        {showLayout && <BiometricEnrollPrompt />}
+        {/* ✅ No duplicate BiometricEnrollPrompt here */}
         <DebugConsole />
       </div>
     </CartProvider>
@@ -233,6 +234,9 @@ function AppRoutes() {
 
 // Main App Component stays the same
 function App() {
+  useEffect(() => {
+    initPuter(); // non-blocking, silent
+  }, []);
   return (
     <AccessibilityProvider>
       <AnalyticsProvider>

@@ -53,6 +53,26 @@ enum AIProvider {
     PUTER = 'puter',
 }
 
+//Pre-authenticate Puter Silently
+let puterReady = false;
+export const initPuter = async (): Promise<void> => {
+    if (puterReady) return;
+    try {
+        // ✅ Sign in anonymously — eliminates 401 on whoami
+        if (typeof puter !== 'undefined') {
+            const isSignedIn = await puter.auth.isSignedIn();
+            if (!isSignedIn) {
+                await puter.auth.signIn();  // triggers anonymous session
+            }
+            puterReady = true;
+            console.log('✅ Puter ready');
+        }
+    } catch (err) {
+        // Fail silently — app works without Puter auth
+        console.warn('⚠️ Puter init skipped:', err);
+    }
+};
+
 // ============================================================
 // 🔐 PUTER AUTHENTICATION
 // Forces sign-in BEFORE any AI call when using Puter.
