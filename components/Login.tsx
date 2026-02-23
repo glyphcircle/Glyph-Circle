@@ -139,7 +139,7 @@ const Login: React.FC = () => {
         options: {
           data: { full_name: regFullName || regEmail.split('@')[0] },
           emailRedirectTo: window.location.hostname === 'localhost'
-            ? 'http://localhost:5173/#/auth/callback'
+            ? `${window.location.origin}`
             : 'https://glyphcircle.github.io/Glyph-Circle/#/auth/callback'
         }
       });
@@ -379,8 +379,8 @@ const Login: React.FC = () => {
                   onClick={handleBiometricLogin}
                   disabled={isSubmitting}
                   className={`mt-4 w-full flex items-center justify-center gap-3 py-3.5 rounded-xl border-2 font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${isLight
-                      ? 'border-amber-400/50 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                      : 'border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10'
+                    ? 'border-amber-400/50 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                    : 'border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10'
                     }`}
                 >
                   <Fingerprint size={20} />

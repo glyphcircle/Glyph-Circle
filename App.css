@@ -1,6 +1,10 @@
 /* App.css - Mystical Theme Global Styles */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
+
   /* Dynamic opacity variables controlled by ThemeContext */
   --hover-opacity: 0.85;
   --card-opacity: 0.95;
