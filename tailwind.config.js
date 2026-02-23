@@ -1,6 +1,15 @@
 // tailwind.config.js — move all your theme config here
 export default {
-  content: ['./index.html', './**/*.{ts,tsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{ts,tsx}',      // ✅ scoped to src only
+    './*.{ts,tsx}',             // ✅ root level files
+    './components/**/*.{ts,tsx}',
+    './pages/**/*.{ts,tsx}',
+    './context/**/*.{ts,tsx}',
+    './hooks/**/*.{ts,tsx}',
+    './services/**/*.{ts,tsx}',
+  ],
   darkMode: 'class',
   theme: {
     extend: {

@@ -55,64 +55,38 @@ enum AIProvider {
 
 //Pre-authenticate Puter Silently
 let puterReady = false;
+// ❌ CURRENT — crashes with "Cannot read properties of null (reading 'closed')"
+// ✅ FIXED — just verify SDK exists, no signIn
 export const initPuter = async (): Promise<void> => {
     if (puterReady) return;
     try {
-        // ✅ Sign in anonymously — eliminates 401 on whoami
-        if (typeof puter !== 'undefined') {
-            const isSignedIn = await puter.auth.isSignedIn();
-            if (!isSignedIn) {
-                await puter.auth.signIn();  // triggers anonymous session
-            }
+        if (typeof puter !== 'undefined' && (window as any).puter?.ai) {
             puterReady = true;
-            console.log('✅ Puter ready');
+            console.log('✅ Puter SDK ready (anonymous session auto-managed)');
         }
     } catch (err) {
-        // Fail silently — app works without Puter auth
         console.warn('⚠️ Puter init skipped:', err);
     }
 };
+
+
 
 // ============================================================
 // 🔐 PUTER AUTHENTICATION
 // Forces sign-in BEFORE any AI call when using Puter.
 // ============================================================
 
+// ✅ FIXED — skip auth entirely, Puter auto-handles anonymous sessions
 const ensurePuterAuthentication = async (): Promise<boolean> => {
     if (typeof window === 'undefined' || !(window as any).puter) {
         console.error('❌ Puter not loaded');
         return false;
     }
-
-    const puter = (window as any).puter;
-
-    try {
-        const isSignedIn = await puter.auth.isSignedIn();
-
-        if (!isSignedIn) {
-            console.log('🔐 User not signed in, triggering sign-in flow...');
-            await puter.auth.signIn();
-            console.log('✅ User signed in successfully');
-        }
-
-        const user = await puter.auth.getUser();
-        console.log('👤 Puter user:', user.username, '| Email:', user.email);
-
-        if (user.email_confirmed === false) {
-            console.warn('⚠️ Email not confirmed');
-            alert('📧 Please verify your email to continue.\n\nCheck your inbox for the verification code from Puter.');
-            return false;
-        }
-
-        console.log('✅ User fully authenticated and verified');
-        return true;
-
-    } catch (error: any) {
-        console.error('❌ Puter authentication error:', error);
-        alert(`❌ Authentication Error\n\n${error.message}\n\nPlease try:\n1. Going to puter.com\n2. Signing in there\n3. Coming back to this app`);
-        return false;
-    }
+    // Puter AI works in anonymous mode — no sign-in required
+    console.log('✅ Puter ready (anonymous mode)');
+    return true;
 };
+
 
 // ============================================================
 // 🔀 SMART AI PROVIDER SELECTOR

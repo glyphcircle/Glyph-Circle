@@ -49,6 +49,18 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       sourcemap: false,
       chunkSizeWarningLimit: 1600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // ✅ Split heavy vendor libs into separate chunks
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-charts': ['recharts'],
+            'vendor-pdf': ['jspdf', 'html2canvas'],
+            'vendor-ui': ['lucide-react'],
+          }
+        }
+      }
     },
   };
 });
