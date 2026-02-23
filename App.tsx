@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom';
 
 // Component imports - using relative paths for stability
 import { preloadServiceRegistry } from './services/serviceRegistry';
@@ -43,6 +43,7 @@ import ComingSoon from './components/ComingSoon';
 import ReportTemplateManager from './components/ReportTemplateManager';
 import OrderConfirmation from './components/OrderConfirmation';
 import PersonalGuidance from './components/PersonalGuidance';
+
 // Context and Provider imports
 import { useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -60,18 +61,25 @@ import ContextDbNavigator from './components/ContextDbNavigator';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
+import { useIdleTimeout } from './hooks/useIdleTimeout';
 import { DebugConsole } from './components/DebugConsole';
 import AuthCallback from './components/AuthCallback';
 import BiometricEnrollPrompt from './components/BiometricEnrollPrompt';
 import { initPuter } from './services/aiService';
+
 // Call once at top level — warms the cache before any service is used
 preloadServiceRegistry();
 
+// ─────────────────────────────────────────────────────────────
 // Idle Cursor Component
+// Shows OM symbol at cursor position after 3s of inactivity
+// ─────────────────────────────────────────────────────────────
+// App.tsx — IdleCursor component — COMPLETE REPLACEMENT
+
 const IdleCursor: React.FC = () => {
   const [isIdle, setIsIdle] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const idleTimer = useRef<any | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handleMove = (e: MouseEvent) => {
@@ -80,7 +88,6 @@ const IdleCursor: React.FC = () => {
       if (idleTimer.current) clearTimeout(idleTimer.current);
       idleTimer.current = setTimeout(() => setIsIdle(true), 3000);
     };
-
     const handleClick = () => setIsIdle(false);
 
     window.addEventListener('mousemove', handleMove);
@@ -98,19 +105,70 @@ const IdleCursor: React.FC = () => {
   if (!isIdle) return null;
 
   return (
-    <div
-      className="fixed pointer-events-none z-[9999] select-none animate-pulse-glow"
-      style={{ left: pos.x, top: pos.y, transform: 'translate(-50%, -50%)', cursor: 'none' }}
-    >
-      <span className="text-5xl text-amber-400 font-bold drop-shadow-[0_0_20px_rgba(245,158,11,0.9)] select-none">
-        ॐ
-      </span>
-      <style>{`body, button, a, input { cursor: none !important; }`}</style>
+    <>
+      <style>{`* { cursor: none !important; }`}</style>
+      {/* ✅ SVG has NO bounding box artifact — pure glyph with transparent fill area */}
+      <svg
+        className="fixed pointer-events-none z-[9999] animate-pulse-glow"
+        style={{
+          left: pos.x,
+          top: pos.y,
+          transform: 'translate(-50%, -50%)',
+          overflow: 'visible',
+          width: '60px',
+          height: '60px',
+        }}
+        viewBox="0 0 60 60"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <filter id="om-glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <text
+          x="50%"
+          y="50%"
+          dominantBaseline="central"
+          textAnchor="middle"
+          fontSize="48"
+          fill="#f59e0b"
+          filter="url(#om-glow)"
+          style={{ fontFamily: 'serif', userSelect: 'none' }}
+        >
+          ॐ
+        </text>
+      </svg>
+    </>
+  );
+};
+
+
+// ─────────────────────────────────────────────────────────────
+// Idle Warning Toast
+// Shows 1 minute before auto-logout
+// ─────────────────────────────────────────────────────────────
+const IdleWarningToast: React.FC<{ visible: boolean }> = ({ visible }) => {
+  if (!visible) return null;
+  return (
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9998] animate-fade-in-up">
+      <div className="bg-black/80 backdrop-blur-md border border-amber-500/50 rounded-xl px-5 py-3 shadow-[0_0_20px_rgba(245,158,11,0.3)] flex items-center gap-3">
+        <span className="text-xl">⏳</span>
+        <span className="text-amber-200 text-sm font-cinzel">
+          You will be logged out in <strong>1 minute</strong> due to inactivity
+        </span>
+      </div>
     </div>
   );
 };
 
+// ─────────────────────────────────────────────────────────────
 // Protected Route Component
+// ─────────────────────────────────────────────────────────────
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -125,11 +183,36 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
+// ─────────────────────────────────────────────────────────────
 // App Routes Component
+// ─────────────────────────────────────────────────────────────
 function AppRoutes() {
   const { isAuthenticated, isAdminVerified, logout } = useAuth();
   const location = useLocation();
   const { isMobile } = useDevice();
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+
+  // ✅ Save last visited path for post-login resume
+  useEffect(() => {
+    const isAuthPage = ['/login', '/register', '/master-login'].includes(location.pathname);
+    const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/master-login';
+    if (isAuthenticated && !isAuthPage && !isAdminPage) {
+      sessionStorage.setItem('lastPath', location.pathname);
+    }
+  }, [location.pathname, isAuthenticated]);
+
+  // ✅ Auto-logout on idle — 20 min timeout, warn at 19 min
+  useIdleTimeout({
+    enabled: isAuthenticated,
+    onWarn: useCallback(() => {
+      setShowIdleWarning(true);
+    }, []),
+    onIdle: useCallback(() => {
+      setShowIdleWarning(false);
+      logout();
+    }, [logout]),
+  });
+
   useEffect(() => {
     console.log('📱 Device Detection:', {
       isMobile,
@@ -139,6 +222,7 @@ function AppRoutes() {
       devicePixelRatio: window.devicePixelRatio
     });
   }, [isMobile]);
+
   const isAuthPage = ['/login', '/register', '/master-login'].includes(location.pathname);
   const isAdminPage = location.pathname.startsWith('/admin') || location.pathname === '/master-login';
   const showLayout = isAuthenticated && !isAuthPage && !isAdminPage;
@@ -149,12 +233,15 @@ function AppRoutes() {
 
         <IdleCursor />
 
+        {/* ✅ Idle warning toast — 1 min before logout */}
+        <IdleWarningToast visible={showIdleWarning} />
+
         {showLayout && <Header onLogout={logout} isMobile={isMobile} />}
 
         {/* ✅ BiometricEnrollPrompt — separate, clean */}
         {isAuthenticated && <BiometricEnrollPrompt />}
 
-        {/* ✅ Authenticated overlays — separate block */}
+        {/* ✅ Authenticated overlays */}
         {isAuthenticated && (
           <>
             <DailyReminder />
@@ -217,7 +304,7 @@ function AppRoutes() {
             <Route path="/voice-oracle" element={<ProtectedRoute><ErrorBoundary><VoiceOracle /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><ErrorBoundary><KalnirnayeCalendar /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/coming-soon" element={<ComingSoon />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />  {/* ✅ before wildcard */}
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
         </main>
@@ -225,18 +312,20 @@ function AppRoutes() {
         {showLayout && isMobile && <MobileNavBar />}
         {showLayout && !isMobile && <Footer />}
 
-        {/* ✅ No duplicate BiometricEnrollPrompt here */}
         <DebugConsole />
       </div>
     </CartProvider>
   );
 }
 
-// Main App Component stays the same
+// ─────────────────────────────────────────────────────────────
+// Main App Component
+// ─────────────────────────────────────────────────────────────
 function App() {
   useEffect(() => {
     initPuter(); // non-blocking, silent
   }, []);
+
   return (
     <AccessibilityProvider>
       <AnalyticsProvider>

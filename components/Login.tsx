@@ -1,7 +1,7 @@
 // Login.tsx — Fixed: biometric imports at top, hooks in correct position
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/db';
@@ -94,7 +94,6 @@ const Login: React.FC = () => {
         return;
       }
       await login(email, password);
-      // ✅ Save last_user_id after successful login for biometric use
       const { data } = await supabase.auth.getUser();
       if (data?.user) {
         localStorage.setItem('last_user_id', data.user.id);
@@ -103,12 +102,16 @@ const Login: React.FC = () => {
           localStorage.setItem(`refresh_token_${data.user.id}`, sessionData.session.refresh_token);
         }
       }
+      // ✅ Resume from last visited page
+      const lastPath = sessionStorage.getItem('lastPath') || '/home';
+      navigate(lastPath, { replace: true });
     } catch (err: any) {
       setLocalError(err.message || "Authentication failed.");
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,19 +189,21 @@ const Login: React.FC = () => {
         token: credentialResponse.credential!,
       });
       if (error) throw error;
-      // ✅ Save last_user_id for biometric on Google login too
       if (data.user) {
         localStorage.setItem('last_user_id', data.user.id);
         if (data.session?.refresh_token) {
           localStorage.setItem(`refresh_token_${data.user.id}`, data.session.refresh_token);
         }
       }
-      navigate('/home');
+      // ✅ Resume from last visited page
+      const lastPath = sessionStorage.getItem('lastPath') || '/home';
+      navigate(lastPath, { replace: true });
     } catch (err: any) {
       setLocalError(err.message || 'Google sign-in failed. Please try again.');
       setIsSubmitting(false);
     }
   };
+
 
   const handleGoogleError = () => {
     setLocalError('Google sign-in was cancelled or failed');
@@ -218,13 +223,16 @@ const Login: React.FC = () => {
     }
   };
 
+  //phone OTP login
   const handleOtpVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setLocalError(null);
     try {
       await verifyOtp(phone, otp);
-      navigate('/home');
+      // ✅ Resume from last visited page
+      const lastPath = sessionStorage.getItem('lastPath') || '/home';
+      navigate(lastPath, { replace: true });
     } catch (err: any) {
       setLocalError(err.message || "Invalid OTP");
     } finally {
@@ -244,12 +252,15 @@ const Login: React.FC = () => {
         if (refreshToken) {
           const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
           if (!error && data.session) {
-            navigate('/home');
+            // ✅ Resume from last visited page
+            const lastPath = sessionStorage.getItem('lastPath') || '/home';
+            navigate(lastPath, { replace: true });
             return;
           }
         }
-        // Fallback if no refresh token — still navigate, Supabase session may persist
-        navigate('/home');
+        // Fallback — session may already persist
+        const lastPath = sessionStorage.getItem('lastPath') || '/home';
+        navigate(lastPath, { replace: true });
       } else {
         setLocalError(result.error || 'Biometric authentication failed.');
       }
@@ -259,6 +270,7 @@ const Login: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
 
   // ── JSX ───────────────────────────────────────────────────────────────
   return (
