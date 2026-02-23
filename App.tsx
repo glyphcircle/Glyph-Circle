@@ -224,6 +224,7 @@ function AppRoutes() {
         {showLayout && !isMobile && <Footer />}
 
         {/* ✅ FIXED: Debug Console moved OUTSIDE Routes and always visible */}
+        {showLayout && <BiometricEnrollPrompt />}
         <DebugConsole />
       </div>
     </CartProvider>
@@ -242,5 +243,5 @@ function App() {
     </AccessibilityProvider>
   );
 }
-<BiometricEnrollPrompt />
+
 export default App;

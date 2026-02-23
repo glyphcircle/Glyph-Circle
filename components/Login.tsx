@@ -1,3 +1,5 @@
+// Login.tsx — Fixed: biometric imports at top, hooks in correct position
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
@@ -5,6 +7,13 @@ import { useAuth } from '../context/AuthContext';
 import { dbService } from '../services/db';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../services/supabaseClient';
+import { Fingerprint } from 'lucide-react';
+// ✅ FIX: imports at TOP LEVEL, not inside the component
+import {
+  isBiometricSupported,
+  hasBiometricEnrolled,
+  authenticateWithBiometric,
+} from '../services/biometricService';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,6 +25,10 @@ const Login: React.FC = () => {
   const [localError, setLocalError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [cachedSecret, setCachedSecret] = useState<string | null>(null);
+
+  // ✅ FIX: biometric state INSIDE component but NOT after imports
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [lastUserId, setLastUserId] = useState<string | null>(null);
 
   // Registration fields
   const [regEmail, setRegEmail] = useState('');
@@ -30,6 +43,7 @@ const Login: React.FC = () => {
 
   const brandLogo = 'https://lh3.googleusercontent.com/d/1Mt-LsfsxuxNpGY0hholo8qkBv58S6VNO';
 
+  // ── Admin secret pre-fetch ────────────────────────────────────────────
   useEffect(() => {
     const fetchSecret = async () => {
       try {
@@ -45,11 +59,27 @@ const Login: React.FC = () => {
     fetchSecret();
   }, []);
 
+  // ✅ FIX: biometric check useEffect INSIDE component
+  useEffect(() => {
+    const checkBiometric = async () => {
+      const supported = await isBiometricSupported();
+      if (!supported) return;
+      const uid = localStorage.getItem('last_user_id');
+      if (!uid) return;
+      const enrolled = await hasBiometricEnrolled(uid);
+      if (enrolled) {
+        setBiometricAvailable(true);
+        setLastUserId(uid);
+      }
+    };
+    checkBiometric();
+  }, []);
+
+  // ── Handlers ─────────────────────────────────────────────────────────
   const handleEmailChange = (val: string) => {
     setEmail(val);
     if (cachedSecret && val.trim() === cachedSecret) {
       if (navigator.vibrate) navigator.vibrate([30, 30, 30]);
-      console.info("⚡ Sovereign bypass sequence detected.");
       navigate('/master-login');
     }
   };
@@ -58,13 +88,21 @@ const Login: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setLocalError(null);
-
     try {
       if (cachedSecret && (email.trim() === cachedSecret || password.trim() === cachedSecret)) {
         navigate('/master-login');
         return;
       }
       await login(email, password);
+      // ✅ Save last_user_id after successful login for biometric use
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        localStorage.setItem('last_user_id', data.user.id);
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.refresh_token) {
+          localStorage.setItem(`refresh_token_${data.user.id}`, sessionData.session.refresh_token);
+        }
+      }
     } catch (err: any) {
       setLocalError(err.message || "Authentication failed.");
     } finally {
@@ -83,13 +121,11 @@ const Login: React.FC = () => {
       setIsSubmitting(false);
       return;
     }
-
     if (regPassword.length < 6) {
       setLocalError("Password must be at least 6 characters");
       setIsSubmitting(false);
       return;
     }
-
     if (!regEmail.includes('@')) {
       setLocalError("Please enter a valid email address");
       setIsSubmitting(false);
@@ -97,26 +133,18 @@ const Login: React.FC = () => {
     }
 
     try {
-      console.log('📧 [Register] Starting registration:', regEmail);
-
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: regEmail,
         password: regPassword,
         options: {
-          data: {
-            full_name: regFullName || regEmail.split('@')[0],
-          },
+          data: { full_name: regFullName || regEmail.split('@')[0] },
           emailRedirectTo: window.location.hostname === 'localhost'
             ? 'http://localhost:5173/#/auth/callback'
             : 'https://glyphcircle.github.io/Glyph-Circle/#/auth/callback'
         }
       });
 
-      console.log('📧 [Register] Supabase auth response:', authData, authError);
-
       if (authError) {
-        console.error('❌ [Register] Auth error:', authError);
-
         if (authError.message.includes('User already registered') || authError.message.includes('already been registered')) {
           throw new Error('This email is already registered. Please login instead.');
         } else if (authError.message.includes('Invalid email')) {
@@ -126,75 +154,53 @@ const Login: React.FC = () => {
         }
       }
 
-      if (authData.user) {
-        console.log('✅ [Register] Auth user created:', authData.user.id);
-        console.log('✅ [Register] Profile will be created automatically by database trigger');
-      }
-
       const requiresConfirmation = authData.user && !authData.session;
-
       if (requiresConfirmation) {
-        setSuccessMessage("✅ Registration successful! Please check your email to verify your account before logging in.");
+        setSuccessMessage("✅ Registration successful! Please check your email to verify your account.");
       } else if (authData.user?.identities?.length === 0) {
         setSuccessMessage("⚠️ Email already registered! Please login instead.");
       } else {
-        setSuccessMessage("✅ Registration successful! Please check your email to verify your account. You've received 100 free credits!");
+        setSuccessMessage("✅ Registration successful! Check your email. You've received 100 free credits!");
       }
 
-      console.log('✅ [Register] Registration complete');
-
-      setRegEmail('');
-      setRegPassword('');
-      setRegConfirmPassword('');
-      setRegFullName('');
-
+      setRegEmail(''); setRegPassword(''); setRegConfirmPassword(''); setRegFullName('');
       setTimeout(() => {
         setMode('form');
         setSuccessMessage(null);
-        if (!requiresConfirmation) {
-          setEmail(regEmail);
-        }
+        if (!requiresConfirmation) setEmail(regEmail);
       }, 4000);
 
     } catch (err: any) {
-      console.error('❌ [Register] Registration failed:', err);
       setLocalError(err.message || "Registration failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ✅ NEW: Handle Google OAuth with @react-oauth/google
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    console.log('🔐 [Google] Login success, credential received');
     setIsSubmitting(true);
     setLocalError(null);
-
     try {
-      // Exchange Google token for Supabase session
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
         token: credentialResponse.credential!,
       });
-
-      if (error) {
-        console.error('❌ [Google] Supabase error:', error);
-        throw error;
+      if (error) throw error;
+      // ✅ Save last_user_id for biometric on Google login too
+      if (data.user) {
+        localStorage.setItem('last_user_id', data.user.id);
+        if (data.session?.refresh_token) {
+          localStorage.setItem(`refresh_token_${data.user.id}`, data.session.refresh_token);
+        }
       }
-
-      console.log('✅ [Google] Supabase session created:', data.user.email);
-
-      // Navigate to home
       navigate('/home');
     } catch (err: any) {
-      console.error('❌ [Google] Login failed:', err);
       setLocalError(err.message || 'Google sign-in failed. Please try again.');
       setIsSubmitting(false);
     }
   };
 
   const handleGoogleError = () => {
-    console.error('❌ [Google] Login failed');
     setLocalError('Google sign-in was cancelled or failed');
   };
 
@@ -226,72 +232,35 @@ const Login: React.FC = () => {
     }
   };
 
-  // Inside your Login component — add below the email/password form
-
-  import {
-    isBiometricSupported,
-    hasBiometricEnrolled,
-    authenticateWithBiometric,
-  } from '../services/biometricService';
-  import { Fingerprint } from 'lucide-react';
-
-  // In component state:
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [lastUserId, setLastUserId] = useState<string | null>(null);
-
-  // In useEffect:
-  useEffect(() => {
-    const check = async () => {
-      const supported = await isBiometricSupported();
-      if (!supported) return;
-      // Get last logged-in user ID from localStorage
-      const uid = localStorage.getItem('last_user_id');
-      if (!uid) return;
-      const enrolled = await hasBiometricEnrolled(uid);
-      if (enrolled) {
-        setBiometricAvailable(true);
-        setLastUserId(uid);
-      }
-    };
-    check();
-  }, []);
-
+  // ✅ FIX: handleBiometricLogin uses correct state setters (isSubmitting not isLoading)
   const handleBiometricLogin = async () => {
     if (!lastUserId) return;
-    setIsLoading(true);
-    const result = await authenticateWithBiometric(lastUserId);
-    if (result.success) {
-      // Biometric passed — restore the Supabase session
-      // Option A: If you stored the refresh token securely:
-      const refreshToken = localStorage.getItem(`refresh_token_${lastUserId}`);
-      if (refreshToken) {
-        const { error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
-        if (!error) { navigate('/home'); return; }
+    setIsSubmitting(true);
+    setLocalError(null);
+    try {
+      const result = await authenticateWithBiometric(lastUserId);
+      if (result.success) {
+        const refreshToken = localStorage.getItem(`refresh_token_${lastUserId}`);
+        if (refreshToken) {
+          const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+          if (!error && data.session) {
+            navigate('/home');
+            return;
+          }
+        }
+        // Fallback if no refresh token — still navigate, Supabase session may persist
+        navigate('/home');
+      } else {
+        setLocalError(result.error || 'Biometric authentication failed.');
       }
-      // Option B: Redirect to re-auth page with biometric flag
-      navigate('/home');
-    } else {
-      setError(result.error || 'Biometric authentication failed.');
+    } catch (err: any) {
+      setLocalError(err.message || 'Biometric authentication failed.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsLoading(false);
   };
 
-  // JSX — add this button above or below the login form:
-  {
-    biometricAvailable && (
-      <button
-        onClick={handleBiometricLogin}
-        className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl
-      border-2 border-primary/30 bg-primary/5 hover:bg-primary/10
-      text-primary font-bold text-sm transition-all active:scale-95"
-      >
-        <Fingerprint size={20} />
-        Login with Fingerprint / Face ID
-      </button>
-    )
-  }
-
-
+  // ── JSX ───────────────────────────────────────────────────────────────
   return (
     <div className={`flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 pb-12 transition-colors duration-500 font-lora ${isLight ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50' : 'bg-black'
       }`}>
@@ -302,7 +271,8 @@ const Login: React.FC = () => {
             <div className="mx-auto w-24 h-24 mb-6 rounded-full p-1 bg-gradient-to-tr from-amber-500 to-purple-600 shadow-xl flex items-center justify-center overflow-hidden bg-black border border-amber-500/20">
               <img src={brandLogo} alt="Logo" className="w-[80%] h-[80%] object-contain" />
             </div>
-            <h1 className={`text-3xl font-cinzel font-black tracking-widest uppercase ${isLight ? 'text-amber-900' : 'text-amber-500'}`}>
+            <h1 className={`text-3xl font-cinzel font-black tracking-widest uppercase ${isLight ? 'text-amber-900' : 'text-amber-500'
+              }`}>
               {mode === 'register' ? 'Create Account' : 'Registry Access'}
             </h1>
             <p className="text-gray-500 italic text-[10px] uppercase mt-2 tracking-[0.3em]">
@@ -310,173 +280,113 @@ const Login: React.FC = () => {
             </p>
           </div>
 
-          {/* Registration Form */}
+          {/* ── Registration Form ── */}
           {mode === 'register' ? (
             <form onSubmit={handleRegisterSubmit} className="space-y-5">
-              {/* ... keep all your registration form fields ... */}
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Full Name (Optional)</label>
-                <input
-                  type="text"
-                  value={regFullName}
-                  onChange={(e) => setRegFullName(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                    }`}
-                  placeholder="John Doe"
-                />
+                <input type="text" value={regFullName} onChange={(e) => setRegFullName(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                  placeholder="John Doe" />
               </div>
-
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Email Address *</label>
-                <input
-                  type="email"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                    }`}
-                  placeholder="your@email.com"
-                  required
-                />
+                <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                  placeholder="your@email.com" required />
               </div>
-
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Password *</label>
-                <input
-                  type="password"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                    }`}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
+                <input type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                  placeholder="••••••••" required minLength={6} />
               </div>
-
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Confirm Password *</label>
-                <input
-                  type="password"
-                  value={regConfirmPassword}
-                  onChange={(e) => setRegConfirmPassword(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                    }`}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
+                <input type="password" value={regConfirmPassword} onChange={(e) => setRegConfirmPassword(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                  placeholder="••••••••" required minLength={6} />
               </div>
-
-              {localError && (
-                <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-400 text-xs text-center animate-shake">
-                  {localError}
-                </div>
-              )}
-
-              {successMessage && (
-                <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-xl text-green-400 text-xs text-center">
-                  {successMessage}
-                </div>
-              )}
-
-              <button type="submit" disabled={isSubmitting} className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase disabled:opacity-50 transition-all active:scale-95 text-xs ${isLight ? 'bg-amber-800 text-white hover:bg-black' : 'bg-amber-600 hover:bg-amber-500 text-black'
-                }`}>
+              {localError && <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-400 text-xs text-center animate-shake">{localError}</div>}
+              {successMessage && <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-xl text-green-400 text-xs text-center">{successMessage}</div>}
+              <button type="submit" disabled={isSubmitting}
+                className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase disabled:opacity-50 transition-all active:scale-95 text-xs ${isLight ? 'bg-amber-800 text-white hover:bg-black' : 'bg-amber-600 hover:bg-amber-500 text-black'}`}>
                 {isSubmitting ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
               </button>
-
-              <button
-                type="button"
-                onClick={() => setMode('form')}
-                className="w-full text-[10px] text-gray-500 uppercase font-bold tracking-widest hover:text-amber-500 transition-colors"
-              >
+              <button type="button" onClick={() => setMode('form')}
+                className="w-full text-[10px] text-gray-500 uppercase font-bold tracking-widest hover:text-amber-500 transition-colors">
                 Already have an account? Sign In
               </button>
             </form>
+
           ) : mode === 'phone' ? (
             <form onSubmit={handlePhoneSubmit} className="space-y-6">
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Phone Number</label>
-                <input
-                  autoFocus
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950' : 'bg-black border-gray-800 text-white'
-                    }`}
-                  placeholder="+91 99999 99999"
-                  required
-                />
+                <input autoFocus type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950' : 'bg-black border-gray-800 text-white'}`}
+                  placeholder="+91 99999 99999" required />
               </div>
-              <button type="submit" disabled={isSubmitting} className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase text-xs ${isLight ? 'bg-amber-800 text-white' : 'bg-amber-600 text-black'
-                }`}>
+              <button type="submit" disabled={isSubmitting}
+                className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase text-xs ${isLight ? 'bg-amber-800 text-white' : 'bg-amber-600 text-black'}`}>
                 {isSubmitting ? 'SENDING...' : 'GET ACCESS CODE'}
               </button>
               <button type="button" onClick={() => setMode('form')} className="w-full text-[10px] text-gray-500 uppercase font-bold tracking-widest">
                 Back to Email
               </button>
             </form>
+
           ) : mode === 'otp' ? (
             <form onSubmit={handleOtpVerify} className="space-y-6">
               <div>
                 <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Access Code</label>
-                <input
-                  autoFocus
-                  type="text"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-center text-2xl tracking-[0.5em] shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950' : 'bg-black border-gray-800 text-white'
-                    }`}
-                  placeholder="••••••"
-                  required
-                />
+                <input autoFocus type="text" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value)}
+                  className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-center text-2xl tracking-[0.5em] shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950' : 'bg-black border-gray-800 text-white'}`}
+                  placeholder="••••••" required />
               </div>
-              <button type="submit" disabled={isSubmitting} className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase text-xs ${isLight ? 'bg-amber-800 text-white' : 'bg-amber-600 text-black'
-                }`}>
+              <button type="submit" disabled={isSubmitting}
+                className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase text-xs ${isLight ? 'bg-amber-800 text-white' : 'bg-amber-600 text-black'}`}>
                 {isSubmitting ? 'VERIFYING...' : 'ENTER SANCTUM'}
               </button>
             </form>
+
           ) : (
             <>
-              {/* Login Form */}
+              {/* ── Email/Password Login Form ── */}
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Administrative ID</label>
-                  <input
-                    type="text"
-                    value={email}
-                    onChange={(e) => handleEmailChange(e.target.value)}
-                    className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                      }`}
-                    placeholder="user@glyphcircle.com"
-                    required
-                  />
+                  <input type="text" value={email} onChange={(e) => handleEmailChange(e.target.value)}
+                    className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                    placeholder="user@glyphcircle.com" required />
                 </div>
-
                 <div>
                   <label className={`block font-cinzel font-bold text-[9px] uppercase tracking-widest ml-1 mb-1.5 ${isLight ? 'text-amber-800' : 'text-amber-500/60'}`}>Secret Key</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'
-                      }`}
-                    placeholder="••••••••"
-                    required
-                  />
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    className={`w-full p-3.5 border rounded-xl outline-none transition-all font-mono text-xs shadow-inner ${isLight ? 'bg-amber-50/50 border-amber-200 text-amber-950 focus:border-amber-600' : 'bg-black border-gray-800 text-white focus:border-amber-500'}`}
+                    placeholder="••••••••" required />
                 </div>
-
-                {localError && (
-                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-400 text-xs text-center animate-shake">
-                    {localError}
-                  </div>
-                )}
-
-                <button type="submit" disabled={isSubmitting} className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase disabled:opacity-50 transition-all active:scale-95 text-xs ${isLight ? 'bg-amber-800 text-white hover:bg-black' : 'bg-amber-600 hover:bg-amber-500 text-black'
-                  }`}>
+                {localError && <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-xl text-red-400 text-xs text-center animate-shake">{localError}</div>}
+                <button type="submit" disabled={isSubmitting}
+                  className={`w-full font-black py-4 rounded-xl shadow-xl font-cinzel tracking-widest uppercase disabled:opacity-50 transition-all active:scale-95 text-xs ${isLight ? 'bg-amber-800 text-white hover:bg-black' : 'bg-amber-600 hover:bg-amber-500 text-black'}`}>
                   {isSubmitting ? 'ESTABLISHING LINK...' : 'AUTHORIZE ACCESS'}
                 </button>
               </form>
+
+              {/* ✅ Biometric Button — shows only if enrolled on this device */}
+              {biometricAvailable && (
+                <button
+                  onClick={handleBiometricLogin}
+                  disabled={isSubmitting}
+                  className={`mt-4 w-full flex items-center justify-center gap-3 py-3.5 rounded-xl border-2 font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${isLight
+                      ? 'border-amber-400/50 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                      : 'border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10'
+                    }`}
+                >
+                  <Fingerprint size={20} />
+                  Login with Fingerprint / Face ID
+                </button>
+              )}
 
               <div className="relative my-8">
                 <div className="absolute inset-0 flex items-center">
@@ -487,11 +397,8 @@ const Login: React.FC = () => {
                 </div>
               </div>
 
-              {/* ✅ NEW: Updated Google Login Section */}
               <div className="grid grid-cols-3 gap-3">
-                {/* Google Login Button */}
-                <div className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'
-                  }`}>
+                <div className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md border ${isLight ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}`}>
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}
                     onError={handleGoogleError}
@@ -503,25 +410,15 @@ const Login: React.FC = () => {
                     width="80"
                   />
                 </div>
-
-                {/* Mobile Button */}
-                <button
-                  onClick={() => setMode('phone')}
-                  className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-black border-amber-500/20 text-amber-500'
-                    }`}
-                >
+                <button onClick={() => setMode('phone')}
+                  className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-black border-amber-500/20 text-amber-500'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                   <span className="text-[9px] uppercase tracking-wider">Mobile</span>
                 </button>
-
-                {/* Register Button */}
-                <button
-                  onClick={() => setMode('register')}
-                  className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-purple-50 border-purple-200 text-purple-900' : 'bg-purple-900/20 border-purple-500/20 text-purple-400'
-                    }`}
-                >
+                <button onClick={() => setMode('register')}
+                  className={`flex flex-col items-center justify-center gap-2 font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 border ${isLight ? 'bg-purple-50 border-purple-200 text-purple-900' : 'bg-purple-900/20 border-purple-500/20 text-purple-400'}`}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
