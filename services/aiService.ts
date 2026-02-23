@@ -753,10 +753,30 @@ Respond in a wise, helpful, and mystical tone. Give practical advice grounded in
             const response = await client.ai.chat(fullPrompt, {
                 model: 'gpt-4o-mini',
             });
-            const content = typeof response === 'string'
-                ? response
-                : response?.message?.content || '';
-            return { text: () => content };
+            // REPLACE with — handles all Puter response shapes:
+            let content: string = '';
+
+            if (typeof response === 'string') {
+                content = response;
+            } else if (typeof response?.message?.content === 'string') {
+                // Standard shape: { message: { content: "..." } }
+                content = response.message.content;
+            } else if (Array.isArray(response?.message?.content)) {
+                // OpenAI array shape: { message: { content: [{ type: "text", text: "..." }] } }
+                content = response.message.content
+                    .filter((c: any) => c.type === 'text')
+                    .map((c: any) => c.text)
+                    .join('');
+            } else if (typeof response?.content === 'string') {
+                // Flat shape: { content: "..." }
+                content = response.content;
+            } else if (Array.isArray(response?.choices)) {
+                // OpenAI choices shape: { choices: [{ message: { content: "..." } }] }
+                content = response.choices[0]?.message?.content || '';
+            }
+
+            return { text: content || '' };
+
         },
     };
 };

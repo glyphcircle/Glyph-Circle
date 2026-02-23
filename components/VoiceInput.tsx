@@ -1,101 +1,292 @@
+// VoiceInput.tsx — Fixed: proper error handling, no crash on no-speech
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from '../hooks/useTranslation';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Mic, MicOff, Loader } from 'lucide-react';
 
 interface VoiceInputProps {
   onResult: (text: string) => void;
-  placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-declare global {
-  interface Window {
-    webkitSpeechRecognition: any;
-    SpeechRecognition: any;
-  }
-}
+// ── Browser compatibility ────────────────────────────────────────────────
+const getSpeechRecognition = () => {
+  if (typeof window === 'undefined') return null;
+  return (window as any).SpeechRecognition
+    || (window as any).webkitSpeechRecognition
+    || null;
+};
 
-const VoiceInput: React.FC<VoiceInputProps> = ({ onResult, placeholder, className = '' }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
-  const { t } = useTranslation();
+const isSupported = () => !!getSpeechRecognition();
 
+
+// ── Error messages shown to user ─────────────────────────────────────────
+const ERROR_MESSAGES: Record<string, string> = {
+  'no-speech': '',                                    // silent — just reset
+  'aborted': '',                                    // silent — user stopped
+  'network': 'No internet connection for voice.',
+  'not-allowed': 'Microphone access denied.',
+  'service-not-available': 'Voice service unavailable.',
+  'audio-capture': 'No microphone found.',
+  'bad-grammar': '',                                    // silent
+};
+
+type MicState = 'idle' | 'listening' | 'processing' | 'error';
+
+const VoiceInput: React.FC<VoiceInputProps> = ({
+  onResult,
+  className = '',
+  disabled = false,
+}) => {
+  const [micState, setMicState] = useState<MicState>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [transcript, setTranscript] = useState('');
+
+  const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
+  const shouldRestartRef = useRef(false);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup on unmount
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      setIsSupported(true);
-    }
+    return () => {
+      shouldRestartRef.current = false;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { }
+      }
+    };
   }, []);
 
+
+  const stopListening = useCallback(() => {
+    // ← Tell restart loop to stop
+    shouldRestartRef.current = false;
+    isListeningRef.current = false;
+
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { }
+    }
+    setMicState('idle');
+    setTranscript('');
+  }, []);
+
+
   const startListening = useCallback(() => {
-    if (!isSupported) return;
+    const SpeechRecognition = getSpeechRecognition();
+    if (!SpeechRecognition) {
+      setErrorMsg('Voice not supported in this browser.');
+      setMicState('error');
+      return;
+    }
 
-    // Haptic feedback for elderly/visually impaired confirmation
-    if (navigator.vibrate) navigator.vibrate(50);
+    // Clean up previous instance
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch { }
+    }
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+    }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setErrorMsg('');
+    setTranscript('');
+    setMicState('listening');
+    isListeningRef.current = true;
+    shouldRestartRef.current = true;  // ← user WANTS to listen
+
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
 
     recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US'; // Could map to LanguageContext
+    recognition.interimResults = true;
+    recognition.lang = 'en-IN';
+    recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
+    // ── Results handler ──
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      onResult(transcript);
-      setIsListening(false);
-      // Success haptic
-      if (navigator.vibrate) navigator.vibrate([50, 50]);
+      let interimText = '';
+      let finalText = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalText += t;
+        else interimText += t;
+      }
+
+      setTranscript(finalText || interimText);
+
+      if (finalText) {
+        // Got a result — stop restarting
+        shouldRestartRef.current = false;
+        isListeningRef.current = false;
+        setMicState('processing');
+        onResult(finalText.trim());
+        setTranscript('');
+        setMicState('idle');
+      }
     };
 
+    // ── KEY FIX: error handler with auto-restart ──
     recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event.error);
-      setIsListening(false);
-      // Error haptic
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      const code = event.error as string;
+      console.warn(`[VoiceInput] Recognition error: ${code}`);
+
+      if (code === 'no-speech') {
+        // Don't stop — just restart silently if user is still in listen mode
+        if (shouldRestartRef.current) {
+          setTranscript('');
+          // Small delay before restart to avoid rapid fire
+          restartTimerRef.current = setTimeout(() => {
+            if (shouldRestartRef.current) {
+              startListening();  // ← recursive restart
+            }
+          }, 300);
+        }
+        return;
+      }
+
+      if (code === 'aborted' || code === 'bad-grammar') {
+        // Silent reset only if user manually stopped
+        if (!shouldRestartRef.current) {
+          setMicState('idle');
+          isListeningRef.current = false;
+        }
+        return;
+      }
+
+      // Real errors — show message and stop
+      shouldRestartRef.current = false;
+      isListeningRef.current = false;
+      const messages: Record<string, string> = {
+        'network': 'No internet for voice recognition.',
+        'not-allowed': 'Microphone access denied. Check browser settings.',
+        'service-not-available': 'Voice service unavailable.',
+        'audio-capture': 'No microphone found.',
+      };
+      setErrorMsg(messages[code] ?? `Voice error: ${code}`);
+      setMicState('error');
+      setTimeout(() => { setErrorMsg(''); setMicState('idle'); }, 4000);
     };
 
+    // ── onend: only reset if user manually stopped ──
     recognition.onend = () => {
-      setIsListening(false);
+      // If no-speech restart is pending, don't reset state — let timer handle it
+      if (!shouldRestartRef.current) {
+        setMicState('idle');
+        isListeningRef.current = false;
+      }
+      // If shouldRestart is true, the restartTimer will call startListening again
     };
 
-    recognition.start();
-  }, [isSupported, onResult]);
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error('[VoiceInput] Failed to start:', e);
+      shouldRestartRef.current = false;
+      setMicState('idle');
+      isListeningRef.current = false;
+    }
+  }, [onResult]);  // startListening is stable — onResult dep only
 
-  if (!isSupported) return null;
+
+  const handleToggle = () => {
+    if (disabled) return;
+    if (micState === 'listening') {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  // ── Unsupported browser ──
+  if (!isSupported()) {
+    return (
+      <div className={`flex flex-col items-center gap-2 ${className}`}>
+        <div className="w-14 h-14 rounded-full bg-gray-800/50 border border-gray-700 flex items-center justify-center">
+          <MicOff size={22} className="text-gray-500" />
+        </div>
+        <p className="text-[9px] text-gray-500 uppercase tracking-wider font-bold text-center max-w-[120px]">
+          Voice not supported in this browser
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className={`relative inline-block ${className}`}>
+    <div className={`flex flex-col items-center gap-3 ${className}`}>
+
+      {/* ── Main Mic Button ── */}
       <button
-        type="button"
-        onClick={startListening}
-        aria-label={isListening ? "Listening..." : "Start voice input"}
-        className={`
-          p-3 rounded-full transition-all duration-300 flex items-center justify-center
-          ${isListening 
-            ? 'bg-red-600 text-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)] scale-110' 
-            : 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg border border-amber-400/50'
-          }
-        `}
+        onClick={handleToggle}
+        disabled={disabled || micState === 'processing'}
+        aria-label={micState === 'listening' ? 'Stop recording' : 'Start recording'}
+        className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 flex items-center justify-center
+          transition-all duration-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50
+          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-skin-accent
+          ${micState === 'listening'
+            ? 'bg-red-600 border-red-400 shadow-[0_0_30px_rgba(239,68,68,0.5)] scale-110'
+            : micState === 'error'
+              ? 'bg-gray-800 border-red-500/50'
+              : micState === 'processing'
+                ? 'bg-amber-700 border-amber-500'
+                : 'bg-skin-surface border-skin-accent/40 hover:border-skin-accent hover:shadow-[0_0_20px_rgba(245,158,11,0.3)]'
+          }`}
       >
-        {isListening ? (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 10.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-          </svg>
+        {/* Pulsing ring — only when listening */}
+        {micState === 'listening' && (
+          <>
+            <div className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping opacity-40" />
+            <div className="absolute inset-[-8px] rounded-full border border-red-500/20 animate-ping opacity-20 [animation-delay:0.3s]" />
+          </>
+        )}
+
+        {/* Icon */}
+        {micState === 'processing' ? (
+          <Loader size={22} className="text-amber-300 animate-spin" />
+        ) : micState === 'listening' ? (
+          <Mic size={22} className="text-white" />
+        ) : micState === 'error' ? (
+          <MicOff size={22} className="text-red-400" />
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
+          <Mic size={22} className="text-skin-accent" />
         )}
       </button>
-      {isListening && (
-        <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-amber-300 font-bold whitespace-nowrap bg-black/80 px-2 py-1 rounded">
-          Listening...
-        </span>
+
+      {/* ── Live transcript preview ── */}
+      {transcript && micState === 'listening' && (
+        <div className="bg-black/30 rounded-xl px-3 py-2 max-w-[200px] text-center">
+          <p className="text-[11px] text-amber-300 italic leading-snug truncate">
+            "{transcript}"
+          </p>
+        </div>
       )}
+
+      {/* ── Error message ── */}
+      {errorMsg && (
+        <p className="text-[10px] text-red-400 font-bold text-center max-w-[160px] animate-fade-in-up">
+          {errorMsg}
+        </p>
+      )}
+
+      {/* ── Status text ── */}
+      {/* Status text */}
+      {!errorMsg && (
+        <p className="text-[9px] text-skin-accent/50 font-black uppercase tracking-widest">
+          {micState === 'listening'
+            ? transcript
+              ? '● Hearing you...'
+              : '● Waiting... speak now'   // ← was just "Recording"
+            : micState === 'processing'
+              ? 'Processing...'
+              : 'Tap to speak'}
+        </p>
+      )}
+
+
     </div>
   );
 };
