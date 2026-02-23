@@ -16,14 +16,22 @@ const base64ToBuf = (b64: string): ArrayBuffer => {
 };
 
 // ── Check support ─────────────────────────────────────────────────────────
+// biometricService.ts
 export const isBiometricSupported = async (): Promise<boolean> => {
-  if (!window.PublicKeyCredential) return false;
   try {
-    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (!window.PublicKeyCredential) return false;
+    if (!window.isSecureContext) return false;  // ✅ HTTPS required
+
+    const available = await PublicKeyCredential
+      .isUserVerifyingPlatformAuthenticatorAvailable();
+
+    console.log('🔐 Platform authenticator available:', available);
+    return available;
   } catch {
     return false;
   }
 };
+
 
 // ── Check if user already has biometrics enrolled ────────────────────────
 // biometricService.ts — fix hasBiometricEnrolled
@@ -42,6 +50,21 @@ export const hasBiometricEnrolled = async (userId: string): Promise<boolean> => 
   return !!data;
 };
 
+// biometricService.ts — add this detection function
+export const isBiometricAvailable = async (): Promise<boolean> => {
+  try {
+    // Check 1: WebAuthn API exists
+    if (!window.PublicKeyCredential) return false;
+
+    // Check 2: Platform authenticator available (Face ID, fingerprint)
+    const available = await PublicKeyCredential
+      .isUserVerifyingPlatformAuthenticatorAvailable();
+
+    return available;
+  } catch {
+    return false;
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────────────
 // ENROLLMENT — called once after first email/password login

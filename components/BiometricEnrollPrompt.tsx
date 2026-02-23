@@ -10,32 +10,45 @@ import { useAuth } from '../context/AuthContext';
 
 const BiometricEnrollPrompt: React.FC = () => {
     const { user } = useAuth();
+
+    // ✅ ALL hooks declared at top level, in order
     const [show, setShow] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState('');
 
+    // ✅ Single unified useEffect — no duplicates
     useEffect(() => {
         const check = async () => {
             if (!user) return;
+
+            // Step 1: Check browser/device supports biometrics
             const supported = await isBiometricSupported();
+            console.log('👆 Biometric supported:', supported);
             if (!supported) return;
 
+            // Step 2: Check if already enrolled
             const enrolled = await hasBiometricEnrolled(user.id);
+            console.log('🔑 Already enrolled:', enrolled);
+            if (enrolled) return;
+
+            // Step 3: Check if user dismissed previously
             const dismissed = localStorage.getItem(`biometric_dismissed_${user.id}`);
-            if (!enrolled && !dismissed) setShow(true);
+            if (dismissed) return;
+
+            // ✅ All checks passed — show the prompt
+            setShow(true);
         };
         check();
     }, [user]);
 
+    // ✅ Early return AFTER all hooks
     if (!show || !user) return null;
 
-    // BiometricEnrollPrompt.tsx — handleEnable must start synchronously
+    // ✅ handleEnable — no awaits before enrollBiometric call
     const handleEnable = async () => {
         setIsLoading(true);
         setMessage('');
 
-        // ✅ DO NOT await anything before calling enrollBiometric
-        // Any await before navigator.credentials.create() breaks the gesture chain
         const result = await enrollBiometric(
             user.id,
             user.email || '',
@@ -50,7 +63,6 @@ const BiometricEnrollPrompt: React.FC = () => {
             setMessage(`❌ ${result.error}`);
         }
     };
-
 
     const handleDismiss = () => {
         localStorage.setItem(`biometric_dismissed_${user.id}`, '1');
