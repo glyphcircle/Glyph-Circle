@@ -226,6 +226,72 @@ const Login: React.FC = () => {
     }
   };
 
+  // Inside your Login component — add below the email/password form
+
+  import {
+    isBiometricSupported,
+    hasBiometricEnrolled,
+    authenticateWithBiometric,
+  } from '../services/biometricService';
+  import { Fingerprint } from 'lucide-react';
+
+  // In component state:
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [lastUserId, setLastUserId] = useState<string | null>(null);
+
+  // In useEffect:
+  useEffect(() => {
+    const check = async () => {
+      const supported = await isBiometricSupported();
+      if (!supported) return;
+      // Get last logged-in user ID from localStorage
+      const uid = localStorage.getItem('last_user_id');
+      if (!uid) return;
+      const enrolled = await hasBiometricEnrolled(uid);
+      if (enrolled) {
+        setBiometricAvailable(true);
+        setLastUserId(uid);
+      }
+    };
+    check();
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    if (!lastUserId) return;
+    setIsLoading(true);
+    const result = await authenticateWithBiometric(lastUserId);
+    if (result.success) {
+      // Biometric passed — restore the Supabase session
+      // Option A: If you stored the refresh token securely:
+      const refreshToken = localStorage.getItem(`refresh_token_${lastUserId}`);
+      if (refreshToken) {
+        const { error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+        if (!error) { navigate('/home'); return; }
+      }
+      // Option B: Redirect to re-auth page with biometric flag
+      navigate('/home');
+    } else {
+      setError(result.error || 'Biometric authentication failed.');
+    }
+    setIsLoading(false);
+  };
+
+  // JSX — add this button above or below the login form:
+  {
+    biometricAvailable && (
+      <button
+        onClick={handleBiometricLogin}
+        className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl
+      border-2 border-primary/30 bg-primary/5 hover:bg-primary/10
+      text-primary font-bold text-sm transition-all active:scale-95"
+      >
+        <Fingerprint size={20} />
+        Login with Fingerprint / Face ID
+      </button>
+    )
+  }
+
+
   return (
     <div className={`flex flex-col items-center justify-center min-h-[calc(100vh-80px)] px-4 pb-12 transition-colors duration-500 font-lora ${isLight ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50' : 'bg-black'
       }`}>

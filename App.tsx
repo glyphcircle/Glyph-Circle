@@ -62,7 +62,7 @@ import MobileNavBar from './components/MobileNavBar';
 import { useDevice } from './hooks/useDevice';
 import { DebugConsole } from './components/DebugConsole';
 import AuthCallback from './components/AuthCallback';
-
+import BiometricEnrollPrompt from './components/BiometricEnrollPrompt';
 // Call once at top level — warms the cache before any service is used
 preloadServiceRegistry();
 
@@ -242,5 +242,5 @@ function App() {
     </AccessibilityProvider>
   );
 }
-
+<BiometricEnrollPrompt />
 export default App;
