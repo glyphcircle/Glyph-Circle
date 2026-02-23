@@ -26,36 +26,42 @@ export const isBiometricSupported = async (): Promise<boolean> => {
 };
 
 // ── Check if user already has biometrics enrolled ────────────────────────
+// biometricService.ts — fix hasBiometricEnrolled
 export const hasBiometricEnrolled = async (userId: string): Promise<boolean> => {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_biometric_keys')
     .select('id')
     .eq('user_id', userId)
     .limit(1)
-    .single();
+    .maybeSingle();            // ✅ returns null instead of 406 when no row found
+
+  if (error) {
+    console.warn('[Biometric] hasBiometricEnrolled error:', error.message);
+    return false;              // ✅ fail silently — don't crash the app
+  }
   return !!data;
 };
+
 
 // ─────────────────────────────────────────────────────────────────────────
 // ENROLLMENT — called once after first email/password login
 // ─────────────────────────────────────────────────────────────────────────
+// biometricService.ts — enrollBiometric
 export const enrollBiometric = async (
   userId: string,
   userEmail: string,
   displayName: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // 1. Generate a random challenge
     const challenge = crypto.getRandomValues(new Uint8Array(32));
 
-    // 2. Ask browser to create a WebAuthn credential
-    //    This triggers the fingerprint / Face ID prompt
+    // ✅ NO awaits before this line — must be first async call
     const credential = await navigator.credentials.create({
       publicKey: {
         challenge,
         rp: {
           name: 'Glyph Circle',
-          id: window.location.hostname,       // e.g. "localhost" or "glyphcircle.com"
+          id: window.location.hostname,
         },
         user: {
           id: new TextEncoder().encode(userId),
@@ -63,44 +69,54 @@ export const enrollBiometric = async (
           displayName: displayName,
         },
         pubKeyCredParams: [
-          { type: 'public-key', alg: -7 },     // ES256 (preferred)
-          { type: 'public-key', alg: -257 },    // RS256 (fallback)
+          { type: 'public-key', alg: -7 },   // ES256
+          { type: 'public-key', alg: -257 },  // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: 'platform',   // device-only, no USB keys
-          userVerification: 'required',   // forces biometric check
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
           residentKey: 'preferred',
         },
         timeout: 60000,
-        attestation: 'none',                    // no attestation needed
+        attestation: 'none',
       },
-    }) as PublicKeyCredentialWithAttestationResponse | null;
+    }) as any;
 
     if (!credential) throw new Error('Credential creation cancelled');
 
-    const credResponse = (credential as any).response;
+    // ✅ All Supabase saves happen AFTER credential creation
+    const credResponse = credential.response;
+    const publicKey = credResponse.getPublicKey
+      ? credResponse.getPublicKey()
+      : new ArrayBuffer(0);
 
-    // 3. Save credential ID + public key to Supabase
     const { error } = await supabase
       .from('user_biometric_keys')
       .insert({
         user_id: userId,
         credential_id: bufToBase64(credential.rawId),
-        public_key: bufToBase64(credResponse.getPublicKey()),
+        public_key: bufToBase64(publicKey),
         device_name: getDeviceName(),
       });
 
     if (error) throw error;
 
-    // 4. Save credential ID locally so we can retrieve it on login
     localStorage.setItem(`biometric_cred_${userId}`, bufToBase64(credential.rawId));
-
     return { success: true };
 
   } catch (err: any) {
     console.error('[Biometric] Enrollment failed:', err);
     if (err.name === 'NotAllowedError') {
-      return { success: false, error: 'Biometric access denied or cancelled.' };
+      return {
+        success: false,
+        error: 'Biometric access was denied. Please allow it in your browser settings and try again.',
+      };
+    }
+    if (err.name === 'NotSupportedError') {
+      return {
+        success: false,
+        error: 'Your device does not support biometric login.',
+      };
     }
     return { success: false, error: err.message };
   }

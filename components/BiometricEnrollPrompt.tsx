@@ -29,14 +29,19 @@ const BiometricEnrollPrompt: React.FC = () => {
 
     if (!show || !user) return null;
 
+    // BiometricEnrollPrompt.tsx — handleEnable must start synchronously
     const handleEnable = async () => {
         setIsLoading(true);
         setMessage('');
+
+        // ✅ DO NOT await anything before calling enrollBiometric
+        // Any await before navigator.credentials.create() breaks the gesture chain
         const result = await enrollBiometric(
             user.id,
             user.email || '',
             user.user_metadata?.full_name || 'User'
         );
+
         setIsLoading(false);
         if (result.success) {
             setMessage('✅ Biometric login enabled!');
@@ -45,6 +50,7 @@ const BiometricEnrollPrompt: React.FC = () => {
             setMessage(`❌ ${result.error}`);
         }
     };
+
 
     const handleDismiss = () => {
         localStorage.setItem(`biometric_dismissed_${user.id}`, '1');

@@ -1,3 +1,5 @@
+// vite.config.ts — Fixed: basicSsl inside plugins, proper import
+
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import process from 'node:process';
@@ -7,20 +9,26 @@ import { dirname, resolve } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiKey = env.API_KEY || '';
-
-  // Check if we want HTTPS (for localhost only)
   const useHttps = process.env.VITE_HTTPS === 'true';
 
+  // ✅ Dynamically import only when HTTPS is needed
+  const httpsPlugin = useHttps
+    ? [(await import('@vitejs/plugin-basic-ssl')).default()]
+    : [];
+
   return {
-    plugins: [react()],
-    base: mode === 'production' ? '/Glyph-Circle/' : '/', // ✅ FIXED
+    plugins: [
+      react(),
+      ...httpsPlugin,   // ✅ Inside plugins array, not outside
+    ],
+
+    base: mode === 'production' ? '/Glyph-Circle/' : '/',
 
     server: {
-      ...(useHttps && { https: true }),
+      https: useHttps || undefined,   // ✅ Vite handles https: true automatically with basicSsl
       port: 5173,
       host: '0.0.0.0',
       strictPort: true,
@@ -40,6 +48,6 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       sourcemap: false,
       chunkSizeWarningLimit: 1600,
-    }
+    },
   };
 });
